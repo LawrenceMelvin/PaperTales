@@ -7,6 +7,7 @@ import CharacterAnchorComponent from "@/components/CharacterAnchor";
 import MascotQuoter from "@/components/MascotQuoter";
 import TokenModal from "@/components/TokenModal";
 import OrderSummaryModal from "@/components/OrderSummaryModal";
+import BookDetailsModal from "@/components/BookDetailsModal";
 import { BookProject, BookPage, CharacterAnchor } from "@/types/book";
 import { deductClientTokens, getClientTokenBalance } from "@/lib/token-store";
 import { calculateBookQuote } from "@/lib/pricing-calculator";
@@ -21,9 +22,13 @@ import {
   Atom,
   UploadCloud,
   X,
-  Eye,
-  Settings2,
+  Bot,
+  User,
+  CheckCircle2,
+  Printer,
+  ChevronDown,
   Image as ImageIcon,
+  BookOpen,
 } from "lucide-react";
 
 type BookGenre = "coloring_book" | "memory_book" | "math_book" | "science_book";
@@ -46,7 +51,7 @@ const GENRE_LANES: GenreConfig[] = [
     badge: "300 DPI Vector Line-Art",
     icon: Palette,
     description: "Whimsical bedtime adventures with bold vector outlines ready for crayons",
-    defaultPrompt: "Barnaby explores the Enchanted Forest and discovers magic crystal flowers",
+    defaultPrompt: "Barnaby visits the Sweet Dream Ice Cream Parlor and makes magical rainbow sundaes",
     defaultCharacter: {
       name: "Barnaby",
       type: "Golden Retriever Puppy",
@@ -54,14 +59,14 @@ const GENRE_LANES: GenreConfig[] = [
     },
     presets: [
       {
+        label: "🍦 Ice Cream Shop",
+        prompt: "Barnaby visits the Sweet Dream Ice Cream Parlor and bakes giant waffle cones",
+        character: { name: "Barnaby", type: "Golden Retriever Puppy", traits: ["Chef hat", "Red scarf", "Waffle spoon"] },
+      },
+      {
         label: "🚀 Space Puppy",
         prompt: "Barnaby the astronaut puppy visits Mars and builds a space castle",
         character: { name: "Barnaby", type: "Astronaut Puppy", traits: ["Space helmet", "Red scarf", "Jetpack"] },
-      },
-      {
-        label: "🧁 Cupcake Dino",
-        prompt: "Penny the baby dinosaur learns how to bake cupcakes with woodland birds",
-        character: { name: "Penny", type: "Baby Brontosaurus", traits: ["Chef hat", "Pink apron", "Cheery smile"] },
       },
     ],
   },
@@ -144,7 +149,7 @@ const GENRE_LANES: GenreConfig[] = [
 
 const INITIAL_BOOK: BookProject = {
   id: "book_initial",
-  title: "Barnaby's Adventure in the Magic Forest",
+  title: "Barnaby's Ice Cream Adventure",
   subtitle: "A Personalized AI Coloring Storybook",
   authorName: "Lawrence & Leo",
   genre: "coloring_book",
@@ -153,9 +158,9 @@ const INITIAL_BOOK: BookProject = {
   pages: [
     {
       pageNumber: 1,
-      title: "The Big Morning Discovery",
-      storyText: "Barnaby the Golden Retriever Puppy woke up with excitement! Today was the day to explore the Enchanted Whispering Woods with his cozy red scarf.",
-      imagePrompt: "Clean black-and-white vector coloring line art: Barnaby with his scarf packing a tiny explorer backpack.",
+      title: "The Ice Cream Discovery",
+      storyText: "Barnaby the Golden Retriever Puppy skipped down Sunny Boulevard! Today he visited the famous Sweet Dream Ice Cream Parlor to craft the world's tallest waffle cone.",
+      imagePrompt: "Clean black-and-white vector coloring line art: Delicious tall ice cream cone with crosshatch waffle texture, sweet cherry on top, and playful stars.",
     },
     {
       pageNumber: 2,
@@ -203,20 +208,21 @@ export default function StudioPage() {
   const [userTokens, setUserTokens] = useState<number>(12);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState<boolean>(false);
+  const [isPrintingPageOne, setIsPrintingPageOne] = useState<boolean>(false);
+
+  // Confirmation state: Unlocks print proof button
+  const [isConfirmed, setIsConfirmed] = useState<boolean>(true);
 
   // Reference photo / sketch upload
   const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
 
-  // Mobile segmented view switcher
-  const [mobileStudioTab, setMobileStudioTab] = useState<"controls" | "preview">("controls");
-
   // Modals state
   const [tokenModalOpen, setTokenModalOpen] = useState<boolean>(false);
   const [orderModalOpen, setOrderModalOpen] = useState<boolean>(false);
+  const [bookDetailsOpen, setBookDetailsOpen] = useState<boolean>(false);
 
-  // Compute dynamic quote for ANY page count
+  // Compute dynamic quote
   const quote = calculateBookQuote(pageCount);
-
   const activeGenreConfig = GENRE_LANES.find((g) => g.id === selectedGenre) || GENRE_LANES[0];
 
   useEffect(() => {
@@ -246,7 +252,7 @@ export default function StudioPage() {
     }
   };
 
-  const handleGenerateBook = async () => {
+  const handleConfirmAndGenerate = async () => {
     if (quote.tokensRequired > 0) {
       const balance = getClientTokenBalance();
       if (balance < quote.tokensRequired) {
@@ -279,8 +285,13 @@ export default function StudioPage() {
         if (quote.tokensRequired > 0) {
           deductClientTokens(quote.tokensRequired);
         }
-        // Auto switch to preview on mobile so user immediately sees results!
-        setMobileStudioTab("preview");
+        setIsConfirmed(true);
+
+        // Smooth scroll to the Book Display below
+        const displayEl = document.getElementById("book-display-section");
+        if (displayEl) {
+          displayEl.scrollIntoView({ behavior: "smooth" });
+        }
       }
     } catch (err) {
       console.error("Book generation error:", err);
@@ -289,7 +300,42 @@ export default function StudioPage() {
     }
   };
 
-  const handleDownloadPdf = async () => {
+  const handlePrintFirstPage = async () => {
+    setIsPrintingPageOne(true);
+    try {
+      // Create a 1-page single proof book project
+      const pageOneProject: BookProject = {
+        ...book,
+        title: `${book.title} (Page 1 Proof)`,
+        pages: [book.pages[0]],
+        pageCount: 1,
+      };
+
+      const res = await fetch("/api/pdf/compile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pageOneProject),
+      });
+
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${book.title.replace(/[^a-z0-9]/gi, "_").toLowerCase()}_page_1_proof.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
+    } catch (err) {
+      console.error("Print Page 1 failed:", err);
+    } finally {
+      setIsPrintingPageOne(false);
+    }
+  };
+
+  const handleDownloadFullPdf = async () => {
     setIsDownloadingPdf(true);
     try {
       const res = await fetch("/api/pdf/compile", {
@@ -334,66 +380,65 @@ export default function StudioPage() {
       <div className="relative z-10 flex flex-col min-h-screen">
         <Navbar onOpenTokenModal={() => setTokenModalOpen(true)} />
 
-        {/* Full-width Workstation Canvas (max-w-[1920px] avoids empty side black voids on wide monitors) */}
-        <main className="flex-1 w-full max-w-[1920px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-12 py-4 sm:py-6">
-          {/* Mobile View Switcher Pill Bar (Sticky on mobile < lg) */}
-          <div className="lg:hidden flex items-center p-1 bg-slate-900/90 rounded-xl border border-sky-400/25 mb-4 backdrop-blur-md sticky top-16 z-30 shadow-lg">
-            <button
-              type="button"
-              onClick={() => setMobileStudioTab("controls")}
-              className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all ${
-                mobileStudioTab === "controls"
-                  ? "bg-sky-400 text-[#001f2e] shadow-md font-extrabold"
-                  : "text-[#a0b4c4] hover:text-white"
-              }`}
-            >
-              <Settings2 className="w-3.5 h-3.5" />
-              Studio &amp; Prompts
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobileStudioTab("preview")}
-              className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all ${
-                mobileStudioTab === "preview"
-                  ? "bg-sky-400 text-[#001f2e] shadow-md font-extrabold"
-                  : "text-[#a0b4c4] hover:text-white"
-              }`}
-            >
-              <Eye className="w-3.5 h-3.5" />
-              Live Book View ({book.pages.length} Pgs)
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 xl:gap-8 items-start">
-            {/* Left Panel: Creator Prompt Controls */}
-            <div
-              className={`lg:col-span-5 xl:col-span-4 space-y-4 ${
-                mobileStudioTab === "preview" ? "hidden lg:block" : "block"
-              }`}
-            >
-              <div className="glacier-glass rounded-2xl border border-sky-400/25 p-4 sm:p-5 shadow-xl space-y-4">
-                {/* Header */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-sky-400/15 border border-sky-400/30 text-sky-300 flex items-center justify-center">
-                      <Wand2 className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-extrabold text-white">AI Creator Studio</h3>
-                      <p className="text-[11px] text-[#a0b4c4]">First 5 pages free &bull; Scale up to 60 pgs</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    Active Copilot
-                  </span>
+        <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
+          {/* =========================================================================
+              SECTION 1 (TOP): BOOK CREATOR ASSISTANCE (PAPERTALES)
+              Directly matching user's sketch top container
+              ========================================================================= */}
+          <section className="glacier-glass rounded-2xl border border-sky-400/30 p-5 sm:p-7 shadow-2xl relative overflow-hidden space-y-6">
+            {/* Header: Book Creator Assistance */}
+            <div className="flex items-center justify-between border-b border-sky-400/20 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-sky-400/20 border border-sky-400/30 text-sky-300 flex items-center justify-center shadow-sm">
+                  <Bot className="w-5 h-5" />
                 </div>
-
-                {/* 4 Creative Genre Lanes Selector */}
                 <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-[#a0b4c4] mb-2">
-                    Creative Lane / Book Genre
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
+                    Book Creator Assistance
+                  </h2>
+                  <p className="text-xs text-[#a0b4c4]">
+                    Meet <strong className="text-sky-300">PaperTales</strong> &bull; Your AI Book Publishing Copilot
+                  </p>
+                </div>
+              </div>
+              <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                Assistant Ready
+              </span>
+            </div>
+
+            {/* Conversation Thread */}
+            <div className="space-y-4">
+              {/* Message 1 (User Bubble - Exactly as sketched) */}
+              <div className="flex items-start justify-end gap-2.5">
+                <div className="max-w-md sm:max-w-lg bg-sky-500/20 border border-sky-400/40 rounded-2xl rounded-tr-xs px-4 py-3 text-white shadow-md">
+                  <p className="text-xs sm:text-sm font-semibold tracking-wide">
+                    &ldquo;Hey, PaperTales what can you do&rdquo;
+                  </p>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-slate-800 border border-sky-400/30 flex items-center justify-center text-sky-300 shrink-0">
+                  <User className="w-4 h-4" />
+                </div>
+              </div>
+
+              {/* Message 2 (PaperTales Assistant Bubble - Explaining Capabilities) */}
+              <div className="flex items-start gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-sky-400/20 border border-sky-400/40 flex items-center justify-center text-sky-300 shrink-0 mt-1">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div className="flex-1 bg-slate-900/80 border border-sky-400/25 rounded-2xl rounded-tl-xs p-4 sm:p-5 text-white shadow-lg space-y-4">
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-black text-sky-200">
+                      Hi there! I&apos;m PaperTales, your AI book creation assistant.
+                    </h4>
+                    <p className="text-xs text-[#a0b4c4] mt-1 leading-relaxed">
+                      I turn your family memories, bedtime ideas, and learning milestones into beautifully illustrated, 
+                      print-ready physical books delivered straight to your door. Here are the book lanes we can create:
+                    </p>
+                  </div>
+
+                  {/* 4 Interactive Creative Lanes in Message Bubble */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     {GENRE_LANES.map((lane) => {
                       const IconComponent = lane.icon;
                       const isSelected = selectedGenre === lane.id;
@@ -402,32 +447,91 @@ export default function StudioPage() {
                           key={lane.id}
                           type="button"
                           onClick={() => handleSelectGenre(lane.id)}
-                          className={`p-2.5 rounded-xl border text-left transition-all relative flex flex-col justify-between ${
+                          className={`p-3 rounded-xl border text-left transition-all ${
                             isSelected
                               ? "bg-sky-400/20 border-sky-400 text-white shadow-sm ring-1 ring-sky-400/30"
-                              : "bg-slate-900/60 border-sky-400/15 hover:border-sky-400/40 text-[#a0b4c4] hover:text-white"
+                              : "bg-slate-950/50 border-sky-400/15 hover:border-sky-400/40 text-[#a0b4c4] hover:text-white"
                           }`}
                         >
                           <div className="flex items-center gap-2 mb-1">
                             <IconComponent className={`w-4 h-4 ${isSelected ? "text-sky-300" : "text-slate-400"}`} />
                             <span className="text-xs font-bold leading-tight truncate">{lane.label}</span>
+                            {isSelected && (
+                              <span className="ml-auto text-[9px] font-bold px-1.5 py-0.2 rounded bg-sky-400 text-[#001f2e]">
+                                Selected
+                              </span>
+                            )}
                           </div>
-                          <span className="text-[10px] text-slate-400 font-medium line-clamp-1">
-                            {lane.badge}
-                          </span>
+                          <p className="text-[10px] text-slate-400 font-medium line-clamp-2 leading-relaxed">
+                            {lane.description}
+                          </p>
                         </button>
                       );
                     })}
                   </div>
+
+                  {/* Reference Image Note & Capabilities Pills */}
+                  <div className="pt-1 flex flex-wrap items-center gap-2 text-[10px] text-[#a0b4c4]">
+                    <span className="px-2 py-0.5 rounded-full bg-slate-950/80 border border-sky-400/20">
+                      📸 Reference Photo Grounding
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-slate-950/80 border border-sky-400/20">
+                      🎁 First 5 Pages 100% Free
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-slate-950/80 border border-sky-400/20">
+                      🖨️ Lulu Express Print-on-Demand
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-slate-950/80 border border-sky-400/20">
+                      💳 PayPal 1-Click Checkout
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Assistance Configuration Controls (Prompt, Reference & Confirmation) */}
+            <div className="pt-4 border-t border-sky-400/20 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                {/* Left: Adventure Prompt & Presets (7 cols) */}
+                <div className="md:col-span-7 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-[#a0b4c4]">
+                      Describe Book Story / Milestone Prompt
+                    </label>
+                  </div>
+                  <textarea
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    rows={3}
+                    className="w-full text-xs p-3 rounded-xl bg-slate-900/80 border border-sky-400/20 text-white placeholder-slate-500 focus:outline-none focus:border-sky-400 font-medium"
+                    placeholder={`e.g. ${activeGenreConfig.defaultPrompt}...`}
+                  />
+
+                  {/* Quick Preset Pills */}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {activeGenreConfig.presets.map((preset, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setPrompt(preset.prompt);
+                          setCharacter(preset.character);
+                        }}
+                        className="text-[10px] font-semibold bg-slate-900/80 hover:bg-sky-400/20 text-[#a0b4c4] hover:text-sky-300 border border-sky-400/20 px-2 py-1 rounded-lg transition-all"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                {/* Reference Photo / Sketch Uploader */}
-                <div className="glacier-glass-subtle p-3.5 rounded-xl border border-sky-400/20">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-1.5">
+                {/* Right: Reference Asset Uploader (5 cols) */}
+                <div className="md:col-span-5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-white flex items-center gap-1.5">
                       <ImageIcon className="w-3.5 h-3.5 text-sky-400" />
-                      <label className="text-xs font-bold text-white">Reference Photo / Sketch (Optional)</label>
-                    </div>
+                      Reference Photo / Sketch (Optional)
+                    </label>
                     {referenceImageUrl && (
                       <button
                         type="button"
@@ -440,26 +544,28 @@ export default function StudioPage() {
                   </div>
 
                   {referenceImageUrl ? (
-                    <div className="flex items-center gap-3 p-2 bg-slate-950/70 rounded-lg border border-sky-400/30">
+                    <div className="flex items-center gap-3 p-2.5 bg-slate-950/70 rounded-xl border border-sky-400/30">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={referenceImageUrl}
                         alt="Reference anchor"
-                        className="w-12 h-12 object-cover rounded-md border border-sky-400/40"
+                        className="w-14 h-14 object-cover rounded-lg border border-sky-400/40"
                       />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-bold text-sky-300 truncate">Visual Grounding Active</p>
-                        <p className="text-[10px] text-[#a0b4c4] truncate">AI uses reference for consistent character &amp; art</p>
+                        <p className="text-[10px] text-[#a0b4c4] line-clamp-2">
+                          AI anchors character consistency &amp; linework to this reference.
+                        </p>
                       </div>
                     </div>
                   ) : (
                     <div>
-                      <label className="cursor-pointer flex flex-col items-center justify-center p-3 rounded-lg border border-dashed border-sky-400/30 hover:border-sky-400 bg-slate-900/40 hover:bg-sky-400/5 transition-all text-center">
+                      <label className="cursor-pointer flex flex-col items-center justify-center p-3 rounded-xl border border-dashed border-sky-400/30 hover:border-sky-400 bg-slate-900/40 hover:bg-sky-400/5 transition-all text-center">
                         <UploadCloud className="w-5 h-5 text-sky-400 mb-1" />
                         <span className="text-[11px] font-semibold text-sky-200">
                           Upload child photo, pet, or drawing
                         </span>
-                        <span className="text-[9px] text-slate-500 mt-0.5">PNG, JPG, or WEBP up to 10MB</span>
+                        <span className="text-[9px] text-slate-500 mt-0.5">PNG, JPG up to 10MB</span>
                         <input
                           type="file"
                           accept="image/*"
@@ -467,8 +573,7 @@ export default function StudioPage() {
                           className="hidden"
                         />
                       </label>
-                      {/* Quick Sample Reference Loaders */}
-                      <div className="flex items-center gap-1.5 mt-2">
+                      <div className="flex items-center gap-1.5 mt-1.5">
                         <span className="text-[9px] text-slate-500">Quick sample:</span>
                         <button
                           type="button"
@@ -488,55 +593,33 @@ export default function StudioPage() {
                     </div>
                   )}
                 </div>
+              </div>
 
-                {/* Story Prompt */}
+              {/* Character & Page Length Settings (Collapsible or Clean Row) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                <div>
+                  <label className="block text-[11px] font-semibold text-[#a0b4c4] mb-1">Character Name</label>
+                  <input
+                    type="text"
+                    value={character.name}
+                    onChange={(e) => setCharacter({ ...character, name: e.target.value })}
+                    className="w-full text-xs px-3 py-2 rounded-lg bg-slate-900/70 border border-sky-400/20 text-white placeholder-slate-500 focus:outline-none focus:border-sky-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-[#a0b4c4] mb-1">Character Archetype</label>
+                  <input
+                    type="text"
+                    value={character.type}
+                    onChange={(e) => setCharacter({ ...character, type: e.target.value })}
+                    className="w-full text-xs px-3 py-2 rounded-lg bg-slate-900/70 border border-sky-400/20 text-white placeholder-slate-500 focus:outline-none focus:border-sky-400"
+                  />
+                </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-[#a0b4c4]">
-                      {activeGenreConfig.label} Narrative Prompt
-                    </label>
+                    <label className="text-[11px] font-semibold text-[#a0b4c4]">Book Length</label>
+                    <span className="text-[10px] text-sky-300 font-bold">{pageCount} Pages (5 Free)</span>
                   </div>
-                  <textarea
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    rows={2}
-                    className="w-full text-xs p-3 rounded-xl bg-slate-900/70 border border-sky-400/20 text-white placeholder-slate-500 focus:outline-none focus:border-sky-400 font-medium"
-                    placeholder={`e.g. ${activeGenreConfig.defaultPrompt}...`}
-                  />
-
-                  {/* Preset Prompt Pills */}
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {activeGenreConfig.presets.map((preset, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => {
-                          setPrompt(preset.prompt);
-                          setCharacter(preset.character);
-                        }}
-                        className="text-[10px] font-semibold bg-slate-900/60 hover:bg-sky-400/20 text-[#a0b4c4] hover:text-sky-300 border border-sky-400/20 px-2 py-0.5 rounded-full transition-all"
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Dynamic Page Count Selector with Slider & Presets */}
-                <div className="glacier-glass-subtle p-3.5 rounded-xl border border-sky-400/20">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-1.5">
-                      <Sliders className="w-3.5 h-3.5 text-sky-400" />
-                      <label className="text-xs font-bold text-white">
-                        Book Length: <span className="text-sky-300 text-sm font-black font-mono">{pageCount} Pages</span>
-                      </label>
-                    </div>
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-sky-400/20 text-sky-300 border border-sky-400/30">
-                      5 Pages Free
-                    </span>
-                  </div>
-
-                  {/* Range Slider for arbitrary selection */}
                   <input
                     type="range"
                     min={5}
@@ -544,107 +627,99 @@ export default function StudioPage() {
                     step={1}
                     value={pageCount}
                     onChange={(e) => setPageCount(parseInt(e.target.value, 10))}
-                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-400 slider-thumb mb-2.5"
+                    className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-400 mt-2"
                   />
+                </div>
+              </div>
 
-                  {/* Quick Presets Pills */}
-                  <div className="flex flex-wrap gap-1">
-                    {[5, 15, 25, 30, 46, 60].map((count) => (
-                      <button
-                        key={count}
-                        type="button"
-                        onClick={() => setPageCount(count)}
-                        className={`px-2 py-1 text-[11px] font-bold rounded-lg border transition-all ${
-                          pageCount === count
-                            ? "border-sky-400 bg-sky-500/20 text-sky-300 shadow-sm"
-                            : "border-white/10 hover:border-sky-400/30 text-[#a0b4c4] bg-slate-900/40"
-                        }`}
-                      >
-                        {count === 5 ? "5 (Free)" : `${count} Pgs`}
-                      </button>
-                    ))}
+              {/* Mascot & Economics Indicator */}
+              <MascotQuoter
+                quote={quote}
+                userTokens={userTokens}
+                onOpenTokenModal={() => setTokenModalOpen(true)}
+              />
+
+              {/* Confirmation Banner & Synthesis Trigger */}
+              <div className="p-4 rounded-xl bg-slate-950/70 border border-sky-400/30 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h5 className="text-xs font-bold text-white">
+                      Confirm Book Details &amp; Pages
+                    </h5>
+                    <p className="text-[11px] text-[#a0b4c4]">
+                      {activeGenreConfig.label} &bull; {pageCount} Pages &bull; Featuring {character.name} &bull;{" "}
+                      {quote.tokensRequired === 0 ? "100% Free Gift" : `${quote.tokensRequired} Tokens`}
+                    </p>
                   </div>
                 </div>
 
-                {/* Interactive Mascot Quoter Component */}
-                <MascotQuoter
-                  quote={quote}
-                  userTokens={userTokens}
-                  onOpenTokenModal={() => setTokenModalOpen(true)}
-                />
-
-                {/* Author & Settings */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-[#a0b4c4] mb-1">Author Name(s)</label>
-                    <input
-                      type="text"
-                      value={authorName}
-                      onChange={(e) => setAuthorName(e.target.value)}
-                      className="w-full text-xs px-3 py-2 rounded-lg bg-slate-900/70 border border-sky-400/20 text-white placeholder-slate-500 focus:outline-none focus:border-sky-400"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-[#a0b4c4] mb-1">Target Age</label>
-                    <select
-                      value={targetAge}
-                      onChange={(e) => setTargetAge(e.target.value)}
-                      className="w-full text-xs px-2.5 py-2 rounded-lg bg-slate-900/70 border border-sky-400/20 text-white focus:outline-none focus:border-sky-400"
-                    >
-                      <option value="2-4">Ages 2-4 (Simple)</option>
-                      <option value="4-8">Ages 4-8 (Balanced)</option>
-                      <option value="8-12">Ages 8-12 (Detailed)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Character Anchor Lock Component */}
-                <CharacterAnchorComponent
-                  character={character}
-                  onChange={(updated) => setCharacter(updated)}
-                />
-
-                {/* Generate Book Action */}
                 <button
-                  onClick={handleGenerateBook}
+                  type="button"
+                  onClick={handleConfirmAndGenerate}
                   disabled={isGenerating}
-                  className="w-full py-3.5 rounded-xl glacier-btn text-[#001f2e] font-extrabold text-xs shadow-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                  className="w-full sm:w-auto px-6 py-3 rounded-xl glacier-btn text-[#001f2e] font-extrabold text-xs shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
                 >
                   {isGenerating ? (
                     <>
                       <RefreshCw className="w-4 h-4 animate-spin" />
-                      Synthesizing Story &amp; Line-Art...
+                      <span>Synthesizing Pages with PaperTales...</span>
                     </>
                   ) : (
                     <>
                       <Sparkles className="w-4 h-4" />
-                      {quote.tokensRequired === 0
-                        ? `Generate ${activeGenreConfig.label} (100% Free Gift)`
-                        : `Generate ${quote.totalPages}-Page ${activeGenreConfig.label} (${quote.tokensRequired} Tokens / $${quote.priceUsd.toFixed(2)})`}
+                      <span>Confirm Details &amp; Generate Spread</span>
                     </>
                   )}
                 </button>
               </div>
             </div>
+          </section>
 
-            {/* Right Panel: Interactive Book Viewer & Actions */}
-            <div
-              className={`lg:col-span-7 xl:col-span-8 flex flex-col justify-start ${
-                mobileStudioTab === "controls" ? "hidden lg:flex" : "flex"
-              }`}
-            >
-              <BookViewer
-                book={book}
-                onPageUpdate={handlePageUpdate}
-                onDownloadPdf={handleDownloadPdf}
-                onOrderPhysical={() => setOrderModalOpen(true)}
-                isDownloading={isDownloadingPdf}
-              />
+          {/* =========================================================================
+              SECTION 2 (BOTTOM): BOOK DISPLAY (BOOK PREVIEW DISPLAY)
+              Directly positioned below the AI Assistance, matching user's sketch
+              ========================================================================= */}
+          <section id="book-display-section" className="space-y-4">
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-sky-400/20 border border-sky-400/30 text-sky-300 flex items-center justify-center">
+                  <BookOpen className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-white tracking-tight">
+                    Book Display
+                  </h3>
+                  <p className="text-xs text-[#a0b4c4]">
+                    Interactive two-page spread preview &bull; 8.5&quot; &times; 8.5&quot; Square
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
+
+            {/* The Live Book Viewer Spread & Action Buttons */}
+            <BookViewer
+              book={book}
+              onPageUpdate={handlePageUpdate}
+              onDownloadPdf={handleDownloadFullPdf}
+              onPrintFirstPage={handlePrintFirstPage}
+              onOpenBookDetails={() => setBookDetailsOpen(true)}
+              onOrderPhysical={() => setOrderModalOpen(true)}
+              isDownloading={isDownloadingPdf || isPrintingPageOne}
+              isConfirmed={isConfirmed}
+            />
+          </section>
         </main>
 
         {/* Modals */}
+        <BookDetailsModal
+          isOpen={bookDetailsOpen}
+          onClose={() => setBookDetailsOpen(false)}
+          book={book}
+        />
+
         <TokenModal
           isOpen={tokenModalOpen}
           onClose={() => setTokenModalOpen(false)}

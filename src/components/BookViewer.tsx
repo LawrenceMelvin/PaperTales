@@ -2,14 +2,29 @@
 
 import React, { useState } from "react";
 import { BookProject, BookPage } from "@/types/book";
-import { ChevronLeft, ChevronRight, Download, Printer, Edit3, Check, Sparkles, BookOpen, PenTool } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Printer,
+  Edit3,
+  Check,
+  Sparkles,
+  BookOpen,
+  PenTool,
+  Info,
+  FileCheck,
+} from "lucide-react";
 
 interface BookViewerProps {
   book: BookProject;
   onPageUpdate: (updatedPage: BookPage) => void;
   onDownloadPdf: () => void;
   onOrderPhysical: () => void;
+  onPrintFirstPage?: () => void;
+  onOpenBookDetails?: () => void;
   isDownloading?: boolean;
+  isConfirmed?: boolean;
 }
 
 export default function BookViewer({
@@ -17,7 +32,10 @@ export default function BookViewer({
   onPageUpdate,
   onDownloadPdf,
   onOrderPhysical,
+  onPrintFirstPage,
+  onOpenBookDetails,
   isDownloading,
+  isConfirmed = true,
 }: BookViewerProps) {
   const [currentPageIndex, setCurrentPageIndex] = useState<number>(0);
   const [editingStory, setEditingStory] = useState<boolean>(false);
@@ -54,45 +72,52 @@ export default function BookViewer({
     setEditingStory(false);
   };
 
+  const isIceCreamTheme =
+    activePage?.title.toLowerCase().includes("ice") ||
+    activePage?.title.toLowerCase().includes("cupcake") ||
+    activePage?.storyText.toLowerCase().includes("ice cream") ||
+    activePage?.storyText.toLowerCase().includes("biscuit");
+
   return (
     <div className="flex flex-col items-center w-full">
-      {/* Top Controls Bar */}
-      <div className="w-full flex flex-col md:flex-row items-start md:items-center justify-between mb-4 px-1 sm:px-2 gap-3">
+      {/* Top Header & Spread Status */}
+      <div className="w-full flex flex-col sm:flex-row items-start sm:items-center justify-between mb-3 px-1 sm:px-2 gap-2">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-base sm:text-xl font-extrabold text-white tracking-tight">
               {book.title}
             </h2>
             <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-sky-400/20 text-sky-300 font-bold border border-sky-400/30">
-              8.5&quot; × 8.5&quot; Square
+              8.5&quot; &times; 8.5&quot; Square
             </span>
+            {isConfirmed && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 flex items-center gap-1">
+                <FileCheck className="w-3 h-3" /> Confirmed Proof
+              </span>
+            )}
           </div>
           <p className="text-xs text-[#a0b4c4] mt-0.5">
             By <strong className="text-white">{book.authorName}</strong> &bull; {book.pageCount} Pages &bull; Archival Saddle-Stitch POD
           </p>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+        {/* Quick actions top right */}
+        <div className="flex items-center gap-2">
           <button
             onClick={onDownloadPdf}
             disabled={isDownloading}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-semibold glacier-glass-subtle hover:bg-slate-800 text-sky-300 border border-sky-400/30 rounded-xl shadow-sm transition-all active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold glacier-glass-subtle hover:bg-slate-800 text-sky-300 border border-sky-400/30 rounded-xl shadow-sm transition-all active:scale-95"
+            title="Download Full PDF"
           >
             <Download className="w-3.5 h-3.5 text-sky-400" />
-            <span>{isDownloading ? "Compiling..." : "Download PDF"}</span>
-          </button>
-          <button
-            onClick={onOrderPhysical}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold glacier-btn text-[#001f2e] rounded-xl shadow-md transition-all active:scale-95"
-          >
-            <Printer className="w-3.5 h-3.5" />
-            <span>Order Physical Print</span>
+            <span className="hidden sm:inline">{isDownloading ? "Compiling..." : "Download Full PDF"}</span>
+            <span className="sm:hidden">PDF</span>
           </button>
         </div>
       </div>
 
       {/* Book Spread Viewport */}
-      <div className="relative w-full min-h-[460px] sm:min-h-[520px] lg:min-h-[580px] glacier-glass rounded-2xl p-3 sm:p-6 lg:p-8 flex items-center justify-center border border-sky-400/25 shadow-2xl">
+      <div className="relative w-full min-h-[460px] sm:min-h-[520px] lg:min-h-[560px] glacier-glass rounded-2xl p-3 sm:p-6 lg:p-7 flex items-center justify-center border border-sky-400/25 shadow-2xl">
         {isCover ? (
           /* Cover Spread */
           <div className="w-full max-w-sm sm:max-w-md aspect-square bg-[#0f1524] rounded-r-2xl border border-sky-400/40 book-shadow flex flex-col justify-between p-6 sm:p-8 relative overflow-hidden text-white">
@@ -213,7 +238,52 @@ export default function BookViewer({
 
               {/* Vector coloring line art container */}
               <div className="w-full flex-1 border-2 border-slate-900 rounded-xl p-4 flex flex-col items-center justify-center relative overflow-hidden bg-white min-h-[260px] sm:min-h-[320px]">
-                {book.genre === "math_book" ? (
+                {isIceCreamTheme ? (
+                  /* Ice Cream Cone Vector Line Art (Matching User's Hand-drawn Sketch!) */
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" className="w-full h-full max-h-[340px]">
+                    <rect width="400" height="400" fill="#FFFFFF" />
+                    {/* Cloud or background sparkles */}
+                    <circle cx="100" cy="80" r="14" fill="none" stroke="#111111" strokeWidth="2.5" />
+                    <circle cx="310" cy="90" r="16" fill="none" stroke="#111111" strokeWidth="2.5" />
+                    {/* Ice Cream Cloud / Scoop Tops */}
+                    <path
+                      d="M 120 180 C 110 130, 160 110, 200 110 C 240 110, 290 130, 280 180 Z"
+                      fill="#FFFFFF"
+                      stroke="#111111"
+                      strokeWidth="5"
+                    />
+                    {/* Wavy bottom of the scoop */}
+                    <path
+                      d="M 115 180 Q 135 198 155 180 Q 175 198 200 180 Q 225 198 245 180 Q 265 198 285 180"
+                      fill="none"
+                      stroke="#111111"
+                      strokeWidth="4.5"
+                    />
+                    {/* Delicious Cherry on Top */}
+                    <circle cx="200" cy="90" r="16" fill="#FFFFFF" stroke="#111111" strokeWidth="4" />
+                    <path d="M 205 76 Q 225 50 240 55" fill="none" stroke="#111111" strokeWidth="3" />
+                    {/* Cone Triangle */}
+                    <polygon points="125,185 275,185 200,340" fill="#FFFFFF" stroke="#111111" strokeWidth="5" />
+                    {/* Crosshatch Waffle Pattern */}
+                    <line x1="145" y1="185" x2="225" y2="340" stroke="#111111" strokeWidth="3" />
+                    <line x1="175" y1="185" x2="215" y2="300" stroke="#111111" strokeWidth="3" />
+                    <line x1="255" y1="185" x2="175" y2="340" stroke="#111111" strokeWidth="3" />
+                    <line x1="225" y1="185" x2="185" y2="300" stroke="#111111" strokeWidth="3" />
+                    {/* Label matching the sketch: Ice */}
+                    <text
+                      x="200"
+                      y="375"
+                      textAnchor="middle"
+                      fontSize="22"
+                      fontWeight="bold"
+                      fill="#111111"
+                      fontFamily="serif"
+                      letterSpacing="2"
+                    >
+                      Ice Cream
+                    </text>
+                  </svg>
+                ) : book.genre === "math_book" ? (
                   /* Math & Logic Quest Illustration */
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" className="w-full h-full max-h-[340px]">
                     <rect width="400" height="400" fill="#FFFFFF" />
@@ -324,8 +394,8 @@ export default function BookViewer({
         )}
       </div>
 
-      {/* Pagination & Navigation Footbar */}
-      <div className="flex items-center justify-between w-full max-w-md mt-4 px-2">
+      {/* Pagination Controls */}
+      <div className="flex items-center justify-between w-full max-w-md my-4 px-2">
         <button
           onClick={handlePrev}
           disabled={currentPageIndex === 0}
@@ -344,6 +414,38 @@ export default function BookViewer({
           className="flex items-center gap-1 px-3.5 py-2 text-xs font-semibold rounded-xl glacier-glass-subtle border border-sky-400/20 hover:border-sky-400/40 disabled:opacity-40 disabled:cursor-not-allowed text-[#a0b4c4] hover:text-white shadow-sm transition-all active:scale-95"
         >
           Next <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Bottom Action Bar (Directly Matching the User's Hand-drawn Sketch) */}
+      <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 pb-6 px-1">
+        {/* Left: Book details button */}
+        <button
+          onClick={onOpenBookDetails}
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 text-xs sm:text-sm font-bold rounded-xl glacier-glass-subtle hover:bg-slate-800 text-sky-200 border border-sky-400/30 shadow-md transition-all active:scale-95"
+        >
+          <Info className="w-4 h-4 text-sky-400" />
+          <span>Book Details</span>
+        </button>
+
+        {/* Center / Secondary: Print First Page (Free Proof) */}
+        {isConfirmed && onPrintFirstPage && (
+          <button
+            onClick={onPrintFirstPage}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl bg-slate-900/80 hover:bg-slate-800 text-emerald-300 border border-emerald-500/40 shadow-sm transition-all active:scale-95"
+          >
+            <Printer className="w-4 h-4 text-emerald-400" />
+            <span>Print First Page (Free Proof)</span>
+          </button>
+        )}
+
+        {/* Right: Order Physical Print */}
+        <button
+          onClick={onOrderPhysical}
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 text-xs sm:text-sm font-extrabold glacier-btn text-[#001f2e] rounded-xl shadow-xl transition-all active:scale-95"
+        >
+          <Printer className="w-4 h-4 text-[#001f2e]" />
+          <span>Order Physical Print</span>
         </button>
       </div>
     </div>
