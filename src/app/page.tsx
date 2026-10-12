@@ -18,7 +18,6 @@ import {
   FileText,
   Lock,
   Layers,
-  Eye,
   PenTool,
   Clock,
   Award,
@@ -32,8 +31,6 @@ import {
 
 export default function LandingPage() {
   const [tokenModalOpen, setTokenModalOpen] = useState(false);
-  const [chapterModalOpen, setChapterModalOpen] = useState(false);
-  const [vectorGuideActive, setVectorGuideActive] = useState(false);
 
   // Dynamic Economics Engine State
   const [pageCount, setPageCount] = useState<number>(24);
@@ -110,7 +107,7 @@ export default function LandingPage() {
             </p>
 
             {/* Dual Hero Actions */}
-            <div className="flex flex-wrap items-center justify-center gap-4 mb-16">
+            <div className="flex flex-wrap items-center justify-center gap-4">
               <Link
                 href="/studio"
                 className="glacier-btn text-base font-bold px-8 py-4 rounded-xl flex items-center gap-2 hover:scale-[1.02] active:scale-95 transition-all shadow-xl"
@@ -125,105 +122,6 @@ export default function LandingPage() {
                 <BookOpen className="w-4 h-4 text-sky-400" />
                 <span>Explore Print Quality</span>
               </a>
-            </div>
-
-            {/* THE 3D BOOK ARTIFACT STAGE */}
-            <div className="w-full relative max-w-5xl group floating-stage">
-              {/* Glacier Light Halo Backdrop */}
-              <div className="absolute inset-0 bg-sky-400/15 rounded-3xl filter blur-3xl transform scale-95 opacity-70" />
-
-              {/* Book Perspective Container */}
-              <div className="relative rounded-2xl overflow-hidden glacier-glass p-2 md:p-4 shadow-2xl border border-sky-400/25">
-                {/* Perspective Floating Showcase Ribbon */}
-                <div className="flex flex-col sm:flex-row items-center justify-between px-4 py-3 bg-slate-900/80 backdrop-blur-md rounded-xl mb-3 border border-sky-400/20 gap-3">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-sky-400 animate-ping" />
-                    <span className="text-xs font-bold text-sky-300 tracking-wider uppercase">
-                      Live Spread Inspector
-                    </span>
-                    <span className="text-slate-600 text-xs">|</span>
-                    <span className="text-xs font-medium text-[#a0b4c4]">
-                      Chapter 1: Barnaby’s Starlight Adventure
-                    </span>
-                  </div>
-
-                  {/* Interactive View State Controls */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setChapterModalOpen(true)}
-                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-sky-500/15 text-sky-300 border border-sky-400/30 hover:bg-sky-500/25 transition-all flex items-center gap-1.5"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Preview Chapter 1 Text</span>
-                    </button>
-                    <button
-                      onClick={() => setVectorGuideActive(!vectorGuideActive)}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all flex items-center gap-1.5 ${
-                        vectorGuideActive
-                          ? "bg-sky-400/25 text-white border-sky-400 shadow-sm"
-                          : "bg-slate-800/60 text-[#a0b4c4] hover:text-sky-300 border-sky-500/20"
-                      }`}
-                    >
-                      <PenTool className="w-3.5 h-3.5" />
-                      <span>{vectorGuideActive ? "✓ Vector Guides On" : "Toggle Vector Guides"}</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Open Book Centerpiece Visual */}
-                <div className="relative rounded-xl overflow-hidden aspect-[1.79/1] max-h-[580px] w-full border border-sky-400/20 shadow-inner bg-slate-950">
-                  <Image
-                    src="/storybook-centerpiece.png"
-                    alt="Barnaby Starlight Adventure 3D Open Book Centerpiece"
-                    fill
-                    className="object-cover object-center transform group-hover:scale-[1.01] transition-transform duration-700"
-                    priority
-                  />
-
-                  {/* Safe Margin Print Guides (Interactive Overlay) */}
-                  <div
-                    className={`absolute inset-0 pointer-events-none transition-opacity duration-300 border-4 border-dashed border-sky-400/70 m-4 sm:m-8 rounded-lg flex items-center justify-center bg-slate-950/40 backdrop-blur-xs ${
-                      vectorGuideActive ? "opacity-100" : "opacity-0"
-                    }`}
-                  >
-                    <span className="glacier-glass text-sky-300 text-xs sm:text-sm font-bold px-4 py-2 rounded-full border border-sky-400/60 shadow-xl">
-                      300 DPI Bleed Boundary • Gutter 0.25in Safe Print Area
-                    </span>
-                  </div>
-                </div>
-
-                {/* Bottom Stage Calibration Metrics */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 text-left">
-                  <div className="p-3.5 rounded-xl glacier-glass-subtle border border-sky-400/20 flex items-center gap-3">
-                    <CheckCircle2 className="w-6 h-6 text-sky-400 shrink-0" />
-                    <div>
-                      <p className="text-[11px] text-[#a0b4c4]">Resolution</p>
-                      <p className="text-xs sm:text-sm font-bold text-white">300 DPI Archival</p>
-                    </div>
-                  </div>
-                  <div className="p-3.5 rounded-xl glacier-glass-subtle border border-sky-400/20 flex items-center gap-3">
-                    <Award className="w-6 h-6 text-sky-400 shrink-0" />
-                    <div>
-                      <p className="text-[11px] text-[#a0b4c4]">Line Precision</p>
-                      <p className="text-xs sm:text-sm font-bold text-white">100% Vector Lines</p>
-                    </div>
-                  </div>
-                  <div className="p-3.5 rounded-xl glacier-glass-subtle border border-sky-400/20 flex items-center gap-3">
-                    <Truck className="w-6 h-6 text-sky-400 shrink-0" />
-                    <div>
-                      <p className="text-[11px] text-[#a0b4c4]">Fulfillment</p>
-                      <p className="text-xs sm:text-sm font-bold text-white">48-Hr Lulu Dispatch</p>
-                    </div>
-                  </div>
-                  <div className="p-3.5 rounded-xl glacier-glass-subtle border border-sky-400/20 flex items-center gap-3">
-                    <ShieldCheck className="w-6 h-6 text-sky-400 shrink-0" />
-                    <div>
-                      <p className="text-[11px] text-[#a0b4c4]">Quality Guarantee</p>
-                      <p className="text-xs sm:text-sm font-bold text-white">0% AI Artifacts</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
             </div>
           </section>
 
@@ -823,42 +721,6 @@ export default function LandingPage() {
           </div>
         </footer>
       </div>
-
-      {/* Chapter 1 Story Text Modal */}
-      {chapterModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="glacier-glass max-w-lg w-full rounded-2xl p-6 border border-sky-400/30 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2 text-sky-300 font-bold text-sm">
-                <BookOpen className="w-4 h-4" />
-                <span>Chapter 1: Barnaby’s Starlight Adventure</span>
-              </div>
-              <button
-                onClick={() => setChapterModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="text-xs sm:text-sm text-[#e0e8f0] leading-relaxed space-y-3 font-serif">
-              <p className="first-letter:text-3xl first-letter:font-bold first-letter:text-sky-300 first-letter:mr-1">
-                Barnaby the fluffy golden retriever puppy stood beneath a velvet indigo sky, his cozy knitted scarf fluttering in the twilight breeze.
-              </p>
-              <p>
-                As the smiling crescent moon peered over the silver fir trees, constellations twinkled like spilled sugar on a dark bakery tray. Barnaby let out a tiny, cheerful bark. Tonight, the magical star map was awake, leading to the secret whispering waterfall where wishing acorns grow.
-              </p>
-            </div>
-            <div className="pt-2 flex justify-end">
-              <button
-                onClick={() => setChapterModalOpen(false)}
-                className="glacier-btn px-4 py-2 rounded-lg text-xs font-bold"
-              >
-                Close Preview
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Token Modal */}
       <TokenModal
