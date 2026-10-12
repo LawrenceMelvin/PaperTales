@@ -10,22 +10,146 @@ import OrderSummaryModal from "@/components/OrderSummaryModal";
 import { BookProject, BookPage, CharacterAnchor } from "@/types/book";
 import { deductClientTokens, getClientTokenBalance } from "@/lib/token-store";
 import { calculateBookQuote } from "@/lib/pricing-calculator";
-import { Sparkles, Wand2, RefreshCw, Sliders } from "lucide-react";
+import {
+  Sparkles,
+  Wand2,
+  RefreshCw,
+  Sliders,
+  Palette,
+  BookHeart,
+  Calculator,
+  Atom,
+  UploadCloud,
+  X,
+  Eye,
+  Settings2,
+  Image as ImageIcon,
+} from "lucide-react";
 
-const INITIAL_CHARACTER: CharacterAnchor = {
-  name: "Barnaby",
-  type: "Golden Retriever Puppy",
-  traits: ["Wearing a cozy red scarf", "Floppy ears", "Curious tail wag"],
-};
+type BookGenre = "coloring_book" | "memory_book" | "math_book" | "science_book";
 
-const DEFAULT_BOOK: BookProject = {
+interface GenreConfig {
+  id: BookGenre;
+  label: string;
+  badge: string;
+  icon: React.ComponentType<{ className?: string }>;
+  description: string;
+  defaultPrompt: string;
+  defaultCharacter: CharacterAnchor;
+  presets: Array<{ label: string; prompt: string; character: CharacterAnchor }>;
+}
+
+const GENRE_LANES: GenreConfig[] = [
+  {
+    id: "coloring_book",
+    label: "Coloring Book",
+    badge: "300 DPI Vector Line-Art",
+    icon: Palette,
+    description: "Whimsical bedtime adventures with bold vector outlines ready for crayons",
+    defaultPrompt: "Barnaby explores the Enchanted Forest and discovers magic crystal flowers",
+    defaultCharacter: {
+      name: "Barnaby",
+      type: "Golden Retriever Puppy",
+      traits: ["Wearing a cozy red scarf", "Floppy ears", "Curious tail wag"],
+    },
+    presets: [
+      {
+        label: "🚀 Space Puppy",
+        prompt: "Barnaby the astronaut puppy visits Mars and builds a space castle",
+        character: { name: "Barnaby", type: "Astronaut Puppy", traits: ["Space helmet", "Red scarf", "Jetpack"] },
+      },
+      {
+        label: "🧁 Cupcake Dino",
+        prompt: "Penny the baby dinosaur learns how to bake cupcakes with woodland birds",
+        character: { name: "Penny", type: "Baby Brontosaurus", traits: ["Chef hat", "Pink apron", "Cheery smile"] },
+      },
+    ],
+  },
+  {
+    id: "memory_book",
+    label: "Family Keepsake",
+    badge: "Milestones & Storybook Lane",
+    icon: BookHeart,
+    description: "Transform precious family moments, baby milestones & photos into keepsake chapters",
+    defaultPrompt: "Our family's sunny beach road trip, building sandcastles, and stargazing by the campfire",
+    defaultCharacter: {
+      name: "Leo",
+      type: "Curious Toddler",
+      traits: ["Curly brown hair", "Blue sneakers", "Little star backpack"],
+    },
+    presets: [
+      {
+        label: "🏖️ Beach Summer",
+        prompt: "Summer holiday memories at Sunny Cove, collecting sea shells and watching dolphins",
+        character: { name: "Leo", type: "Beach Explorer", traits: ["Straw sunhat", "Seashell bucket", "Bright smile"] },
+      },
+      {
+        label: "🎂 Birthday Milestones",
+        prompt: "Celebrating Leo's big birthday party with Grandma's strawberry cake and backyard games",
+        character: { name: "Leo", type: "Birthday Boy", traits: ["Glitter party hat", "Striped overalls", "Sparkling eyes"] },
+      },
+    ],
+  },
+  {
+    id: "math_book",
+    label: "Math & Logic Quest",
+    badge: "Counting & Geometry Riddles",
+    icon: Calculator,
+    description: "Interactive counting puzzles, geometric shapes, and arithmetic word challenges",
+    defaultPrompt: "Pixel the Fox unlocks Number Castle using counting keys, shape bridges, and logic stars",
+    defaultCharacter: {
+      name: "Pixel",
+      type: "Clever Fox",
+      traits: ["Round spectacles", "Explorer satchel", "Magic number chalk"],
+    },
+    presets: [
+      {
+        label: "🏰 Castle Keys",
+        prompt: "Count the 3 golden keys, 5 geometric stones, and 8 starlight crystals to unlock the fortress",
+        character: { name: "Pixel", type: "Math Wizard Fox", traits: ["Star-patterned cape", "Counting abacus", "Feather pen"] },
+      },
+      {
+        label: "🎈 Balloon Bridge",
+        prompt: "Solve addition riddles with 10 colorful balloons to reach Cloud Island",
+        character: { name: "Pixel", type: "Sky Mathematician", traits: ["Aviator goggles", "Number notebook", "Compass"] },
+      },
+    ],
+  },
+  {
+    id: "science_book",
+    label: "Science Explorer",
+    badge: "Space, Oceans & Dinosaurs",
+    icon: Atom,
+    description: "Astronomy, prehistoric fossils, deep ocean biology & kid-friendly STEM discoveries",
+    defaultPrompt: "Professor Nova's cosmic voyage through Saturn's rings and deep bioluminescent ocean trenches",
+    defaultCharacter: {
+      name: "Professor Nova",
+      type: "Young Explorer",
+      traits: ["Lab goggles", "Starlight notebook", "Pocket magnifying lens"],
+    },
+    presets: [
+      {
+        label: "🪐 Saturn Voyage",
+        prompt: "Explore the ice rings of Saturn and land on cratered moons",
+        character: { name: "Professor Nova", type: "Cosmic Astronomer", traits: ["Apollo spacesuit", "Antenna headset", "Star map"] },
+      },
+      {
+        label: "🦕 Dinosaur Dig",
+        prompt: "Unearth Stegosaurus fossil bones in prehistoric sandstone quarries",
+        character: { name: "Professor Nova", type: "Paleontologist", traits: ["Safari field hat", "Excavation brush", "Fossil field guide"] },
+      },
+    ],
+  },
+];
+
+const INITIAL_BOOK: BookProject = {
   id: "book_initial",
   title: "Barnaby's Adventure in the Magic Forest",
   subtitle: "A Personalized AI Coloring Storybook",
   authorName: "Lawrence & Leo",
   genre: "coloring_book",
   targetAge: "4-8",
-  character: INITIAL_CHARACTER,
+  character: GENRE_LANES[0].defaultCharacter,
   pages: [
     {
       pageNumber: 1,
@@ -69,15 +193,22 @@ const DEFAULT_BOOK: BookProject = {
 };
 
 export default function StudioPage() {
-  const [book, setBook] = useState<BookProject>(DEFAULT_BOOK);
-  const [character, setCharacter] = useState<CharacterAnchor>(INITIAL_CHARACTER);
-  const [prompt, setPrompt] = useState<string>("Barnaby explores the Enchanted Forest and discovers magic crystal flowers");
+  const [selectedGenre, setSelectedGenre] = useState<BookGenre>("coloring_book");
+  const [book, setBook] = useState<BookProject>(INITIAL_BOOK);
+  const [character, setCharacter] = useState<CharacterAnchor>(GENRE_LANES[0].defaultCharacter);
+  const [prompt, setPrompt] = useState<string>(GENRE_LANES[0].defaultPrompt);
   const [authorName, setAuthorName] = useState<string>("Lawrence & Leo");
   const [targetAge, setTargetAge] = useState<string>("4-8");
   const [pageCount, setPageCount] = useState<number>(5);
   const [userTokens, setUserTokens] = useState<number>(12);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState<boolean>(false);
+
+  // Reference photo / sketch upload
+  const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
+
+  // Mobile segmented view switcher
+  const [mobileStudioTab, setMobileStudioTab] = useState<"controls" | "preview">("controls");
 
   // Modals state
   const [tokenModalOpen, setTokenModalOpen] = useState<boolean>(false);
@@ -86,12 +217,34 @@ export default function StudioPage() {
   // Compute dynamic quote for ANY page count
   const quote = calculateBookQuote(pageCount);
 
+  const activeGenreConfig = GENRE_LANES.find((g) => g.id === selectedGenre) || GENRE_LANES[0];
+
   useEffect(() => {
     setUserTokens(getClientTokenBalance());
     const handleUpdate = () => setUserTokens(getClientTokenBalance());
     window.addEventListener("tokens_updated", handleUpdate);
     return () => window.removeEventListener("tokens_updated", handleUpdate);
   }, []);
+
+  const handleSelectGenre = (genreId: BookGenre) => {
+    setSelectedGenre(genreId);
+    const cfg = GENRE_LANES.find((g) => g.id === genreId) || GENRE_LANES[0];
+    setPrompt(cfg.defaultPrompt);
+    setCharacter(cfg.defaultCharacter);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          setReferenceImageUrl(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleGenerateBook = async () => {
     if (quote.tokensRequired > 0) {
@@ -111,10 +264,11 @@ export default function StudioPage() {
           prompt,
           authorName,
           targetAge,
-          genre: "coloring_book",
+          genre: selectedGenre,
           characterName: character.name,
           characterType: character.type,
           characterTraits: character.traits,
+          referenceImageUrl: referenceImageUrl || undefined,
           pageCount,
         }),
       });
@@ -125,6 +279,8 @@ export default function StudioPage() {
         if (quote.tokensRequired > 0) {
           deductClientTokens(quote.tokensRequired);
         }
+        // Auto switch to preview on mobile so user immediately sees results!
+        setMobileStudioTab("preview");
       }
     } catch (err) {
       console.error("Book generation error:", err);
@@ -171,61 +327,198 @@ export default function StudioPage() {
     <div className="flex flex-col min-h-screen bg-[#0a0e1a] text-[#e0e8f0] relative selection:bg-sky-500/30 selection:text-sky-200">
       {/* Ambient Glacier Aurora Frost in Studio Background */}
       <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute top-10 left-1/4 w-[700px] h-[500px] bg-sky-400/10 rounded-full blur-[140px] opacity-50" />
-        <div className="absolute bottom-10 right-10 w-[550px] h-[550px] bg-purple-500/10 rounded-full blur-[160px] opacity-40" />
+        <div className="absolute top-10 left-1/4 w-[800px] h-[600px] bg-sky-400/10 rounded-full blur-[160px] opacity-60" />
+        <div className="absolute bottom-10 right-10 w-[650px] h-[650px] bg-purple-500/10 rounded-full blur-[180px] opacity-40" />
       </div>
 
       <div className="relative z-10 flex flex-col min-h-screen">
         <Navbar onOpenTokenModal={() => setTokenModalOpen(true)} />
 
-        <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Full-width Workstation Canvas (max-w-[1920px] avoids empty side black voids on wide monitors) */}
+        <main className="flex-1 w-full max-w-[1920px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-12 py-4 sm:py-6">
+          {/* Mobile View Switcher Pill Bar (Sticky on mobile < lg) */}
+          <div className="lg:hidden flex items-center p-1 bg-slate-900/90 rounded-xl border border-sky-400/25 mb-4 backdrop-blur-md sticky top-16 z-30 shadow-lg">
+            <button
+              type="button"
+              onClick={() => setMobileStudioTab("controls")}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+                mobileStudioTab === "controls"
+                  ? "bg-sky-400 text-[#001f2e] shadow-md font-extrabold"
+                  : "text-[#a0b4c4] hover:text-white"
+              }`}
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+              Studio &amp; Prompts
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileStudioTab("preview")}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+                mobileStudioTab === "preview"
+                  ? "bg-sky-400 text-[#001f2e] shadow-md font-extrabold"
+                  : "text-[#a0b4c4] hover:text-white"
+              }`}
+            >
+              <Eye className="w-3.5 h-3.5" />
+              Live Book View ({book.pages.length} Pgs)
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 xl:gap-8 items-start">
             {/* Left Panel: Creator Prompt Controls */}
-            <div className="lg:col-span-5 space-y-4">
-              <div className="glacier-glass rounded-2xl border border-sky-400/25 p-5 shadow-xl space-y-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-sky-400/15 border border-sky-400/30 text-sky-300 flex items-center justify-center">
-                    <Wand2 className="w-4 h-4" />
+            <div
+              className={`lg:col-span-5 xl:col-span-4 space-y-4 ${
+                mobileStudioTab === "preview" ? "hidden lg:block" : "block"
+              }`}
+            >
+              <div className="glacier-glass rounded-2xl border border-sky-400/25 p-4 sm:p-5 shadow-xl space-y-4">
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-sky-400/15 border border-sky-400/30 text-sky-300 flex items-center justify-center">
+                      <Wand2 className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-extrabold text-white">AI Creator Studio</h3>
+                      <p className="text-[11px] text-[#a0b4c4]">First 5 pages free &bull; Scale up to 60 pgs</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-sm font-extrabold text-white">Co-Creation Prompt Studio</h3>
-                    <p className="text-[11px] text-[#a0b4c4]">First 5 pages free &bull; Unlimited scaling &bull; 62% margin</p>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    Active Copilot
+                  </span>
+                </div>
+
+                {/* 4 Creative Genre Lanes Selector */}
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-[#a0b4c4] mb-2">
+                    Creative Lane / Book Genre
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {GENRE_LANES.map((lane) => {
+                      const IconComponent = lane.icon;
+                      const isSelected = selectedGenre === lane.id;
+                      return (
+                        <button
+                          key={lane.id}
+                          type="button"
+                          onClick={() => handleSelectGenre(lane.id)}
+                          className={`p-2.5 rounded-xl border text-left transition-all relative flex flex-col justify-between ${
+                            isSelected
+                              ? "bg-sky-400/20 border-sky-400 text-white shadow-sm ring-1 ring-sky-400/30"
+                              : "bg-slate-900/60 border-sky-400/15 hover:border-sky-400/40 text-[#a0b4c4] hover:text-white"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <IconComponent className={`w-4 h-4 ${isSelected ? "text-sky-300" : "text-slate-400"}`} />
+                            <span className="text-xs font-bold leading-tight truncate">{lane.label}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-medium line-clamp-1">
+                            {lane.badge}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
+                </div>
+
+                {/* Reference Photo / Sketch Uploader */}
+                <div className="glacier-glass-subtle p-3.5 rounded-xl border border-sky-400/20">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <ImageIcon className="w-3.5 h-3.5 text-sky-400" />
+                      <label className="text-xs font-bold text-white">Reference Photo / Sketch (Optional)</label>
+                    </div>
+                    {referenceImageUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setReferenceImageUrl(null)}
+                        className="text-[10px] text-red-400 hover:text-red-300 flex items-center gap-0.5"
+                      >
+                        <X className="w-3 h-3" /> Remove
+                      </button>
+                    )}
+                  </div>
+
+                  {referenceImageUrl ? (
+                    <div className="flex items-center gap-3 p-2 bg-slate-950/70 rounded-lg border border-sky-400/30">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={referenceImageUrl}
+                        alt="Reference anchor"
+                        className="w-12 h-12 object-cover rounded-md border border-sky-400/40"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-sky-300 truncate">Visual Grounding Active</p>
+                        <p className="text-[10px] text-[#a0b4c4] truncate">AI uses reference for consistent character &amp; art</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="cursor-pointer flex flex-col items-center justify-center p-3 rounded-lg border border-dashed border-sky-400/30 hover:border-sky-400 bg-slate-900/40 hover:bg-sky-400/5 transition-all text-center">
+                        <UploadCloud className="w-5 h-5 text-sky-400 mb-1" />
+                        <span className="text-[11px] font-semibold text-sky-200">
+                          Upload child photo, pet, or drawing
+                        </span>
+                        <span className="text-[9px] text-slate-500 mt-0.5">PNG, JPG, or WEBP up to 10MB</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFileUpload}
+                          className="hidden"
+                        />
+                      </label>
+                      {/* Quick Sample Reference Loaders */}
+                      <div className="flex items-center gap-1.5 mt-2">
+                        <span className="text-[9px] text-slate-500">Quick sample:</span>
+                        <button
+                          type="button"
+                          onClick={() => setReferenceImageUrl("https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=400&auto=format&fit=crop&q=60")}
+                          className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 text-[#a0b4c4] hover:text-sky-300 border border-sky-400/20"
+                        >
+                          🐶 Pet Puppy
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setReferenceImageUrl("https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=400&auto=format&fit=crop&q=60")}
+                          className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 text-[#a0b4c4] hover:text-sky-300 border border-sky-400/20"
+                        >
+                          👧 Child Portrait
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Story Prompt */}
                 <div>
-                  <label className="block text-xs font-bold text-[#a0b4c4] mb-1">Book Idea / Adventure Prompt</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-[#a0b4c4]">
+                      {activeGenreConfig.label} Narrative Prompt
+                    </label>
+                  </div>
                   <textarea
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     rows={2}
                     className="w-full text-xs p-3 rounded-xl bg-slate-900/70 border border-sky-400/20 text-white placeholder-slate-500 focus:outline-none focus:border-sky-400 font-medium"
-                    placeholder="e.g. A space-traveling puppy discovering star meadows..."
+                    placeholder={`e.g. ${activeGenreConfig.defaultPrompt}...`}
                   />
 
                   {/* Preset Prompt Pills */}
                   <div className="flex flex-wrap gap-1.5 mt-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPrompt("Barnaby the astronaut puppy visits Mars and builds a space castle");
-                        setCharacter({ name: "Barnaby", type: "Astronaut Puppy", traits: ["Space helmet", "Red scarf", "Jetpack"] });
-                      }}
-                      className="text-[10px] font-semibold bg-slate-900/60 hover:bg-sky-400/20 text-[#a0b4c4] hover:text-sky-300 border border-sky-400/20 px-2 py-0.5 rounded-full transition-all"
-                    >
-                      🚀 Space Puppy
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPrompt("Penny the baby dinosaur learns how to bake cupcakes with woodland birds");
-                        setCharacter({ name: "Penny", type: "Baby Brontosaurus", traits: ["Chef hat", "Pink apron", "Cheery smile"] });
-                      }}
-                      className="text-[10px] font-semibold bg-slate-900/60 hover:bg-sky-400/20 text-[#a0b4c4] hover:text-sky-300 border border-sky-400/20 px-2 py-0.5 rounded-full transition-all"
-                    >
-                      🧁 Cupcake Dino
-                    </button>
+                    {activeGenreConfig.presets.map((preset, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setPrompt(preset.prompt);
+                          setCharacter(preset.character);
+                        }}
+                        className="text-[10px] font-semibold bg-slate-900/60 hover:bg-sky-400/20 text-[#a0b4c4] hover:text-sky-300 border border-sky-400/20 px-2 py-0.5 rounded-full transition-all"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -326,8 +619,8 @@ export default function StudioPage() {
                     <>
                       <Sparkles className="w-4 h-4" />
                       {quote.tokensRequired === 0
-                        ? "Generate Book (100% Free Gift)"
-                        : `Generate ${quote.totalPages}-Page Book (${quote.tokensRequired} Tokens / $${quote.priceUsd.toFixed(2)})`}
+                        ? `Generate ${activeGenreConfig.label} (100% Free Gift)`
+                        : `Generate ${quote.totalPages}-Page ${activeGenreConfig.label} (${quote.tokensRequired} Tokens / $${quote.priceUsd.toFixed(2)})`}
                     </>
                   )}
                 </button>
@@ -335,7 +628,11 @@ export default function StudioPage() {
             </div>
 
             {/* Right Panel: Interactive Book Viewer & Actions */}
-            <div className="lg:col-span-7 flex flex-col justify-start">
+            <div
+              className={`lg:col-span-7 xl:col-span-8 flex flex-col justify-start ${
+                mobileStudioTab === "controls" ? "hidden lg:flex" : "flex"
+              }`}
+            >
               <BookViewer
                 book={book}
                 onPageUpdate={handlePageUpdate}

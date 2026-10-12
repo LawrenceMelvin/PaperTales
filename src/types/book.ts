@@ -20,9 +20,10 @@ export interface BookProject {
   title: string;
   subtitle?: string;
   authorName: string;
-  genre: "coloring_book" | "storybook" | "memory_book" | "activity_book";
+  genre: "coloring_book" | "storybook" | "memory_book" | "activity_book" | "math_book" | "science_book";
   targetAge: string;
   character: CharacterAnchor;
+  referenceImageUrl?: string;
   pages: BookPage[];
   pageCount: number;
   format: {
