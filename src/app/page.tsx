@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import TokenModal from "@/components/TokenModal";
-import ScrollOpeningBook from "@/components/ScrollOpeningBook";
+import BackgroundScrollBook from "@/components/BackgroundScrollBook";
 import {
   Sparkles,
   BookOpen,
@@ -23,14 +23,19 @@ export default function LandingPage() {
   const [tokenModalOpen, setTokenModalOpen] = useState(false);
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Navbar onOpenTokenModal={() => setTokenModalOpen(true)} />
+    <div className="flex flex-col min-h-screen relative bg-gradient-to-b from-slate-50/60 via-white/50 to-blue-50/30 overflow-x-hidden">
+      {/* Ambient Transparent 3D Storybook in Page Background */}
+      <BackgroundScrollBook />
 
-      <main className="flex-1">
-        {/* Hero Section */}
-        <section className="relative overflow-hidden pt-12 pb-20 sm:pt-20 sm:pb-28 bg-gradient-to-b from-white via-slate-50 to-blue-50/30">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
-            {/* Hackathon Badge */}
+      {/* Foreground Content */}
+      <div className="relative z-10 flex flex-col min-h-screen">
+        <Navbar onOpenTokenModal={() => setTokenModalOpen(true)} />
+
+        <main className="flex-1">
+          {/* Hero Section */}
+          <section className="relative overflow-hidden pt-12 pb-20 sm:pt-20 sm:pb-28">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
+              {/* Hackathon Badge */}
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-100/80 border border-blue-200 text-blue-800 text-xs font-bold mb-6 shadow-sm">
               <Sparkles className="w-3.5 h-3.5 text-blue-600 animate-spin" />
               <span>PayPal AI Hackathon 2026 Showcase Entry</span>
@@ -69,13 +74,8 @@ export default function LandingPage() {
               </Link>
             </div>
 
-            {/* Interactive Scroll-Opening 3D Storybook */}
-            <div className="mt-8 sm:mt-12 w-full">
-              <ScrollOpeningBook />
-            </div>
-
             {/* Key Value Badges */}
-            <div className="mt-10 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-3xl mx-auto text-left">
+            <div className="mt-14 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-3xl mx-auto text-left">
               <div className="bg-white/80 backdrop-blur-sm p-3.5 rounded-xl border border-slate-200/80 shadow-xs flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
                   <Coins className="w-4 h-4" />
@@ -120,7 +120,7 @@ export default function LandingPage() {
         </section>
 
         {/* Feature Comparison: Why PaperTales Wins */}
-        <section className="py-16 bg-white border-y border-slate-200/80">
+        <section className="py-16 bg-white/75 backdrop-blur-md border-y border-slate-200/80">
           <div className="max-w-5xl mx-auto px-4 sm:px-6">
             <div className="text-center mb-12">
               <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
@@ -224,7 +224,7 @@ export default function LandingPage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white py-8">
+      <footer className="border-t border-slate-200/80 bg-white/75 backdrop-blur-md py-8">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
           <div className="flex items-center gap-2">
             <BookOpen className="w-4 h-4 text-blue-600" />
@@ -246,6 +246,7 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+      </div>
 
       {/* Token Modal */}
       <TokenModal
