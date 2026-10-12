@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import TokenModal from "@/components/TokenModal";
+import ScrollOpeningBook from "@/components/ScrollOpeningBook";
 import {
   Sparkles,
   BookOpen,
@@ -68,8 +69,13 @@ export default function LandingPage() {
               </Link>
             </div>
 
+            {/* Interactive Scroll-Opening 3D Storybook */}
+            <div className="mt-8 sm:mt-12 w-full">
+              <ScrollOpeningBook />
+            </div>
+
             {/* Key Value Badges */}
-            <div className="mt-12 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-3xl mx-auto text-left">
+            <div className="mt-10 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-3xl mx-auto text-left">
               <div className="bg-white/80 backdrop-blur-sm p-3.5 rounded-xl border border-slate-200/80 shadow-xs flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
                   <Coins className="w-4 h-4" />
