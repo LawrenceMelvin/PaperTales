@@ -54,6 +54,24 @@ Unlike generic prompt generators that change character designs on every page, Pa
 
 ---
 
+## 🤖 Official PayPal AI Tools & MCP Server Integration
+
+PaperTales AI leverages the official **[PayPal AI Toolkit](https://github.com/paypal/AI-Toolkit)** and **[PayPal AI Tools](https://developer.paypal.com/ai-tools/get-started)** ecosystem to pioneer agentic publishing and commerce:
+
+* **PayPal AI Toolkit & MCP Server:** Ready for Model Context Protocol integration with `@paypal/mcp` and `@paypal/agent-toolkit`. Start the local MCP server with:
+  ```bash
+  npm run paypal:mcp
+  ```
+* **Official Developer Docs:** [developer.paypal.com](https://developer.paypal.com/)
+* **PayPal AI Tools Quickstart:** [developer.paypal.com/ai-tools/get-started](https://developer.paypal.com/ai-tools/get-started)
+* **GitHub Repository:** [github.com/paypal/AI-Toolkit](https://github.com/paypal/AI-Toolkit)
+* **PayPal Sandbox Dashboard:** [sandbox.paypal.com](https://sandbox.paypal.com/)
+* **PayPal Postman Collection:** [postman.com/paypal](https://postman.com/paypal)
+* **PayPal Code Examples:** [github.com/paypal-examples/docs-examples](https://github.com/paypal-examples/docs-examples)
+* **Architectural Rules:** See [`.agent/rules/05-paypal-ai-toolkit-resources.md`](./.agent/rules/05-paypal-ai-toolkit-resources.md) for full configuration guidelines.
+
+---
+
 ## 🛠️ Tech Stack & Versioning
 
 * **Framework:** Next.js 15.1 (App Router)

@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "npx tsx test-core.mjs"
+    "test": "npx tsx test-core.mjs",
+    "paypal:mcp": "npx -y @paypal/mcp --tools=all"
   },
   "dependencies": {
     "@paypal/paypal-server-sdk": "^2.5.0",

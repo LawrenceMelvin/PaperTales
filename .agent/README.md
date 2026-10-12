@@ -18,7 +18,8 @@ It prevents model hallucination, ensures strict version alignment with modern SD
     ├── 01-tech-stack-versions.md      # Approved runtime, framework, and AI model versions
     ├── 02-pricing-and-economics.md    # 62% margin model, $0.17/page pricing, 5 free pages rule
     ├── 03-hackathon-compliance.md     # Devpost rules, MIT license, < 3 min video criteria
-    └── 04-sponsor-integrations.md     # AG Grid, Channel3, Lulu Print API, Render deployment
+    ├── 04-sponsor-integrations.md     # AG Grid, Channel3, Lulu Print API, Render deployment
+    └── 05-paypal-ai-toolkit-resources.md # Official PayPal AI Toolkit, MCP server, Postman, & SDK guides
 ```
 
 ---
@@ -33,7 +34,8 @@ It prevents model hallucination, ensures strict version alignment with modern SD
 | **Free Tier** | First 5 Pages | 100% Free on the house for all users |
 | **Paid Token Pricing** | $0.17 USD (~₹14.50 INR) per page | Exact 62% profit margin on $0.065 empirical COGS |
 | **Interactive Mascot** | Barnaby | Dynamic sales quoter for arbitrary page counts (5 to 60+ pages) |
-| **Payments** | PayPal Smart Buttons & Server SDK | `@paypal/react-paypal-js` & `@paypal/paypal-server-sdk` |
+| **PayPal AI Toolkit & MCP** | `@paypal/agent-toolkit` & `@paypal/mcp` | Official PayPal AI Toolkit, MCP Server CLI, and agentic workflows |
+| **PayPal Payments** | Smart Buttons & Server SDK | `@paypal/react-paypal-js` & `@paypal/paypal-server-sdk` v2.5 |
 | **Enterprise Data** | AG Grid v36.2 (`ag-theme-quartz`) | Operational print queue & order analytics (`/dashboard`) |
 | **Agentic Commerce** | Channel3 AI Bundle Engine | Contextual art supplies recommendation (`/api/channel3/suggest`) |
 | **Physical Books** | Lulu Print API v2 | Softcover 8.5x11 perfect bound / saddle stitch fulfillment |
