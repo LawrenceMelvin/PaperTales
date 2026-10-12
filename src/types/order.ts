@@ -28,6 +28,8 @@ export interface CompanionProduct {
   currency: string;
   imageUrl: string;
   category: string;
+  buyUrl?: string;
+  retailerDomain?: string;
 }
 
 export interface LuluQuoteResponse {

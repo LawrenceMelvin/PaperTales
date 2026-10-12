@@ -45,10 +45,10 @@ export default function OrderSummaryModal({
           setLuluQuote(quoteData.quote);
         }
 
-        // 2. Channel3 Companion Catalog
-        const ch3Res = await fetch("/api/channel3/suggest?genre=coloring_book");
+        // 2. Channel3 Companion Catalog (tailored dynamically to book genre)
+        const ch3Res = await fetch(`/api/channel3/suggest?genre=${encodeURIComponent(book.genre || "coloring_book")}`);
         const ch3Data = await ch3Res.json();
-        if (ch3Data.success && ch3Data.products) {
+        if (ch3Data.success && ch3Data.products && ch3Data.products.length > 0) {
           setCompanionProducts(ch3Data.products);
           setSelectedCompanion(ch3Data.products[0]); // default companion recommendation
         }
@@ -60,7 +60,7 @@ export default function OrderSummaryModal({
     }
 
     fetchData();
-  }, [isOpen, book.pageCount]);
+  }, [isOpen, book.pageCount, book.genre]);
 
   if (!isOpen) return null;
 
@@ -232,19 +232,28 @@ export default function OrderSummaryModal({
                         <div
                           key={item.id}
                           onClick={() => setSelectedCompanion(isAdded ? null : item)}
-                          className={`cursor-pointer p-2.5 rounded-lg border text-xs flex items-center justify-between transition-all ${
+                          className={`cursor-pointer p-2 rounded-xl border text-xs flex items-center gap-2.5 transition-all ${
                             isAdded
-                              ? "bg-sky-500/20 border-sky-400 shadow-sm"
+                              ? "bg-sky-500/20 border-sky-400 shadow-sm ring-1 ring-sky-400/30"
                               : "bg-slate-900/60 border-white/10 hover:border-sky-400/30"
                           }`}
                         >
-                          <div>
-                            <p className="font-bold text-white line-clamp-1">{item.title}</p>
-                            <p className="text-[10px] text-[#a0b4c4]">{item.brand} &bull; ${item.price.toFixed(2)}</p>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={item.imageUrl}
+                            alt={item.title}
+                            className="w-10 h-10 object-cover rounded-lg border border-white/10 shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-white truncate text-[11px]">{item.title}</p>
+                            <p className="text-[10px] text-[#a0b4c4]">
+                              ${item.price.toFixed(2)} &bull;{" "}
+                              <span className="text-sky-300">{item.retailerDomain || item.brand}</span>
+                            </p>
                           </div>
                           <button
                             type="button"
-                            className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
+                            className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-all ${
                               isAdded ? "bg-sky-400 text-slate-950 font-bold" : "border border-slate-600 text-slate-400"
                             }`}
                           >
