@@ -2,8 +2,7 @@
 
 import React, { useMemo, useState, useRef } from "react";
 import { AgGridReact } from "ag-grid-react";
-import { ColDef, ModuleRegistry } from "ag-grid-community";
-import { AllCommunityModule } from "ag-grid-community";
+import { ColDef, ModuleRegistry, AllCommunityModule, themeQuartz } from "ag-grid-community";
 import { PaperTalesOrder } from "@/types/order";
 import { Download, Search, RefreshCw, Printer, ExternalLink, ShieldCheck } from "lucide-react";
 
@@ -198,9 +197,10 @@ export default function OrdersDataGrid({ orders, onRefresh }: OrdersDataGridProp
       </div>
 
       {/* AG Grid React Viewport */}
-      <div className="ag-theme-quartz w-full h-[520px] rounded-xl overflow-hidden border border-slate-200 shadow-sm">
+      <div className="w-full h-[520px] rounded-xl overflow-hidden border border-slate-200 shadow-sm">
         <AgGridReact
           ref={gridRef}
+          theme={themeQuartz}
           rowData={orders}
           columnDefs={columnDefs}
           defaultColDef={defaultColDef}
