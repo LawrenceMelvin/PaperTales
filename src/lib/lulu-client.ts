@@ -120,8 +120,8 @@ export async function submitLuluPrintJob(
   coverPdfUrl: string
 ): Promise<{ jobId: string; trackingNumber: string; status: string }> {
   const luluKey = process.env.LULU_CLIENT_KEY;
-  const luluSecret = process.env.LULU_CLIENT_SECRET;
-  const host = "https://api.lulu.com";
+  const env = process.env.LULU_ENVIRONMENT || "sandbox";
+  const host = env === "sandbox" ? "https://api.sandbox.lulu.com" : "https://api.lulu.com";
 
   if (luluKey && luluSecret && !luluKey.startsWith("sb-")) {
     try {
