@@ -41,13 +41,16 @@ const FALLBACK_COMPANIONS: Record<string, CompanionProduct[]> = {
   ],
 };
 
-export async function fetchChannel3CompanionProducts(genre: string = "coloring_book"): Promise<CompanionProduct[]> {
+export async function fetchChannel3CompanionProducts(
+  genre: string = "coloring_book",
+  customQuery?: string
+): Promise<CompanionProduct[]> {
   const apiKey = process.env.CHANNEL3_API_KEY;
   const isMock = !apiKey || apiKey.startsWith("sb-") || apiKey === "test_channel3_key";
 
   if (!isMock && apiKey) {
     try {
-      const query = GENRE_QUERIES[genre] || GENRE_QUERIES.coloring_book;
+      const query = customQuery?.trim() || GENRE_QUERIES[genre] || GENRE_QUERIES.coloring_book;
 
       // Direct REST search call for high performance and clean attribute mapping
       const res = await fetch("https://api.trychannel3.com/v1/search", {

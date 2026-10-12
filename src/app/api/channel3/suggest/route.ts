@@ -5,9 +5,10 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const genre = searchParams.get("genre") || "coloring_book";
+    const query = searchParams.get("query") || undefined;
 
-    // Query live Channel3 catalog for tailored companion kits matching the book genre
-    const products = await fetchChannel3CompanionProducts(genre);
+    // Query live Channel3 catalog for tailored companion kits matching the book genre & story
+    const products = await fetchChannel3CompanionProducts(genre, query);
 
     return NextResponse.json({
       success: true,

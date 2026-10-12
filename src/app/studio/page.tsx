@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Navbar from "@/components/Navbar";
 import BookViewer from "@/components/BookViewer";
 import CharacterAnchorComponent from "@/components/CharacterAnchor";
@@ -9,13 +9,13 @@ import TokenModal from "@/components/TokenModal";
 import OrderSummaryModal from "@/components/OrderSummaryModal";
 import BookDetailsModal from "@/components/BookDetailsModal";
 import { BookProject, BookPage, CharacterAnchor } from "@/types/book";
+import { CompanionProduct } from "@/types/order";
 import { deductClientTokens, getClientTokenBalance } from "@/lib/token-store";
 import { calculateBookQuote } from "@/lib/pricing-calculator";
 import {
   Sparkles,
   Wand2,
   RefreshCw,
-  Sliders,
   Palette,
   BookHeart,
   Calculator,
@@ -25,10 +25,12 @@ import {
   Bot,
   User,
   CheckCircle2,
-  Printer,
-  ChevronDown,
   Image as ImageIcon,
   BookOpen,
+  Send,
+  Plus,
+  Check,
+  ShoppingBag,
 } from "lucide-react";
 
 type BookGenre = "coloring_book" | "memory_book" | "math_book" | "science_book";
@@ -147,6 +149,33 @@ const GENRE_LANES: GenreConfig[] = [
   },
 ];
 
+interface ChatMessageItem {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  quickReplies?: string[];
+}
+
+const INITIAL_MESSAGES: ChatMessageItem[] = [
+  {
+    id: "msg_1",
+    role: "user",
+    content: "Hey, PaperTales what can you do",
+  },
+  {
+    id: "msg_2",
+    role: "assistant",
+    content: "Hi there! I'm PaperTales, your AI book creation copilot. I turn your ideas, family memories, and learning milestones into beautifully illustrated, physical books delivered straight to your door!\n\nI can create Coloring Books (300 DPI vector linework), Family Keepsakes, Math & Logic Quests, or Science Explorers. I also source matching physical art supplies through Channel3 and prepare print-on-demand books via Lulu with PayPal checkout.\n\nTell me: who is this book for, or choose an idea below to begin!",
+    quickReplies: [
+      "🍦 Barnaby's Sweet Ice Cream Parlor",
+      "🚀 Space Puppy visits Mars",
+      "🏖️ Family Summer Beach Road Trip",
+      "🔢 Detective Owl's Castle Math Quest",
+      "🦕 Dinosaur Fossil Dig Adventure",
+    ],
+  },
+];
+
 const INITIAL_BOOK: BookProject = {
   id: "book_initial",
   title: "Barnaby's Ice Cream Adventure",
@@ -210,7 +239,16 @@ export default function StudioPage() {
   const [isDownloadingPdf, setIsDownloadingPdf] = useState<boolean>(false);
   const [isPrintingPageOne, setIsPrintingPageOne] = useState<boolean>(false);
 
-  // Confirmation state: Unlocks print proof button
+  // Chat conversation state
+  const [messages, setMessages] = useState<ChatMessageItem[]>(INITIAL_MESSAGES);
+  const [inputMessage, setInputMessage] = useState<string>("");
+  const [isChatting, setIsChatting] = useState<boolean>(false);
+
+  // Live Channel3 companion products
+  const [companionProducts, setCompanionProducts] = useState<CompanionProduct[]>([]);
+  const [selectedCompanion, setSelectedCompanion] = useState<CompanionProduct | null>(null);
+
+  // Confirmation state
   const [isConfirmed, setIsConfirmed] = useState<boolean>(true);
 
   // Reference photo / sketch upload
@@ -220,6 +258,9 @@ export default function StudioPage() {
   const [tokenModalOpen, setTokenModalOpen] = useState<boolean>(false);
   const [orderModalOpen, setOrderModalOpen] = useState<boolean>(false);
   const [bookDetailsOpen, setBookDetailsOpen] = useState<boolean>(false);
+
+  // Auto-scroll ref for chat thread
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Compute dynamic quote
   const quote = calculateBookQuote(pageCount);
@@ -231,6 +272,23 @@ export default function StudioPage() {
     window.addEventListener("tokens_updated", handleUpdate);
     return () => window.removeEventListener("tokens_updated", handleUpdate);
   }, []);
+
+  // Fetch initial Channel3 companion supplies
+  useEffect(() => {
+    async function loadInitialSupplies() {
+      try {
+        const res = await fetch(`/api/channel3/suggest?genre=${selectedGenre}`);
+        const data = await res.json();
+        if (data.success && data.products) {
+          setCompanionProducts(data.products);
+          setSelectedCompanion(data.products[0] || null);
+        }
+      } catch (err) {
+        console.warn("Failed to load initial Channel3 items:", err);
+      }
+    }
+    loadInitialSupplies();
+  }, [selectedGenre]);
 
   const handleSelectGenre = (genreId: BookGenre) => {
     setSelectedGenre(genreId);
@@ -249,6 +307,93 @@ export default function StudioPage() {
         }
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  // Conversational AI Helper Message Handler (Powered by gpt-4o-mini)
+  const handleSendMessage = async (textToSend: string) => {
+    const trimmed = textToSend.trim();
+    if (!trimmed || isChatting) return;
+
+    const userMsg: ChatMessageItem = {
+      id: `msg_${Date.now()}`,
+      role: "user",
+      content: trimmed,
+    };
+
+    const newThread = [...messages, userMsg];
+    setMessages(newThread);
+    setInputMessage("");
+    setIsChatting(true);
+
+    try {
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: newThread.map((m) => ({ role: m.role, content: m.content })),
+          currentBook: book,
+          referenceImageUrl: referenceImageUrl || undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        const assistantMsg: ChatMessageItem = {
+          id: `msg_${Date.now() + 1}`,
+          role: "assistant",
+          content: data.reply,
+          quickReplies: data.quickReplies || [],
+        };
+        setMessages([...newThread, assistantMsg]);
+
+        // Automatically synchronize book draft parameters into studio state
+        if (data.bookDraft) {
+          if (data.bookDraft.genre) {
+            setSelectedGenre(data.bookDraft.genre);
+          }
+          if (data.bookDraft.title) {
+            setBook((prev) => ({
+              ...prev,
+              title: data.bookDraft.title,
+              subtitle: data.bookDraft.subtitle || prev.subtitle,
+              genre: data.bookDraft.genre || prev.genre,
+            }));
+          }
+          if (data.bookDraft.prompt) {
+            setPrompt(data.bookDraft.prompt);
+          }
+          if (data.bookDraft.characterName || data.bookDraft.characterType) {
+            setCharacter({
+              name: data.bookDraft.characterName || character.name,
+              type: data.bookDraft.characterType || character.type,
+              traits: data.bookDraft.characterTraits || character.traits,
+            });
+          }
+
+          // Dynamically query Channel3 for smart companion supplies matching this story
+          if (data.bookDraft.channel3Query) {
+            try {
+              const ch3Res = await fetch(
+                `/api/channel3/suggest?genre=${data.bookDraft.genre || selectedGenre}&query=${encodeURIComponent(
+                  data.bookDraft.channel3Query
+                )}`
+              );
+              const ch3Data = await ch3Res.json();
+              if (ch3Data.success && ch3Data.products && ch3Data.products.length > 0) {
+                setCompanionProducts(ch3Data.products);
+                setSelectedCompanion(ch3Data.products[0]);
+              }
+            } catch (ch3Err) {
+              console.warn("Channel3 query failed:", ch3Err);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("AI Helper chat failed:", err);
+    } finally {
+      setIsChatting(false);
     }
   };
 
@@ -303,7 +448,6 @@ export default function StudioPage() {
   const handlePrintFirstPage = async () => {
     setIsPrintingPageOne(true);
     try {
-      // Create a 1-page single proof book project
       const pageOneProject: BookProject = {
         ...book,
         title: `${book.title} (Page 1 Proof)`,
@@ -383,7 +527,7 @@ export default function StudioPage() {
         <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
           {/* =========================================================================
               SECTION 1 (TOP): BOOK CREATOR ASSISTANCE (PAPERTALES)
-              Directly matching user's sketch top container
+              Interactive AI Assistant Copilot powered by gpt-4o-mini
               ========================================================================= */}
           <section className="glacier-glass rounded-2xl border border-sky-400/30 p-5 sm:p-7 shadow-2xl relative overflow-hidden space-y-6">
             {/* Header: Book Creator Assistance */}
@@ -397,208 +541,175 @@ export default function StudioPage() {
                     Book Creator Assistance
                   </h2>
                   <p className="text-xs text-[#a0b4c4]">
-                    Meet <strong className="text-sky-300">PaperTales</strong> &bull; Your AI Book Publishing Copilot
+                    Meet <strong className="text-sky-300">PaperTales</strong> &bull; AI Co-Creation Copilot (GPT-4o-mini)
                   </p>
                 </div>
               </div>
               <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                Assistant Ready
+                Copilot Online
               </span>
             </div>
 
             {/* Conversation Thread */}
-            <div className="space-y-4">
-              {/* Message 1 (User Bubble - Exactly as sketched) */}
-              <div className="flex items-start justify-end gap-2.5">
-                <div className="max-w-md sm:max-w-lg bg-sky-500/20 border border-sky-400/40 rounded-2xl rounded-tr-xs px-4 py-3 text-white shadow-md">
-                  <p className="text-xs sm:text-sm font-semibold tracking-wide">
-                    &ldquo;Hey, PaperTales what can you do&rdquo;
-                  </p>
-                </div>
-                <div className="w-8 h-8 rounded-full bg-slate-800 border border-sky-400/30 flex items-center justify-center text-sky-300 shrink-0">
-                  <User className="w-4 h-4" />
-                </div>
-              </div>
+            <div className="space-y-4 max-h-[460px] overflow-y-auto pr-1">
+              {messages.map((msg) => {
+                const isUser = msg.role === "user";
+                return (
+                  <div key={msg.id} className={`flex items-start gap-2.5 ${isUser ? "justify-end" : "justify-start"}`}>
+                    {!isUser && (
+                      <div className="w-8 h-8 rounded-full bg-sky-400/20 border border-sky-400/40 flex items-center justify-center text-sky-300 shrink-0 mt-1">
+                        <Sparkles className="w-4 h-4" />
+                      </div>
+                    )}
 
-              {/* Message 2 (PaperTales Assistant Bubble - Explaining Capabilities) */}
-              <div className="flex items-start gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-sky-400/20 border border-sky-400/40 flex items-center justify-center text-sky-300 shrink-0 mt-1">
-                  <Sparkles className="w-4 h-4" />
-                </div>
-                <div className="flex-1 bg-slate-900/80 border border-sky-400/25 rounded-2xl rounded-tl-xs p-4 sm:p-5 text-white shadow-lg space-y-4">
-                  <div>
-                    <h4 className="text-xs sm:text-sm font-black text-sky-200">
-                      Hi there! I&apos;m PaperTales, your AI book creation assistant.
-                    </h4>
-                    <p className="text-xs text-[#a0b4c4] mt-1 leading-relaxed">
-                      I turn your family memories, bedtime ideas, and learning milestones into beautifully illustrated, 
-                      print-ready physical books delivered straight to your door. Here are the book lanes we can create:
-                    </p>
-                  </div>
+                    <div
+                      className={`max-w-xl rounded-2xl p-4 text-xs sm:text-sm leading-relaxed shadow-lg ${
+                        isUser
+                          ? "bg-sky-500/20 border border-sky-400/40 text-white rounded-tr-xs"
+                          : "bg-slate-900/80 border border-sky-400/25 text-white rounded-tl-xs space-y-3"
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
 
-                  {/* 4 Interactive Creative Lanes in Message Bubble */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {GENRE_LANES.map((lane) => {
-                      const IconComponent = lane.icon;
-                      const isSelected = selectedGenre === lane.id;
-                      return (
-                        <button
-                          key={lane.id}
-                          type="button"
-                          onClick={() => handleSelectGenre(lane.id)}
-                          className={`p-3 rounded-xl border text-left transition-all ${
-                            isSelected
-                              ? "bg-sky-400/20 border-sky-400 text-white shadow-sm ring-1 ring-sky-400/30"
-                              : "bg-slate-950/50 border-sky-400/15 hover:border-sky-400/40 text-[#a0b4c4] hover:text-white"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 mb-1">
-                            <IconComponent className={`w-4 h-4 ${isSelected ? "text-sky-300" : "text-slate-400"}`} />
-                            <span className="text-xs font-bold leading-tight truncate">{lane.label}</span>
-                            {isSelected && (
-                              <span className="ml-auto text-[9px] font-bold px-1.5 py-0.2 rounded bg-sky-400 text-[#001f2e]">
-                                Selected
-                              </span>
-                            )}
+                      {/* Quick Replies for Assistant Messages */}
+                      {!isUser && msg.quickReplies && msg.quickReplies.length > 0 && (
+                        <div className="pt-2 border-t border-white/10 space-y-1.5">
+                          <span className="text-[10px] uppercase font-bold text-sky-400 tracking-wider block">
+                            Suggested Next Steps:
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {msg.quickReplies.map((reply, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => handleSendMessage(reply)}
+                                disabled={isChatting}
+                                className="text-[11px] font-semibold bg-slate-950/80 hover:bg-sky-400/20 text-sky-200 border border-sky-400/25 px-2.5 py-1 rounded-lg transition-all active:scale-95 disabled:opacity-50"
+                              >
+                                {reply}
+                              </button>
+                            ))}
                           </div>
-                          <p className="text-[10px] text-slate-400 font-medium line-clamp-2 leading-relaxed">
-                            {lane.description}
-                          </p>
-                        </button>
-                      );
-                    })}
-                  </div>
+                        </div>
+                      )}
+                    </div>
 
-                  {/* Reference Image Note & Capabilities Pills */}
-                  <div className="pt-1 flex flex-wrap items-center gap-2 text-[10px] text-[#a0b4c4]">
-                    <span className="px-2 py-0.5 rounded-full bg-slate-950/80 border border-sky-400/20">
-                      📸 Reference Photo Grounding
-                    </span>
-                    <span className="px-2 py-0.5 rounded-full bg-slate-950/80 border border-sky-400/20">
-                      🎁 First 5 Pages 100% Free
-                    </span>
-                    <span className="px-2 py-0.5 rounded-full bg-slate-950/80 border border-sky-400/20">
-                      🖨️ Lulu Express Print-on-Demand
-                    </span>
-                    <span className="px-2 py-0.5 rounded-full bg-slate-950/80 border border-sky-400/20">
-                      💳 PayPal 1-Click Checkout
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Assistance Configuration Controls (Prompt, Reference & Confirmation) */}
-            <div className="pt-4 border-t border-sky-400/20 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                {/* Left: Adventure Prompt & Presets (7 cols) */}
-                <div className="md:col-span-7 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-bold text-[#a0b4c4]">
-                      Describe Book Story / Milestone Prompt
-                    </label>
-                  </div>
-                  <textarea
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    rows={3}
-                    className="w-full text-xs p-3 rounded-xl bg-slate-900/80 border border-sky-400/20 text-white placeholder-slate-500 focus:outline-none focus:border-sky-400 font-medium"
-                    placeholder={`e.g. ${activeGenreConfig.defaultPrompt}...`}
-                  />
-
-                  {/* Quick Preset Pills */}
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {activeGenreConfig.presets.map((preset, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => {
-                          setPrompt(preset.prompt);
-                          setCharacter(preset.character);
-                        }}
-                        className="text-[10px] font-semibold bg-slate-900/80 hover:bg-sky-400/20 text-[#a0b4c4] hover:text-sky-300 border border-sky-400/20 px-2 py-1 rounded-lg transition-all"
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Right: Reference Asset Uploader (5 cols) */}
-                <div className="md:col-span-5 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-bold text-white flex items-center gap-1.5">
-                      <ImageIcon className="w-3.5 h-3.5 text-sky-400" />
-                      Reference Photo / Sketch (Optional)
-                    </label>
-                    {referenceImageUrl && (
-                      <button
-                        type="button"
-                        onClick={() => setReferenceImageUrl(null)}
-                        className="text-[10px] text-red-400 hover:text-red-300 flex items-center gap-0.5"
-                      >
-                        <X className="w-3 h-3" /> Remove
-                      </button>
+                    {isUser && (
+                      <div className="w-8 h-8 rounded-full bg-slate-800 border border-sky-400/30 flex items-center justify-center text-sky-300 shrink-0 mt-1">
+                        <User className="w-4 h-4" />
+                      </div>
                     )}
                   </div>
+                );
+              })}
 
-                  {referenceImageUrl ? (
-                    <div className="flex items-center gap-3 p-2.5 bg-slate-950/70 rounded-xl border border-sky-400/30">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={referenceImageUrl}
-                        alt="Reference anchor"
-                        className="w-14 h-14 object-cover rounded-lg border border-sky-400/40"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-sky-300 truncate">Visual Grounding Active</p>
-                        <p className="text-[10px] text-[#a0b4c4] line-clamp-2">
-                          AI anchors character consistency &amp; linework to this reference.
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <label className="cursor-pointer flex flex-col items-center justify-center p-3 rounded-xl border border-dashed border-sky-400/30 hover:border-sky-400 bg-slate-900/40 hover:bg-sky-400/5 transition-all text-center">
-                        <UploadCloud className="w-5 h-5 text-sky-400 mb-1" />
-                        <span className="text-[11px] font-semibold text-sky-200">
-                          Upload child photo, pet, or drawing
-                        </span>
-                        <span className="text-[9px] text-slate-500 mt-0.5">PNG, JPG up to 10MB</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleFileUpload}
-                          className="hidden"
-                        />
-                      </label>
-                      <div className="flex items-center gap-1.5 mt-1.5">
-                        <span className="text-[9px] text-slate-500">Quick sample:</span>
-                        <button
-                          type="button"
-                          onClick={() => setReferenceImageUrl("https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=400&auto=format&fit=crop&q=60")}
-                          className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 text-[#a0b4c4] hover:text-sky-300 border border-sky-400/20"
-                        >
-                          🐶 Pet Puppy
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setReferenceImageUrl("https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=400&auto=format&fit=crop&q=60")}
-                          className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 text-[#a0b4c4] hover:text-sky-300 border border-sky-400/20"
-                        >
-                          👧 Child Portrait
-                        </button>
-                      </div>
-                    </div>
-                  )}
+              {/* Chatting Loading Indicator */}
+              {isChatting && (
+                <div className="flex items-center gap-2 text-xs text-sky-300 italic py-1">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>PaperTales is brainstorming your book idea...</span>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Chat Input Field */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSendMessage(inputMessage);
+              }}
+              className="flex items-center gap-2 bg-slate-900/90 border border-sky-400/25 rounded-xl p-1.5"
+            >
+              <input
+                type="text"
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                placeholder="Ask PaperTales, suggest a new story arc, or describe your child..."
+                className="flex-1 bg-transparent px-3 py-2 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={!inputMessage.trim() || isChatting}
+                className="px-4 py-2 rounded-lg glacier-btn text-[#001f2e] font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-40"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Send</span>
+              </button>
+            </form>
+
+            {/* Assistance Configuration Controls (Lane Selector, Reference & Confirmation) */}
+            <div className="pt-4 border-t border-sky-400/20 space-y-4">
+              {/* 4 Creative Lanes */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#a0b4c4] mb-2">
+                  Creative Book Lane
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {GENRE_LANES.map((lane) => {
+                    const IconComponent = lane.icon;
+                    const isSelected = selectedGenre === lane.id;
+                    return (
+                      <button
+                        key={lane.id}
+                        type="button"
+                        onClick={() => handleSelectGenre(lane.id)}
+                        className={`p-2.5 rounded-xl border text-left transition-all ${
+                          isSelected
+                            ? "bg-sky-400/20 border-sky-400 text-white shadow-sm ring-1 ring-sky-400/30"
+                            : "bg-slate-950/50 border-sky-400/15 hover:border-sky-400/40 text-[#a0b4c4] hover:text-white"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <IconComponent className={`w-3.5 h-3.5 ${isSelected ? "text-sky-300" : "text-slate-400"}`} />
+                          <span className="text-xs font-bold truncate">{lane.label}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 truncate">{lane.badge}</p>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Character & Page Length Settings (Collapsible or Clean Row) */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+              {/* Reference Asset Uploader */}
+              <div className="glacier-glass-subtle p-3 rounded-xl border border-sky-400/20 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-sky-400/15 border border-sky-400/30 text-sky-300 flex items-center justify-center shrink-0">
+                    <ImageIcon className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h5 className="text-xs font-bold text-white">Reference Photo / Sketch (Optional)</h5>
+                    <p className="text-[10px] text-[#a0b4c4]">Upload child photo, pet, or drawing to anchor character consistency</p>
+                  </div>
+                </div>
+
+                {referenceImageUrl ? (
+                  <div className="flex items-center gap-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={referenceImageUrl} alt="Reference" className="w-9 h-9 object-cover rounded-lg border border-sky-400/40" />
+                    <span className="text-[10px] font-bold text-emerald-300">Grounding Active</span>
+                    <button
+                      type="button"
+                      onClick={() => setReferenceImageUrl(null)}
+                      className="text-red-400 hover:text-red-300 p-1"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="cursor-pointer px-3 py-1.5 rounded-lg border border-sky-400/30 hover:border-sky-400 bg-slate-900/60 hover:bg-sky-400/10 text-xs text-sky-200 font-semibold flex items-center gap-1.5 transition-all">
+                    <UploadCloud className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Upload Image</span>
+                    <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+                  </label>
+                )}
+              </div>
+
+              {/* Character & Page Settings */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#a0b4c4] mb-1">Character Name</label>
+                  <label className="block text-[11px] font-semibold text-[#a0b4c4] mb-1">Protagonist Name</label>
                   <input
                     type="text"
                     value={character.name}
@@ -607,7 +718,7 @@ export default function StudioPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#a0b4c4] mb-1">Character Archetype</label>
+                  <label className="block text-[11px] font-semibold text-[#a0b4c4] mb-1">Archetype / Species</label>
                   <input
                     type="text"
                     value={character.type}
@@ -632,7 +743,7 @@ export default function StudioPage() {
                 </div>
               </div>
 
-              {/* Mascot & Economics Indicator */}
+              {/* Mascot Quoter Component */}
               <MascotQuoter
                 quote={quote}
                 userTokens={userTokens}
@@ -710,6 +821,71 @@ export default function StudioPage() {
               isDownloading={isDownloadingPdf || isPrintingPageOne}
               isConfirmed={isConfirmed}
             />
+
+            {/* =========================================================================
+                CHANNEL3 AGENTIC COMMERCE COMPANION SUPPLIES (MATCHED BY AI HELPER)
+                ========================================================================= */}
+            {companionProducts.length > 0 && (
+              <div className="glacier-glass rounded-2xl border border-sky-400/25 p-4 sm:p-5 shadow-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShoppingBag className="w-4 h-4 text-sky-400" />
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-extrabold text-white">
+                        AI-Matched Physical Art Supplies (Channel3 Agentic Commerce)
+                      </h4>
+                      <p className="text-[11px] text-[#a0b4c4]">
+                        Curated supplies matching {book.title} &bull; Ships with your book
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-400/20 text-sky-300 border border-sky-400/30">
+                    Live Merchant Catalog
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {companionProducts.slice(0, 3).map((item) => {
+                    const isSelected = selectedCompanion?.id === item.id;
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => setSelectedCompanion(isSelected ? null : item)}
+                        className={`cursor-pointer p-3 rounded-xl border text-xs flex items-center gap-3 transition-all ${
+                          isSelected
+                            ? "bg-sky-500/20 border-sky-400 shadow-md ring-1 ring-sky-400/30"
+                            : "bg-slate-900/60 border-white/10 hover:border-sky-400/30"
+                        }`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={item.imageUrl}
+                          alt={item.title}
+                          className="w-12 h-12 object-cover rounded-lg border border-white/10 shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-white truncate text-xs">{item.title}</p>
+                          <p className="text-[11px] text-sky-300 font-semibold mt-0.5">
+                            ${item.price.toFixed(2)}{" "}
+                            <span className="text-[#a0b4c4] font-normal text-[10px]">
+                              via {item.retailerDomain || item.brand}
+                            </span>
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                            isSelected ? "bg-sky-400 text-slate-950 font-bold" : "border border-slate-600 text-slate-400"
+                          }`}
+                        >
+                          {isSelected ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </section>
         </main>
 
