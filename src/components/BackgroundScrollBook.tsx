@@ -74,6 +74,22 @@ export default function BackgroundScrollBook() {
           }}
         />
 
+        {/* Vintage Illustrated Book Stack in Background */}
+        <div
+          className="absolute inset-0 flex items-center justify-center pointer-events-none transition-all duration-500 ease-out z-10"
+          style={{
+            opacity: Math.max(0.12, 0.65 - scrollProgress * 0.45),
+            transform: `translate(${scrollProgress * -120}px, ${scrollProgress * 30}px) scale(${0.85 - scrollProgress * 0.2}) rotate(${scrollProgress * -8}deg)`,
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/books-stack.png"
+            alt="Illustrated Storybook Stack"
+            className="w-56 sm:w-72 max-h-[380px] object-contain drop-shadow-xl filter saturate-90"
+          />
+        </div>
+
         {/* ============================================================== */}
         {/* BASE 2-PAGE SPREAD (Resting open in the background)             */}
         {/* ============================================================== */}
