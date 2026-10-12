@@ -18,7 +18,7 @@ export interface PayPalCreateOrderParams {
 export async function createPayPalOrder(params: PayPalCreateOrderParams) {
   const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
   const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
-  const isMock = !clientId || clientId.startsWith("sb-") || clientId === "test_client_id";
+  const isMock = !clientId || clientId === "sb-demo-client-id" || clientId === "test_client_id" || clientId === "sb";
 
   const itemTotal = params.items.reduce((sum, item) => sum + item.unitAmount * item.quantity, 0);
   const shipping = params.shippingAmount || 0;
@@ -97,7 +97,7 @@ export async function createPayPalOrder(params: PayPalCreateOrderParams) {
 export async function capturePayPalOrder(orderId: string) {
   const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
   const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
-  const isMock = !clientId || clientId.startsWith("sb-") || clientId === "test_client_id" || orderId.startsWith("SANDBOX-");
+  const isMock = !clientId || clientId === "sb-demo-client-id" || clientId === "test_client_id" || clientId === "sb" || orderId.startsWith("SANDBOX-");
 
   if (!isMock && clientSecret) {
     try {
