@@ -64,81 +64,81 @@ export default function OrderSummaryModal({
 
   if (!isOpen) return null;
 
-  const creationFee = 3.5;
-  const printCost = fulfillmentType === "physical_print" ? luluQuote?.unitPrintCost || 4.25 : 0;
+  // Base pricing calculations
+  const creationFee = 3.5; // Platform & AI generation fee
+  const printCost = fulfillmentType === "physical_print" ? luluQuote?.unitPrintCost || 4.5 : 0;
   const shippingCost = fulfillmentType === "physical_print" ? luluQuote?.shippingCost || 3.99 : 0;
-  const companionCost = fulfillmentType === "physical_print" && selectedCompanion ? selectedCompanion.price : 0;
-  const grandTotal = Number((creationFee + printCost + shippingCost + companionCost).toFixed(2));
+  const companionCost = (fulfillmentType === "physical_print" && selectedCompanion) ? selectedCompanion.price : 0;
+  const grandTotal = creationFee + printCost + shippingCost + companionCost;
 
   const handleOrderSuccess = (order: PaperTalesOrder) => {
-    confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
     setCompletedOrder(order);
-
-    // Save order into client storage for the AG Grid dashboard
-    const existing = JSON.parse(localStorage.getItem("papertales_orders") || "[]");
-    localStorage.setItem("papertales_orders", JSON.stringify([order, ...existing]));
-
-    if (onOrderCompleted) onOrderCompleted(order);
+    confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+    if (onOrderCompleted) {
+      onOrderCompleted(order);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="glacier-glass w-full max-w-xl rounded-2xl shadow-2xl border border-sky-400/30 overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="px-6 py-4 bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 text-white flex items-center justify-between">
+        <div className="px-6 py-5 bg-slate-950/80 border-b border-sky-400/20 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600/30 border border-blue-400/30 flex items-center justify-center text-blue-300">
+            <div className="w-10 h-10 rounded-xl bg-sky-400/15 border border-sky-400/30 flex items-center justify-center text-sky-300">
               <Printer className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold">PaperTales Publishing Checkout</h3>
-              <p className="text-xs text-blue-200">Powered by PayPal Complete Payments &bull; Lulu Print API</p>
+              <h3 className="text-lg font-bold">PaperTales Print &amp; Fulfillment</h3>
+              <p className="text-xs text-[#a0b4c4]">
+                Direct Lulu manufacturing &bull; Channel3 companion kit &bull; PayPal rails
+              </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
+            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 overflow-y-auto space-y-5">
+        <div className="p-6 overflow-y-auto space-y-5 text-[#e0e8f0]">
           {completedOrder ? (
-            /* Order Receipt & Confirmation */
+            /* Order Completion Success View */
             <div className="py-8 flex flex-col items-center text-center">
-              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-3">
-                <CheckCircle2 className="w-10 h-10" />
+              <div className="w-16 h-16 rounded-full bg-sky-400/20 border border-sky-400/40 text-sky-300 flex items-center justify-center mb-4">
+                <PackageCheck className="w-10 h-10" />
               </div>
-              <h4 className="text-2xl font-black text-slate-900">Order Confirmed!</h4>
-              <p className="text-xs text-slate-500 mt-1 max-w-md">
-                Your order <span className="font-mono font-bold text-slate-800">{completedOrder.id}</span> has been processed via PayPal Sandbox.
+              <h4 className="text-2xl font-black text-white">Order Confirmed!</h4>
+              <p className="text-xs text-[#a0b4c4] mt-1 max-w-md">
+                PayPal transaction completed successfully. Order <strong>{completedOrder.id}</strong> is logged in the AG Grid dispatch system.
               </p>
 
               {completedOrder.fulfillmentType === "physical_print" ? (
-                <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 mt-5 text-left text-xs space-y-2">
-                  <div className="flex justify-between font-semibold text-slate-700">
+                <div className="w-full glacier-glass-subtle border border-sky-400/20 rounded-xl p-4 mt-5 text-left text-xs space-y-2">
+                  <div className="flex justify-between font-semibold text-[#a0b4c4]">
                     <span>Lulu Print Job ID:</span>
-                    <span className="font-mono text-blue-700 font-bold">{completedOrder.luluJobId}</span>
+                    <span className="font-mono text-sky-300 font-bold">{completedOrder.luluJobId}</span>
                   </div>
-                  <div className="flex justify-between font-semibold text-slate-700">
+                  <div className="flex justify-between font-semibold text-[#a0b4c4]">
                     <span>Carrier Tracking Number:</span>
-                    <span className="font-mono text-emerald-700 font-bold">{completedOrder.luluTrackingNumber}</span>
+                    <span className="font-mono text-emerald-400 font-bold">{completedOrder.luluTrackingNumber}</span>
                   </div>
-                  <div className="flex justify-between font-semibold text-slate-700">
+                  <div className="flex justify-between font-semibold text-[#a0b4c4]">
                     <span>Shipping Destination:</span>
-                    <span>{completedOrder.shippingAddress?.city}, {completedOrder.shippingAddress?.stateOrProvince} ({completedOrder.shippingAddress?.countryCode})</span>
+                    <span className="text-white">{completedOrder.shippingAddress?.city}, {completedOrder.shippingAddress?.stateOrProvince} ({completedOrder.shippingAddress?.countryCode})</span>
                   </div>
-                  <div className="flex justify-between font-semibold text-slate-700 pt-2 border-t border-slate-200">
+                  <div className="flex justify-between font-semibold text-[#a0b4c4] pt-2 border-t border-white/10">
                     <span>Status:</span>
-                    <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold text-[10px]">
+                    <span className="px-2 py-0.5 rounded-full bg-sky-400/20 text-sky-300 border border-sky-400/30 font-bold text-[10px]">
                       In Production (3-5 Days)
                     </span>
                   </div>
                 </div>
               ) : (
-                <div className="w-full bg-emerald-50 border border-emerald-200 rounded-xl p-4 mt-5 text-center text-xs text-emerald-800">
+                <div className="w-full bg-sky-950/40 border border-sky-400/30 rounded-xl p-4 mt-5 text-center text-xs text-sky-200">
                   Your print-ready 300 DPI PDF is ready for instant download and printing at home!
                 </div>
               )}
@@ -146,13 +146,13 @@ export default function OrderSummaryModal({
               <div className="flex gap-3 mt-6">
                 <button
                   onClick={onClose}
-                  className="px-5 py-2 text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white rounded-lg transition-colors"
+                  className="px-5 py-2.5 text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white border border-white/10 rounded-xl transition-colors"
                 >
                   Return to Studio
                 </button>
                 <a
                   href="/dashboard"
-                  className="px-5 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                  className="glacier-btn px-5 py-2.5 text-xs font-bold text-[#001f2e] rounded-xl transition-all"
                 >
                   View in AG Grid Dashboard &rarr;
                 </a>
@@ -162,61 +162,65 @@ export default function OrderSummaryModal({
             <>
               {/* Option 1 vs Option 2: Format Choice */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">Select Delivery Option:</label>
+                <label className="block text-xs font-bold text-[#a0b4c4] mb-2 uppercase tracking-wider">
+                  Select Delivery Option:
+                </label>
                 <div className="grid grid-cols-2 gap-3">
                   <div
                     onClick={() => setFulfillmentType("physical_print")}
                     className={`cursor-pointer p-3.5 rounded-xl border flex flex-col justify-between transition-all ${
                       fulfillmentType === "physical_print"
-                        ? "border-blue-600 bg-blue-50/50 ring-2 ring-blue-500/20"
-                        : "border-slate-200 hover:border-slate-300"
+                        ? "border-2 border-sky-400 bg-sky-500/15 glacier-glow"
+                        : "border-white/10 bg-slate-900/40 hover:border-sky-400/30"
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-2">
-                      <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
+                      <div className="w-7 h-7 rounded-lg bg-sky-400/15 text-sky-300 flex items-center justify-center border border-sky-400/30">
                         <Printer className="w-4 h-4" />
                       </div>
-                      <span className="text-xs font-extrabold text-slate-900">Physical Printed Book</span>
+                      <span className="text-xs font-bold text-white">Physical Printed Book</span>
                     </div>
-                    <p className="text-[11px] text-slate-500">
-                      Printed by Lulu on 60# uncoated paper &amp; saddle-stitch softcover bound. Shipped to your door.
+                    <p className="text-[11px] text-[#a0b4c4]">
+                      Printed by Lulu on 80# satin archival stock &amp; softcover bound. Shipped to your door.
                     </p>
-                    <span className="text-xs font-bold text-blue-700 mt-2">Print &amp; Ship (~${(printCost + shippingCost).toFixed(2)})</span>
+                    <span className="text-xs font-bold text-sky-300 mt-2">
+                      Print &amp; Ship (~${(printCost + shippingCost).toFixed(2)})
+                    </span>
                   </div>
 
                   <div
                     onClick={() => setFulfillmentType("digital_pdf")}
                     className={`cursor-pointer p-3.5 rounded-xl border flex flex-col justify-between transition-all ${
                       fulfillmentType === "digital_pdf"
-                        ? "border-blue-600 bg-blue-50/50 ring-2 ring-blue-500/20"
-                        : "border-slate-200 hover:border-slate-300"
+                        ? "border-2 border-sky-400 bg-sky-500/15 glacier-glow"
+                        : "border-white/10 bg-slate-900/40 hover:border-sky-400/30"
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-2">
-                      <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
+                      <div className="w-7 h-7 rounded-lg bg-purple-400/15 text-purple-300 flex items-center justify-center border border-purple-400/30">
                         <Download className="w-4 h-4" />
                       </div>
-                      <span className="text-xs font-extrabold text-slate-900">Instant Digital PDF</span>
+                      <span className="text-xs font-bold text-white">Instant Digital PDF</span>
                     </div>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[11px] text-[#a0b4c4]">
                       High-res vector 300 DPI PDF with bleed margins. Print at home or read on tablets.
                     </p>
-                    <span className="text-xs font-bold text-slate-700 mt-2">$3.50 (Or 5 Tokens)</span>
+                    <span className="text-xs font-bold text-purple-300 mt-2">$3.50 (Or 5 Tokens)</span>
                   </div>
                 </div>
               </div>
 
               {/* Channel3 Agentic Commerce Companion Bundling */}
               {fulfillmentType === "physical_print" && companionProducts.length > 0 && (
-                <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-200 rounded-xl p-3.5">
+                <div className="glacier-glass-subtle border border-sky-400/25 rounded-xl p-3.5">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-amber-600" />
-                      <span className="text-xs font-bold text-slate-900">
+                      <Sparkles className="w-4 h-4 text-sky-400" />
+                      <span className="text-xs font-bold text-white">
                         Companion Art Bundle (Channel3 Agentic Commerce)
                       </span>
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-400/20 text-sky-300 border border-sky-400/30">
                       Optional Add-on
                     </span>
                   </div>
@@ -230,18 +234,18 @@ export default function OrderSummaryModal({
                           onClick={() => setSelectedCompanion(isAdded ? null : item)}
                           className={`cursor-pointer p-2.5 rounded-lg border text-xs flex items-center justify-between transition-all ${
                             isAdded
-                              ? "bg-white border-amber-500 shadow-sm ring-1 ring-amber-400"
-                              : "bg-white/60 border-slate-200 hover:border-slate-300"
+                              ? "bg-sky-500/20 border-sky-400 shadow-sm"
+                              : "bg-slate-900/60 border-white/10 hover:border-sky-400/30"
                           }`}
                         >
                           <div>
-                            <p className="font-bold text-slate-800 line-clamp-1">{item.title}</p>
-                            <p className="text-[10px] text-slate-500">{item.brand} &bull; ${item.price.toFixed(2)}</p>
+                            <p className="font-bold text-white line-clamp-1">{item.title}</p>
+                            <p className="text-[10px] text-[#a0b4c4]">{item.brand} &bull; ${item.price.toFixed(2)}</p>
                           </div>
                           <button
                             type="button"
                             className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
-                              isAdded ? "bg-amber-500 text-white" : "border border-slate-300 text-slate-400"
+                              isAdded ? "bg-sky-400 text-slate-950 font-bold" : "border border-slate-600 text-slate-400"
                             }`}
                           >
                             {isAdded ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
@@ -254,24 +258,24 @@ export default function OrderSummaryModal({
               )}
 
               {/* Itemized Order Breakdown */}
-              <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 text-xs space-y-2">
-                <div className="flex justify-between text-slate-600">
+              <div className="glacier-glass-subtle rounded-xl p-4 border border-sky-400/20 text-xs space-y-2">
+                <div className="flex justify-between text-[#a0b4c4]">
                   <span>Custom AI Generation &amp; License:</span>
-                  <span className="font-mono font-medium">${creationFee.toFixed(2)}</span>
+                  <span className="font-mono font-medium text-white">${creationFee.toFixed(2)}</span>
                 </div>
 
                 {fulfillmentType === "physical_print" && (
                   <>
-                    <div className="flex justify-between text-slate-600">
+                    <div className="flex justify-between text-[#a0b4c4]">
                       <span>Lulu Physical Printing &amp; Binding (8.5x8.5):</span>
-                      <span className="font-mono font-medium">${printCost.toFixed(2)}</span>
+                      <span className="font-mono font-medium text-white">${printCost.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between text-slate-600">
+                    <div className="flex justify-between text-[#a0b4c4]">
                       <span>Tracked Standard Shipping:</span>
-                      <span className="font-mono font-medium">${shippingCost.toFixed(2)}</span>
+                      <span className="font-mono font-medium text-white">${shippingCost.toFixed(2)}</span>
                     </div>
                     {selectedCompanion && (
-                      <div className="flex justify-between text-amber-700 font-semibold">
+                      <div className="flex justify-between text-sky-300 font-semibold">
                         <span>Companion: {selectedCompanion.title}</span>
                         <span className="font-mono">+${selectedCompanion.price.toFixed(2)}</span>
                       </div>
@@ -279,9 +283,9 @@ export default function OrderSummaryModal({
                   </>
                 )}
 
-                <div className="flex justify-between text-sm font-extrabold text-slate-900 pt-2 border-t border-slate-200">
+                <div className="flex justify-between text-sm font-extrabold text-white pt-2 border-t border-white/10">
                   <span>Total Amount (USD):</span>
-                  <span className="font-mono text-blue-700 text-base">${grandTotal.toFixed(2)}</span>
+                  <span className="font-mono text-sky-300 text-base font-black">${grandTotal.toFixed(2)}</span>
                 </div>
               </div>
 
@@ -372,7 +376,7 @@ export default function OrderSummaryModal({
                     }}
                   />
                 </div>
-                <p className="text-[10px] text-center text-slate-400 mt-2">
+                <p className="text-[10px] text-center text-[#a0b4c4] mt-2">
                   🔒 Zero-Friction Checkout: Shipping address retrieved securely from your PayPal account
                 </p>
               </div>

@@ -9,6 +9,16 @@ import { Download, Search, RefreshCw, Printer, ExternalLink, ShieldCheck } from 
 // Register AG Grid Community modules
 ModuleRegistry.registerModules([AllCommunityModule]);
 
+// Glacier Dark Quartz Theme
+const glacierGridTheme = themeQuartz.withParams({
+  backgroundColor: "#0f1524",
+  foregroundColor: "#e0e8f0",
+  borderColor: "rgba(125, 211, 252, 0.16)",
+  accentColor: "#7dd3fc",
+  headerBackgroundColor: "#141c2e",
+  rowHoverColor: "rgba(125, 211, 252, 0.06)",
+});
+
 interface OrdersDataGridProps {
   orders: PaperTalesOrder[];
   onRefresh?: () => void;
@@ -26,7 +36,7 @@ export default function OrdersDataGrid({ orders, onRefresh }: OrdersDataGridProp
         width: 140,
         pinned: "left",
         cellRenderer: (params: any) => (
-          <span className="font-mono text-xs font-bold text-blue-700">{params.value}</span>
+          <span className="font-mono text-xs font-bold text-sky-300">{params.value}</span>
         ),
       },
       {
@@ -36,8 +46,10 @@ export default function OrdersDataGrid({ orders, onRefresh }: OrdersDataGridProp
         minWidth: 200,
         cellRenderer: (params: any) => (
           <div>
-            <div className="font-semibold text-slate-900 text-xs">{params.value}</div>
-            <div className="text-[10px] text-slate-500">By {params.data?.authorName} &bull; {params.data?.pageCount} pages</div>
+            <div className="font-semibold text-white text-xs">{params.value}</div>
+            <div className="text-[10px] text-[#a0b4c4]">
+              By {params.data?.authorName} &bull; {params.data?.pageCount} pages
+            </div>
           </div>
         ),
       },
@@ -49,8 +61,10 @@ export default function OrdersDataGrid({ orders, onRefresh }: OrdersDataGridProp
           const isPhysical = params.value === "physical_print";
           return (
             <span
-              className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                isPhysical ? "bg-indigo-50 text-indigo-700 border border-indigo-200" : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+              className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                isPhysical
+                  ? "bg-sky-400/15 text-sky-300 border border-sky-400/30"
+                  : "bg-purple-400/15 text-purple-300 border border-purple-400/30"
               }`}
             >
               {isPhysical ? "Lulu Softcover" : "Digital PDF"}
@@ -60,86 +74,94 @@ export default function OrdersDataGrid({ orders, onRefresh }: OrdersDataGridProp
       },
       {
         field: "status",
-        headerName: "Production Status",
+        headerName: "Status",
         width: 150,
         cellRenderer: (params: any) => {
           const status = params.value;
-          let badgeColor = "bg-slate-100 text-slate-700";
-          let label = "Pending";
+          let badgeStyle = "bg-slate-800 text-slate-300 border-slate-700";
+          let label = status;
 
-          if (status === "in_production") {
-            badgeColor = "bg-blue-100 text-blue-800 animate-pulse";
-            label = "Lulu Printing";
-          } else if (status === "paid") {
-            badgeColor = "bg-emerald-100 text-emerald-800";
-            label = "Paid & Ready";
+          if (status === "paid") {
+            badgeStyle = "bg-sky-400/15 text-sky-300 border-sky-400/30";
+            label = "Paid (Pending)";
+          } else if (status === "in_production") {
+            badgeStyle = "bg-cyan-500/15 text-cyan-300 border-cyan-400/30";
+            label = "In Production";
           } else if (status === "shipped") {
-            badgeColor = "bg-purple-100 text-purple-800";
-            label = "In Transit";
+            badgeStyle = "bg-emerald-500/15 text-emerald-300 border-emerald-400/30";
+            label = "Shipped";
+          } else if (status === "delivered") {
+            badgeStyle = "bg-teal-500/15 text-teal-300 border-teal-400/30";
+            label = "Delivered";
           }
 
           return (
-            <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${badgeColor}`}>
+            <span
+              className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${badgeStyle}`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-current" />
               {label}
             </span>
           );
         },
       },
       {
+        field: "totalAmount",
+        headerName: "Amount",
+        width: 110,
+        cellRenderer: (params: any) => (
+          <span className="font-mono text-xs font-bold text-white">
+            ${params.value?.toFixed(2)} {params.data?.currency}
+          </span>
+        ),
+      },
+      {
+        field: "paypalOrderId",
+        headerName: "PayPal Order",
+        width: 170,
+        cellRenderer: (params: any) => (
+          <span className="font-mono text-[11px] text-[#a0b4c4]">
+            {params.value || "—"}
+          </span>
+        ),
+      },
+      {
         field: "luluJobId",
         headerName: "Lulu Job ID",
         width: 140,
-        cellRenderer: (params: any) =>
-          params.value ? (
-            <span className="font-mono text-xs font-semibold text-slate-800">{params.value}</span>
-          ) : (
-            <span className="text-slate-400 text-xs italic">N/A (Digital)</span>
-          ),
+        cellRenderer: (params: any) => (
+          <span className="font-mono text-[11px] text-sky-300">
+            {params.value || "—"}
+          </span>
+        ),
       },
       {
         field: "luluTrackingNumber",
-        headerName: "Carrier Tracking",
+        headerName: "Tracking #",
         width: 180,
-        cellRenderer: (params: any) =>
-          params.value ? (
-            <a
-              href={`https://www.google.com/search?q=${params.value}`}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 font-mono text-xs text-blue-600 hover:underline"
-            >
-              {params.value.slice(0, 14)}...
+        cellRenderer: (params: any) => {
+          if (!params.value) return <span className="text-slate-600 text-xs">—</span>;
+          return (
+            <div className="flex items-center gap-1 text-xs text-sky-400 hover:text-white cursor-pointer font-mono">
+              <span>{params.value.slice(0, 12)}...</span>
               <ExternalLink className="w-3 h-3" />
-            </a>
-          ) : (
-            <span className="text-slate-400 text-xs italic">Instant Delivery</span>
-          ),
-      },
-      {
-        field: "totalAmount",
-        headerName: "Paid (USD)",
-        width: 120,
-        cellRenderer: (params: any) => (
-          <span className="font-mono text-xs font-bold text-slate-900">${Number(params.value).toFixed(2)}</span>
-        ),
-      },
-      {
-        field: "paypalCaptureId",
-        headerName: "PayPal Capture ID",
-        width: 160,
-        cellRenderer: (params: any) => (
-          <span className="font-mono text-[11px] text-slate-600">{params.value || "PAYPAL-TEST"}</span>
-        ),
+            </div>
+          );
+        },
       },
       {
         field: "createdAt",
-        headerName: "Timestamp",
-        width: 150,
-        cellRenderer: (params: any) => (
-          <span className="text-xs text-slate-500">
-            {params.value ? new Date(params.value).toLocaleDateString() : "Today"}
-          </span>
-        ),
+        headerName: "Created",
+        width: 130,
+        cellRenderer: (params: any) => {
+          if (!params.value) return "";
+          const d = new Date(params.value);
+          return (
+            <span className="text-xs text-[#a0b4c4]">
+              {d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+            </span>
+          );
+        },
       },
     ],
     []
@@ -156,51 +178,54 @@ export default function OrdersDataGrid({ orders, onRefresh }: OrdersDataGridProp
 
   const onExportCsv = () => {
     gridRef.current?.api.exportDataAsCsv({
-      fileName: `papertales_orders_${Date.now()}.csv`,
+      fileName: `papertales-orders-${new Date().toISOString().slice(0, 10)}.csv`,
     });
   };
 
   return (
-    <div className="w-full flex flex-col gap-3">
-      {/* Search and Action Toolbar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
-        <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+    <div className="flex flex-col gap-3 w-full">
+      {/* Search and Action Bar */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        {/* Quick Filter Search */}
+        <div className="relative flex-1 max-w-sm">
+          <Search className="w-3.5 h-3.5 text-[#a0b4c4] absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search orders, tracking, titles..."
+            placeholder="Search orders, titles, authors..."
             value={quickFilterText}
             onChange={(e) => setQuickFilterText(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full text-xs pl-8 pr-3 py-2 rounded-xl bg-slate-900/80 border border-sky-400/20 text-white placeholder-slate-500 focus:outline-none focus:border-sky-400"
           />
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+        {/* Buttons */}
+        <div className="flex items-center gap-2">
           {onRefresh && (
             <button
               onClick={onRefresh}
-              className="p-1.5 text-xs rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 flex items-center gap-1"
-              title="Refresh order statuses"
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg glacier-glass-subtle border border-sky-400/20 hover:border-sky-400/40 text-sky-300 flex items-center gap-1.5 transition-all shadow-sm"
+              title="Refresh Grid"
             >
               <RefreshCw className="w-3.5 h-3.5" />
+              Refresh
             </button>
           )}
 
           <button
             onClick={onExportCsv}
-            className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 flex items-center gap-1.5 shadow-sm"
+            className="px-3 py-1.5 text-xs font-semibold rounded-lg glacier-btn text-[#001f2e] flex items-center gap-1.5 shadow-sm transition-all"
           >
-            <Download className="w-3.5 h-3.5 text-slate-500" />
+            <Download className="w-3.5 h-3.5" />
             Export CSV
           </button>
         </div>
       </div>
 
       {/* AG Grid React Viewport */}
-      <div className="w-full h-[520px] rounded-xl overflow-hidden border border-slate-200 shadow-sm">
+      <div className="w-full h-[520px] rounded-xl overflow-hidden border border-sky-400/20 shadow-xl">
         <AgGridReact
           ref={gridRef}
-          theme={themeQuartz}
+          theme={glacierGridTheme}
           rowData={orders}
           columnDefs={columnDefs}
           defaultColDef={defaultColDef}
@@ -213,12 +238,12 @@ export default function OrdersDataGrid({ orders, onRefresh }: OrdersDataGridProp
         />
       </div>
 
-      <div className="flex items-center justify-between text-[11px] text-slate-500 px-1">
+      <div className="flex items-center justify-between text-[11px] text-[#a0b4c4] px-1">
         <div className="flex items-center gap-1.5">
-          <ShieldCheck className="w-4 h-4 text-emerald-600" />
+          <ShieldCheck className="w-4 h-4 text-sky-400" />
           <span>Real-time sync with PayPal Webhooks &amp; Lulu Manufacturing Queue</span>
         </div>
-        <span>Powered by <strong>AG Grid React</strong></span>
+        <span>Powered by <strong className="text-white">AG Grid React</strong></span>
       </div>
     </div>
   );

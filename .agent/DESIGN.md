@@ -1,69 +1,66 @@
-# Design System: PaperTales AI (Nocturne Atelier)
+# Design System: PaperTales AI — Glacier Glassmorphism Studio
+**Stitch Asset ID:** `assets/7676357966924276963`  
+**Stitch Theme Name:** `Glacier`  
 **Stitch Project ID:** `9667959733469448334`  
-**Stitch Theme:** `Nocturne Atelier`  
-**Color Mode:** Dark / Midnight Celestial with Archival Parchment  
+**North Star:** *"Frozen Light"* — Ethereal depth through layered translucent surfaces. Dark, atmospheric, and premium.
 
 ---
 
-## 1. Visual Theme & Atmosphere
-The design system embodies the intimacy of a midnight workshop and the wonder of master storytelling. It operates at the intersection of classical atelier bookbinding and responsive creative tooling. The aesthetic merges deep celestial darkness with tactile, sun-drenched archival parchment and warm metallic gilding.
-
-* **Emotional Resonance:** Enchanting, reverent, and craftsman-grade. Inspires confidence in print production standards (300 DPI, bleed lines, archival permanence).
-* **Design Movement:** **Celestial Editorial Glass & Tactile Skeuomorphism**. Deep obsidian foundations layered with frosted glass controls, illuminated parchment canvases, and embossed antique gold highlights.
-
----
-
-## 2. Color Palette & Roles
-
-### Midnight & Obsidian Foundations
-* **Canvas Ground (`#090D16`):** The infinite celestial void substrate.
-* **Surface Layer 1 (`#0D1322`):** Primary structural frames and backdrop containers.
-* **Surface Layer 2 (`#141C2E`):** Interactive card backgrounds and elevated sheets.
-* **Surface Layer 3 (`#1C263B`):** Hover states and active card highlights.
-
-### Archival Tactile Parchment
-* **Virgin Parchment (`#FBF7EE`):** Active book page spreads and live preview canvas.
-* **Aged Rag (`#F4EBD9`):** Flyleaf dedications and historical chapter dividers.
-* **Pressed Vellum (`#EFE5CE`):** Cardboard backing and cover inner flyleaves.
-* **Ink Black (`#1A1A1A`):** High-fidelity monochrome vector linework for coloring pages and story copy.
-
-### Metallic Gold Leaf & Accents
-* **Antique Gold Foil (`#E5A93C`):** Primary action buttons, active toggles, and print badges.
-* **Specular Gold Highlight (`#F3C668`):** Top border specular reflections and animated sparkles.
-* **Debossed Gold Stroke (`#B88022`):** Outer perimeter borders and book crest frames.
-* **Celestial Mist (`#6C82A6`):** Trim/bleed indicator lines, grid rulers, and secondary metadata.
+## 1. Core Visual Philosophy
+* **Atmosphere:** Ethereal translucent depth, pristine arctic frost, and glowing crystalline structures.
+* **Aesthetic Movement:** **Glacier Glassmorphism**. Interfaces feel like finely crafted layers of frosted ice and crystalline glass floating over a deep nocturnal abyss.
+* **Core Rule:** Never use opaque solid backgrounds on floating elements. Depth is achieved through blur intensity and opacity, not harsh drop shadows.
 
 ---
 
-## 3. Typography Rules
-* **Headline & Title Displays:** `Playfair Display` (serif). Evokes centuries of master bookmaking, illuminated drop-caps, and literary prestige.
-* **UI Controls & Body Copy:** `Plus Jakarta Sans` (sans-serif). Generous counters and geometric clarity for prompt editing, sliders, and telemetry.
-* **Telemetry & Metadata:** `JetBrains Mono` / Monospace for DPI markers, token costs, and PayPal capture IDs.
+## 2. Color Palette & Functional Roles
+
+| Token Name | Hex / RGBA | Functional Role in PaperTales AI |
+| :--- | :--- | :--- |
+| **Primary (Ice-Blue)** | `#7dd3fc` | Primary interactive elements, active links, glow rings, and progress markers. |
+| **Background (Void)** | `#0a0e1a` | Deep nocturnal navy-black substrate. |
+| **Surface Dim / Surface** | `#0f1524` | Foundation glass canvas layer. |
+| **Surface Container** | `#141c2e` | Layer 1 glass panels (60% opacity + 16px blur). |
+| **Surface High / Elevated** | `#1a2438` | Layer 2 elevated sheets (75% opacity + 24px blur). |
+| **Tertiary (Soft Lavender)** | `#c8a0f0` | Secondary accents, AI badges, and token counter highlights. |
+| **Text Primary (`on_surface`)** | `#e0e8f0` | Crisp high-contrast crystalline white for headlines and body text. |
+| **Text Secondary (`on_surface_variant`)** | `#a0b4c4` | Muted ice-slate for subtitles, timestamps, and metadata. |
+| **Outline / Border** | `rgba(125, 211, 252, 0.12)` | Subtle luminous hairline borders (8–15% opacity). |
+| **Interactive Glow** | `rgba(125, 211, 252, 0.25)` | Focused states, active buttons, and hover coronas. |
 
 ---
 
-## 4. Component Stylings
+## 3. Glassmorphic Surface Architecture
 
-### Buttons
-* **Primary (Gilded Press):**
-  * Gradient: `linear-gradient(135deg, #F3C668 0%, #E5A93C 50%, #B88022 100%)`
-  * Text: `#090D16` bold sans.
-  * Inset highlight: `inset 0 1px 1px rgba(255, 255, 255, 0.4)`.
-  * Glow on hover: `box-shadow: 0 0 24px 0 rgba(229, 169, 60, 0.45)`.
-* **Secondary (Ethereal Frosted Glass):**
-  * Background: `rgba(255, 255, 255, 0.05)` with `backdrop-filter: blur(16px)`.
-  * Border: `1px solid rgba(229, 169, 60, 0.25)`.
-  * Text: `#FBF7EE`.
+### Layer 0: The Deep Abyss
+* `background: #0a0e1a`
+* Solid, non-distracting background with subtle radial blue-violet glows.
 
-### Cards & 3D Book Spreads
-* **Floating 3D Book Spread:**
-  * Backdrop: Virgin Parchment (`#FBF7EE`) with simulated central spine crease.
-  * Shadow: `0 24px 64px -12px rgba(0, 0, 0, 0.85), 0 0 40px -10px rgba(229, 169, 60, 0.15)`.
-  * Corner radius: 1rem on outer covers, 0px at interior binding gutter.
-* **Frosted Glass Containers:**
-  * Background: `rgba(13, 19, 34, 0.72)` with 20px blur.
-  * Border: `1px solid rgba(229, 169, 60, 0.15)`.
+### Layer 1: Standard Glass Panels (`.glacier-card`)
+* `background: rgba(15, 21, 36, 0.6)`
+* `backdrop-filter: blur(16px)`
+* `border: 1px solid rgba(125, 211, 252, 0.12)`
+* `box-shadow: 0 0 30px rgba(125, 211, 252, 0.05)`
+* Corner radius: `12px` to `16px` (`rounded-xl` to `rounded-2xl`)
 
-### Mascot & Quoter Controls
-* **Dynamic Page Slider:** Antique gold track with tactile coin-ridged gold thumb.
-* **Token Pills:** Frosted obsidian chips with golden numeral highlights and live USD/INR conversions.
+### Layer 2: Elevated Interactive Glass (`.glacier-card-elevated`)
+* `background: rgba(15, 21, 36, 0.75)`
+* `backdrop-filter: blur(24px)`
+* `border: 1px solid rgba(125, 211, 252, 0.25)`
+* `box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.6), 0 0 25px rgba(125, 211, 252, 0.1)`
+
+---
+
+## 4. Typography & Geometry
+* **Font Family:** `Inter` across all headings, controls, and body copy for sleek, modern, precision-engineered legibility.
+* **Headlines:** Semibold / Bold (`font-semibold` / `font-extrabold`), slightly tracked (`tracking-tight`).
+* **Body:** Regular weight (`font-normal` / `font-medium`), airy leading.
+* **Curvature:** `ROUND_TWELVE` (12px / `rounded-xl`).
+* **Buttons:** Semi-transparent ice-blue background with thin luminous border; opacity increases dynamically on hover.
+
+---
+
+## 5. Strict Design Rules (From Stitch MCP)
+1. **Never use opaque solid backgrounds** on cards, modals, or floating controls.
+2. **Keep borders subtle and luminous**, not heavy or structural.
+3. **Limit glow effects to interactive states** (hover, focus, active).

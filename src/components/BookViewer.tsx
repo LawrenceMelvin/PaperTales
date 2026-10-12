@@ -56,75 +56,85 @@ export default function BookViewer({
   return (
     <div className="flex flex-col items-center w-full max-w-4xl mx-auto">
       {/* Top Controls Bar */}
-      <div className="w-full flex items-center justify-between mb-4 px-2">
+      <div className="w-full flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 px-2 gap-3">
         <div>
-          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+          <h2 className="text-lg font-bold text-white flex items-center gap-2">
             {book.title}
-            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold border border-blue-200">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-sky-400/20 text-sky-300 font-semibold border border-sky-400/30">
               8.5&quot; x 8.5&quot; Square
             </span>
           </h2>
-          <p className="text-xs text-slate-500">By {book.authorName} &bull; {book.pageCount} Pages &bull; Saddle-Stitch Format</p>
+          <p className="text-xs text-[#a0b4c4]">
+            By {book.authorName} &bull; {book.pageCount} Pages &bull; Archival Saddle-Stitch Format
+          </p>
         </div>
 
         <div className="flex items-center gap-2">
           <button
             onClick={onDownloadPdf}
             disabled={isDownloading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg shadow-sm transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold glacier-glass-subtle hover:bg-slate-800 text-sky-300 border border-sky-400/30 rounded-lg shadow-sm transition-all"
           >
-            <Download className="w-3.5 h-3.5 text-blue-600" />
+            <Download className="w-3.5 h-3.5 text-sky-400" />
             {isDownloading ? "Compiling..." : "Download PDF"}
           </button>
           <button
             onClick={onOrderPhysical}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-800 hover:to-indigo-800 text-white rounded-lg shadow-md transition-all shadow-blue-500/20"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold glacier-btn text-[#001f2e] rounded-lg shadow-md transition-all"
           >
-            <Printer className="w-3.5 h-3.5 text-sky-300" />
+            <Printer className="w-3.5 h-3.5" />
             Order Physical Print
           </button>
         </div>
       </div>
 
       {/* Book Spread Viewport */}
-      <div className="relative w-full aspect-[16/10] sm:aspect-[16/9] max-h-[520px] bg-slate-900/5 rounded-2xl p-4 sm:p-6 flex items-center justify-center border border-slate-200/80 shadow-inner">
+      <div className="relative w-full aspect-[16/10] sm:aspect-[16/9] max-h-[520px] glacier-glass rounded-2xl p-4 sm:p-6 flex items-center justify-center border border-sky-400/25 shadow-2xl">
         {isCover ? (
           /* Cover Spread */
-          <div className="w-full max-w-md aspect-square bg-white rounded-r-xl border border-slate-300 book-shadow flex flex-col justify-between p-6 sm:p-8 relative overflow-hidden">
-            <div className="absolute top-0 bottom-0 left-0 w-3 bg-gradient-to-r from-slate-400 to-slate-200" />
-            
+          <div className="w-full max-w-md aspect-square bg-[#0f1524] rounded-r-xl border border-sky-400/40 book-shadow flex flex-col justify-between p-6 sm:p-8 relative overflow-hidden text-white">
+            <div className="absolute top-0 bottom-0 left-0 w-3 bg-gradient-to-r from-sky-400/40 to-sky-400/10" />
+
             <div className="text-center pt-4">
-              <span className="text-[10px] uppercase tracking-widest font-extrabold text-blue-600">Personalized Story &amp; Coloring</span>
-              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1 mb-1 font-serif">{book.title}</h1>
-              {book.subtitle && <p className="text-xs font-medium text-slate-500">{book.subtitle}</p>}
+              <span className="text-[10px] uppercase tracking-widest font-extrabold text-sky-300">
+                Personalized Story &amp; Coloring
+              </span>
+              <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight mt-1 mb-1 font-serif">
+                {book.title}
+              </h1>
+              {book.subtitle && <p className="text-xs font-medium text-[#a0b4c4]">{book.subtitle}</p>}
             </div>
 
             {/* Cover Graphic Frame */}
-            <div className="w-full flex-1 my-4 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center p-4 bg-slate-50/50">
-              <div className="w-20 h-20 rounded-full border-4 border-slate-800 flex items-center justify-center mb-2 bg-white">
-                <Sparkles className="w-8 h-8 text-blue-600" />
+            <div className="w-full flex-1 my-4 border-2 border-dashed border-sky-400/30 rounded-xl flex flex-col items-center justify-center p-4 bg-slate-900/60">
+              <div className="w-20 h-20 rounded-full border-2 border-sky-400/60 flex items-center justify-center mb-2 bg-slate-950">
+                <Sparkles className="w-8 h-8 text-sky-400" />
               </div>
-              <p className="text-xs font-bold text-slate-800">Featuring {book.character.name}</p>
-              <p className="text-[11px] text-slate-500 text-center max-w-[200px] mt-0.5">
+              <p className="text-xs font-bold text-white">Featuring {book.character.name}</p>
+              <p className="text-[11px] text-[#a0b4c4] text-center max-w-[200px] mt-0.5">
                 {book.character.type} &bull; {book.character.traits.join(", ")}
               </p>
             </div>
 
-            <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-xs text-slate-600">
-              <span>Author: <strong>{book.authorName}</strong></span>
-              <span className="text-[10px] text-slate-400">PaperTales AI Studio</span>
+            <div className="flex items-center justify-between border-t border-white/10 pt-3 text-xs text-[#a0b4c4]">
+              <span>Author: <strong className="text-white">{book.authorName}</strong></span>
+              <span className="text-[10px] text-sky-300">PaperTales AI Studio</span>
             </div>
           </div>
         ) : (
           /* Interior 2-Page Spread */
-          <div className="w-full h-full max-w-3xl flex bg-white rounded-xl border border-slate-300 book-shadow overflow-hidden">
+          <div className="w-full h-full max-w-3xl flex bg-white rounded-xl border border-slate-300 book-shadow overflow-hidden text-slate-900">
             {/* Left Page (Story & Reading Text) */}
             <div className="flex-1 p-6 sm:p-8 flex flex-col justify-between border-r border-slate-200 relative bg-amber-50/20">
               <div className="absolute top-0 bottom-0 right-0 w-4 spine-gradient pointer-events-none" />
-              
+
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Chapter {activePage?.pageNumber}</span>
-                <h3 className="text-xl font-bold font-serif text-slate-900 mt-0.5 mb-4">{activePage?.title}</h3>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Chapter {activePage?.pageNumber}
+                </span>
+                <h3 className="text-xl font-bold font-serif text-slate-900 mt-0.5 mb-4">
+                  {activePage?.title}
+                </h3>
 
                 {editingStory ? (
                   <div className="flex flex-col gap-2">
@@ -132,11 +142,11 @@ export default function BookViewer({
                       value={editText}
                       onChange={(e) => setEditText(e.target.value)}
                       rows={5}
-                      className="w-full text-sm p-2.5 rounded-lg border border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-serif leading-relaxed"
+                      className="w-full text-sm p-2.5 rounded-lg border border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500 font-serif leading-relaxed text-slate-900"
                     />
                     <button
                       onClick={saveEdit}
-                      className="self-end px-3 py-1 text-xs font-bold bg-blue-600 text-white rounded-md flex items-center gap-1 shadow-sm"
+                      className="self-end px-3 py-1 text-xs font-bold bg-sky-600 text-white rounded-md flex items-center gap-1 shadow-sm"
                     >
                       <Check className="w-3.5 h-3.5" /> Save Story
                     </button>
@@ -148,7 +158,7 @@ export default function BookViewer({
                     </p>
                     <button
                       onClick={() => startEdit(activePage?.storyText || "")}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity mt-2 text-xs text-blue-600 font-semibold flex items-center gap-1"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity mt-2 text-xs text-sky-600 font-semibold flex items-center gap-1"
                     >
                       <Edit3 className="w-3 h-3" /> Edit Story Text
                     </button>
@@ -215,19 +225,19 @@ export default function BookViewer({
         <button
           onClick={handlePrev}
           disabled={currentPageIndex === 0}
-          className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 shadow-sm"
+          className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg glacier-glass-subtle border border-sky-400/20 hover:border-sky-400/40 disabled:opacity-40 disabled:cursor-not-allowed text-[#a0b4c4] hover:text-white shadow-sm transition-all"
         >
           <ChevronLeft className="w-4 h-4" /> Previous
         </button>
 
-        <span className="text-xs font-bold text-slate-600">
+        <span className="text-xs font-bold text-sky-300 font-mono">
           {isCover ? "Book Cover" : `Spread ${currentPageIndex} of ${totalPages}`}
         </span>
 
         <button
           onClick={handleNext}
           disabled={currentPageIndex === totalPages}
-          className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 shadow-sm"
+          className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg glacier-glass-subtle border border-sky-400/20 hover:border-sky-400/40 disabled:opacity-40 disabled:cursor-not-allowed text-[#a0b4c4] hover:text-white shadow-sm transition-all"
         >
           Next <ChevronRight className="w-4 h-4" />
         </button>
