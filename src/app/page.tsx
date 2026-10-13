@@ -5,7 +5,6 @@ import Link from "next/link";
 import Image from "next/image";
 import Navbar from "@/components/Navbar";
 import TokenModal from "@/components/TokenModal";
-import BackgroundScrollBook from "@/components/BackgroundScrollBook";
 import {
   Sparkles,
   BookOpen,
@@ -71,9 +70,6 @@ export default function LandingPage() {
         <div className="absolute top-[65%] -right-32 w-[650px] h-[650px] bg-cyan-500/10 rounded-full blur-[180px] opacity-35" />
         <div className="absolute bottom-10 left-1/3 w-[500px] h-[500px] bg-purple-500/5 rounded-full blur-[170px] opacity-30" />
       </div>
-
-      {/* Ambient Transparent 3D Storybook & Vintage Stack in Page Background */}
-      <BackgroundScrollBook />
 
       {/* Foreground Content */}
       <div className="relative z-10 flex flex-col min-h-screen">

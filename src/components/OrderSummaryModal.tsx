@@ -74,6 +74,13 @@ export default function OrderSummaryModal({
   const handleOrderSuccess = (order: PaperTalesOrder) => {
     setCompletedOrder(order);
     confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+    try {
+      const stored = localStorage.getItem("papertales_orders");
+      const currentList: PaperTalesOrder[] = stored ? JSON.parse(stored) : [];
+      localStorage.setItem("papertales_orders", JSON.stringify([order, ...currentList]));
+    } catch (err) {
+      console.warn("Could not persist order to local storage:", err);
+    }
     if (onOrderCompleted) {
       onOrderCompleted(order);
     }
