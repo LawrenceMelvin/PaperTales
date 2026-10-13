@@ -1,126 +1,144 @@
 # PaperTales AI 📖✨
-> **Co-Create Custom Story & Coloring Books with AI — Hold the Real Book in Your Hands.**  
-> *Submitted to the [PayPal AI Hackathon 2026](https://paypalaihackathon.devpost.com/)*
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Next.js 15](https://img.shields.io/badge/Next.js-15.1-black)](https://nextjs.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-22.14%20LTS-green)](https://nodejs.org/)
-[![PayPal SDK](https://img.shields.io/badge/PayPal-JS%20SDK%20v6%20%7C%20Server%20v2.5-003087)](https://developer.paypal.com/)
-[![AG Grid](https://img.shields.io/badge/AG%20Grid-v36.2-brightgreen)](https://www.ag-grid.com/)
-[![Channel3](https://img.shields.io/badge/Channel3-Agentic%20Commerce-orange)](https://trychannel3.com/)
+> **Co-Create Original Bedtime Stories & Coloring Books with AI — From Digital Canvas to Bound Keepsake.**  
+> Built for the **PayPal AI Hackathon 2026**.
 
 ---
 
-## 🌟 Overview & Problem Statement
+## 📖 About the Project
 
-Millions of parents, teachers, and children want to create personalized books—whether it's a child's bedtime adventure, a custom coloring book, or a classroom phonics journal. 
+**PaperTales AI** is an agentic creative studio that bridges multi-agent generative AI with programmable fintech and on-demand physical book manufacturing. 
 
-However, existing options are severely broken:
-1. **Legacy Publishers (Wonderbly, Hooray Heroes):** Charge exorbitant prices (\$35–\$50+ per book) for rigid pre-drawn templates where users can only pick preset hair and skin tones.
-2. **AI Wrappers:** Trap users in unwanted **\$20+/month subscription fatigue** for seasonal or one-off gifts, produce disjointed images with zero character consistency, and offer **zero physical printing capability**.
+Parents, educators, and children can co-create personalized narrative adventures and coloring books, customize character designs, and instantly choose between digital vector PDF downloads or bookstore-grade, softcover physical books shipped directly to their doorstep.
 
-**PaperTales AI** bridges generative AI with programmable fintech and on-demand manufacturing:
-* 🎨 **Co-Creation Studio with Character Anchor Lock:** Ensures consistent characters across every page spread.
-* 🪙 **Flexible Token & Dynamic Pricing:** Transparent pay-as-you-go micro-tokens replace subscription fatigue.
-* 📦 **Dual Fulfillment (Digital + Physical):** Instant 300 DPI vector PDF download OR professional saddle-stitch softcover printing delivered to the user's home via the **Lulu Print API**.
-* 💳 **Deep PayPal Commerce Rails:** Transparent checkout with line-item breakdowns (AI compute + Lulu manufacturing + shipping), 1-click address retrieval (`shipping_preference: GET_FROM_FILE`), and webhook-driven fulfillment.
+### Key Capabilities
 
----
-
-## 🚀 Key Features
-
-### 1. Visual Character Consistency Anchor
-Unlike generic prompt generators that change character designs on every page, PaperTales AI locks character traits (e.g., *Barnaby the Golden Retriever with a red scarf*) into the prompt seed pipeline for cohesive multi-page storytelling.
-
-### 2. Deep "PayPal WITH AI" Integration
-* **Dynamic Smart Orders:** The AI agent assesses project complexity (pages, trim size, binding) and dynamically calculates exact line items for the PayPal Orders API.
-* **Friction-Free Shipping:** With `shipping_preference: GET_FROM_FILE`, the user's verified postal address is pulled directly from PayPal, removing address typing friction.
-* **Instant Token Vault Refills:** Micro-token purchases powered by the modern PayPal JS SDK v6.
-
-### 3. Physical Print-on-Demand via Lulu API
-* Programmatically compiles 8.5" $\times$ 8.5" Square Softcover books adhering to Lulu package `0850X0850BWSTPB060UW444GXX` (60# uncoated white paper with 0.125" bleed).
-* Queries `/print-job-cost-calculations/` for dynamic carrier shipping quotes.
+- **Character Anchor Lock:** Solves the classic generative image consistency problem by locking character appearance seeds and visual motifs across every page in the book.
+- **Dynamic Pricing Engine:** Calculates transparent, pay-as-you-go pricing in real time based on page volume, illustration complexity, paper stock, and printing tier (with the first 5 pages always free).
+- **Dual Fulfillment Rails:**
+  - **Instant Digital Edition:** Generates 300 DPI print-ready vector PDF files with custom typography and clean coloring linework.
+  - **Physical Print-on-Demand:** Seamlessly routes orders to **Lulu Direct POD** for perfect-bound 8.5" × 8.5" square softcover books on archival paper.
+- **Agentic Commerce & Companion Art Kits:** Suggests matching physical art supplies (markers, colored pencils) tailored to the book's story themes via **Channel3**.
+- **Deep PayPal Commerce:** 1-click dynamic checkout with full itemized line-item breakdown (AI compute + Lulu manufacturing + shipping), automatic shipping address retrieval, and webhook verification.
+- **Operations & Order Dashboard:** Real-time production management and tracking powered by **AG Grid**.
 
 ---
 
-## 🏆 Hackathon Sponsor Prize Qualifications
+## 🛠️ Tech Stack
 
-| Sponsor Prize Target | How PaperTales AI Integrates It |
-| :--- | :--- |
-| **Best Use of AG Grid (\$5,000 Cash)** | Powering the **Author & Teacher Operations Portal** (`/dashboard`) using `ag-grid-react` v36.2 for real-time order tracking, Lulu print job monitoring, and CSV export. |
-| **Best Use of Agentic Commerce (\$5,000)** | Autonomous co-creation agent that negotiates book specs, computes manufacturing costs, and bundles matching physical companion supplies via Channel3 in a single PayPal checkout. |
-| **Best Use of Channel3 (\$1,500 Cash)** | AI agentically searches and suggests curated physical art supplies (Crayola markers, colored pencils) directly inside the checkout drawer. |
-| **Best Use of Render** | Production deployment of the full Next.js service on Render. |
-
----
-
-## 🤖 Official PayPal AI Tools & MCP Server Integration
-
-PaperTales AI leverages the official **[PayPal AI Toolkit](https://github.com/paypal/AI-Toolkit)** and **[PayPal AI Tools](https://developer.paypal.com/ai-tools/get-started)** ecosystem to pioneer agentic publishing and commerce:
-
-* **PayPal AI Toolkit & MCP Server:** Ready for Model Context Protocol integration with `@paypal/mcp` and `@paypal/agent-toolkit`. Start the local MCP server with:
-  ```bash
-  npm run paypal:mcp
-  ```
-* **Official Developer Docs:** [developer.paypal.com](https://developer.paypal.com/)
-* **PayPal AI Tools Quickstart:** [developer.paypal.com/ai-tools/get-started](https://developer.paypal.com/ai-tools/get-started)
-* **GitHub Repository:** [github.com/paypal/AI-Toolkit](https://github.com/paypal/AI-Toolkit)
-* **PayPal Sandbox Dashboard:** [sandbox.paypal.com](https://sandbox.paypal.com/)
-* **PayPal Postman Collection:** [postman.com/paypal](https://postman.com/paypal)
-* **PayPal Code Examples:** [github.com/paypal-examples/docs-examples](https://github.com/paypal-examples/docs-examples)
-* **Architectural Rules:** See [`.agent/rules/05-paypal-ai-toolkit-resources.md`](./.agent/rules/05-paypal-ai-toolkit-resources.md) for full configuration guidelines.
+| Category | Technology | Description |
+| :--- | :--- | :--- |
+| **Framework & Core** | [Next.js 15](https://nextjs.org/) (App Router) | React server components, modern routing, and high-performance SSR/SSG. |
+| **UI & Styling** | [React 19](https://react.dev/), [Tailwind CSS](https://tailwindcss.com/) | Responsive glacier-glass aesthetic with modern animations. |
+| **Icons & Visuals** | [Lucide React](https://lucide.dev/), Canvas Confetti | Clean, lightweight UI icons and celebration effects. |
+| **Payments & Rails** | [PayPal SDK](https://developer.paypal.com/) (`@paypal/react-paypal-js` & `@paypal/paypal-server-sdk`) | Dynamic order creation, instant vault refills, and webhook handling. |
+| **Print-on-Demand** | [Lulu Direct REST API](https://developers.lulu.com/) | Real-time print cost estimation and automated print-job submission. |
+| **Agentic Commerce** | [Channel3 API](https://trychannel3.com/) | Real-time product search and companion art supply bundles. |
+| **Data Grid & Portal** | [AG Grid Community / React](https://www.ag-grid.com/) | Enterprise data grid for author order tracking and CSV reporting. |
+| **PDF Generation** | [pdf-lib](https://pdf-lib.js.org/) | Client and server-side 300 DPI vector PDF compilation. |
+| **AI Orchestration** | OpenAI / Gemini Models | Narrative storytelling, prompt structuring, and vector line art generation. |
 
 ---
 
-## 🛠️ Tech Stack & Versioning
+## 🚀 Getting Started (Run Locally)
 
-* **Framework:** Next.js 15.1 (App Router)
-* **Frontend:** React 19, Tailwind CSS, Lucide Icons
-* **Runtime:** Node.js v22.14 LTS
-* **Payments:** `@paypal/react-paypal-js` v10.6.0 & `@paypal/paypal-server-sdk` v2.5.0
-* **Data Grid:** `ag-grid-react` v36.2.0 & `ag-grid-community` v36.2.0
-* **PDF Compilation:** `pdf-lib` v1.17.1 (300 DPI vector engine)
-* **Manufacturing:** Lulu Print-on-Demand REST API (OAuth2)
-* **E-Commerce Catalog:** Channel3 Agentic API
+Follow these steps to clone, configure, and run PaperTales AI on your local machine.
+
+### Prerequisites
+
+- **Node.js:** v18.18+ or v20+ (Node v22 LTS recommended)
+- **Package Manager:** `npm`, `pnpm`, or `yarn`
+- **Git**
 
 ---
 
-## ⚡ Quickstart for Judges
+### 1. Clone the Repository
 
-### 1. Clone & Install
 ```bash
-git clone https://github.com/your-username/papertales-ai.git
-cd papertales-ai
+git clone https://github.com/LawrenceMelvin/PaperTales.git
+cd PaperTales
+```
+
+---
+
+### 2. Install Dependencies
+
+```bash
 npm install
 ```
 
-### 2. Configure Environment
-Copy `.env.example` to `.env.local`:
-```bash
-cp .env.example .env.local
-```
-*(The repository includes automated fallback sandbox mock mode so judges can test every feature immediately without external API keys).*
+---
 
-### 3. Run Development Server
+### 3. Configure Environment Variables
+
+Create a `.env.local` file by copying the sample configuration:
+
 ```bash
-npm run dev
+# On Linux / macOS / Git Bash:
+cp .env.example .env.local
+
+# On Windows PowerShell:
+Copy-Item .env.example .env.local
 ```
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+Open `.env.local` and fill in your API credentials:
+
+```env
+# PayPal Developer Sandbox (https://developer.paypal.com/dashboard/)
+NEXT_PUBLIC_PAYPAL_CLIENT_ID=your_paypal_sandbox_client_id
+PAYPAL_CLIENT_SECRET=your_paypal_sandbox_client_secret
+PAYPAL_ENVIRONMENT=sandbox
+
+# Lulu Print-on-Demand Sandbox (https://developers.lulu.com/)
+LULU_CLIENT_KEY=your_lulu_client_key
+LULU_CLIENT_SECRET=your_lulu_client_secret
+LULU_ENVIRONMENT=sandbox
+
+# Channel3 Catalog (https://trychannel3.com/)
+CHANNEL3_API_KEY=your_channel3_api_key
+
+# AI Model Provider
+GEMINI_API_KEY=your_gemini_api_key
+OPENAI_API_KEY=your_openai_api_key
+```
+
+> **Note:** The application includes built-in mock fallbacks for all services, so you can explore the core UI and studio workflows even if some external API keys are not configured.
 
 ---
 
-## 🧪 Verification & Demo Checklist
+### 4. Run the Development Server
 
-1. **Co-Creation Studio (`/studio`):**
-   * Prompt a book (e.g., *"Space Explorer Puppy"*).
-   * Customize the Character Anchor Lock traits.
-   * Generate book spreads and preview the 2-page flipbook with live text editing.
-2. **Instant PDF Compilation:** Click **Download PDF** to generate an 8.5x8.5 300 DPI vector PDF.
-3. **Physical Print Checkout:** Click **Order Physical Print**, inspect the dynamic Lulu quote + Channel3 companion bundle, and launch the PayPal Sandbox checkout.
-4. **AG Grid Operations Portal (`/dashboard`):** Inspect live orders, Lulu production statuses, tracking numbers, and test quick filtering and CSV export.
+```bash
+npm run dev
+```
+
+Open your browser and navigate to:
+
+```
+http://localhost:3000
+```
+
+---
+
+### 5. Build for Production (Optional)
+
+To verify production compilation and run the optimized build:
+
+```bash
+npm run build
+npm start
+```
+
+---
+
+## 📁 Key Routes
+
+- `/` — Homepage featuring the dynamic economics engine, partner integrations, and studio overview.
+- `/studio` — Interactive AI Co-Creation Studio with character anchor locks, spread editor, and live preview.
+- `/dashboard` — Author & Order Operations Portal powered by AG Grid.
 
 ---
 
 ## 📄 License
 
-This project is licensed under the **MIT License** — see the [LICENSE](./LICENSE) file for details. Fully open-source and compliant with Devpost submission guidelines.
+This project is licensed under the **MIT License**.
