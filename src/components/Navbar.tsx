@@ -41,13 +41,13 @@ export default function Navbar({ onOpenTokenModal }: NavbarProps) {
             <Sparkles className="w-3.5 h-3.5 text-sky-400" />
             Studio Creator
           </Link>
-          <a
-            href="/#calculator"
+          <Link
+            href="/pricing"
             className="text-[#a0b4c4] hover:text-sky-300 transition-colors duration-150 flex items-center gap-1.5"
           >
             <Calculator className="w-3.5 h-3.5" />
             Pricing Calculator
-          </a>
+          </Link>
           <a
             href="/#ecosystem"
             className="text-[#a0b4c4] hover:text-sky-300 transition-colors duration-150 flex items-center gap-1.5"
