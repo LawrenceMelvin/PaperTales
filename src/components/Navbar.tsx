@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
+import Logo from "@/components/Logo";
 import { Sparkles, Coins, LayoutDashboard, Calculator, Printer, BookOpen } from "lucide-react";
 import { getClientTokenBalance } from "@/lib/token-store";
 
@@ -27,31 +27,9 @@ export default function Navbar({ onOpenTokenModal }: NavbarProps) {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-sky-400/15 bg-[#0a0e1a]/75 backdrop-blur-2xl transition-all">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 py-3 flex items-center justify-between">
-        {/* Brand Logo Seal */}
-        <Link href="/" className="flex items-center gap-3 group active:scale-95 transition-transform duration-150">
-          <div className="p-1 rounded-xl bg-sky-400/10 border border-sky-400/30 flex items-center justify-center shadow-lg shadow-sky-500/10">
-            <Image
-              src="/crest-logo.png"
-              alt="PaperTales AI Crest Logo"
-              width={36}
-              height={36}
-              className="h-8 w-auto object-contain drop-shadow"
-              priority
-            />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-lg tracking-tight text-white group-hover:text-sky-300 transition-colors">
-                PaperTales
-              </span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-sky-400 text-[#001f2e] font-black shadow-sm">
-                AI
-              </span>
-            </div>
-            <p className="text-[10px] text-[#a0b4c4] font-medium hidden sm:block">
-              Glacier Atelier &bull; 300 DPI Print
-            </p>
-          </div>
+        {/* Brand Logo */}
+        <Link href="/" className="active:scale-95 transition-transform duration-150">
+          <Logo size="md" />
         </Link>
 
         {/* Desktop Navigation Links */}

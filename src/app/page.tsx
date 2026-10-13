@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import Navbar from "@/components/Navbar";
 import TokenModal from "@/components/TokenModal";
+import Logo from "@/components/Logo";
 import {
   Sparkles,
   BookOpen,
@@ -688,20 +689,9 @@ export default function LandingPage() {
         {/* SHARED COMPONENT: Footer */}
         <footer className="mt-12 bg-slate-950/80 border-t border-sky-400/20 backdrop-blur-xl">
           <div className="max-w-7xl mx-auto px-6 py-12 flex flex-col md:flex-row justify-between items-center gap-6">
-            <div className="flex flex-col sm:flex-row items-center gap-3">
-              <div className="p-1 rounded-xl bg-sky-400/10 border border-sky-400/20">
-                <Image
-                  src="/crest-logo.png"
-                  alt="PaperTales AI Crest Logo"
-                  width={32}
-                  height={32}
-                  className="h-7 w-auto object-contain"
-                />
-              </div>
-              <span className="text-base font-bold text-white tracking-tight">
-                PaperTales <span className="text-sky-300">AI</span>
-              </span>
-            </div>
+            <Link href="/" className="active:scale-95 transition-transform duration-150">
+              <Logo size="sm" />
+            </Link>
 
             <nav className="flex flex-wrap justify-center items-center gap-6 text-center text-xs text-[#a0b4c4]">
               <a href="#ecosystem" className="hover:text-sky-300 transition-colors">Print Specifications</a>

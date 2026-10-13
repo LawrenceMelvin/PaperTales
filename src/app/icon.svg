@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b1329" />
+      <stop offset="100%" stop-color="#040714" />
+    </linearGradient>
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="50%" stop-color="#818cf8" />
+      <stop offset="100%" stop-color="#c084fc" />
+    </linearGradient>
+    <linearGradient id="pageLeft" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <linearGradient id="pageRight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c084fc" />
+      <stop offset="100%" stop-color="#7c3aed" />
+    </linearGradient>
+    <linearGradient id="starGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#67e8f9" />
+    </linearGradient>
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#001f2e" flood-opacity="0.8" />
+    </filter>
+  </defs>
+
+  <!-- High-contrast rounded dark canvas (visible on light & dark browser tabs) -->
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#bgGrad)" stroke="url(#borderGrad)" stroke-width="2" />
+
+  <!-- Ambient Book Spine Glow -->
+  <circle cx="32" cy="30" r="14" fill="#38bdf8" opacity="0.15" filter="blur(6px)" />
+
+  <!-- Open Storybook Wings -->
+  <g filter="url(#softGlow)">
+    <!-- Left Storybook Page -->
+    <path d="M32 44 C25 41 16 41 11 43 C10.5 32 10.5 24 11 20 C16 18 25 19 32 23 Z" fill="url(#pageLeft)" />
+    <!-- Left Highlight Line -->
+    <path d="M13 22 C18 20 25 21 31 24" stroke="#bae6fd" stroke-width="1.5" stroke-linecap="round" opacity="0.8" />
+
+    <!-- Right Coloring Book Page -->
+    <path d="M32 44 C39 41 48 41 53 43 C53.5 32 53.5 24 53 20 C48 18 39 19 32 23 Z" fill="url(#pageRight)" />
+    <!-- Right Highlight Line -->
+    <path d="M51 22 C46 20 39 21 33 24" stroke="#f3e8ff" stroke-width="1.5" stroke-linecap="round" opacity="0.8" />
+
+    <!-- Center Book Spine Crease -->
+    <path d="M32 23 L32 44" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.75" />
+  </g>
+
+  <!-- Magical Sparkle Star (4-Point Star Rising from the Story) -->
+  <path d="M32 7 C33 12 35 14 40 15 C35 16 33 18 32 23 C31 18 29 16 24 15 C29 14 31 12 32 7 Z" fill="url(#starGrad)" />
+  <circle cx="32" cy="15" r="1.5" fill="#ffffff" />
+</svg>
