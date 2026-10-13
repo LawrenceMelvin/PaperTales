@@ -27,6 +27,9 @@ import {
   Truck,
   ExternalLink,
   X,
+  ChefHat,
+  Compass,
+  BookHeart,
 } from "lucide-react";
 
 export default function LandingPage() {
@@ -78,47 +81,299 @@ export default function LandingPage() {
 
         <main className="flex-1 space-y-24 md:space-y-36 pt-8 md:pt-14 pb-24">
           {/* ========================================================================= */}
-          {/* HERO SECTION - THE ENCHANTING 3D CENTERPIECE                              */}
+          {/* HERO SECTION - DIRECTION 2: "YOU LIVE THE MOMENTS. WE BIND THE BOOK."     */}
           {/* ========================================================================= */}
           <section className="max-w-7xl mx-auto px-4 md:px-8 text-center flex flex-col items-center" id="hero">
             {/* Top Prestige Laurel Pill */}
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glacier-glass-subtle border border-sky-400/30 text-sky-300 text-xs font-semibold mb-6 glacier-glow">
               <Sparkles className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
-              <span>✦ The Premier Agentic Story &amp; Coloring Studio</span>
+              <span>✦ The Personal Book Atelier for Non-Designers</span>
               <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
               <span className="text-sky-200">PayPal AI Hackathon 2026</span>
             </div>
 
             {/* Main Literary Headline */}
             <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold text-white max-w-5xl tracking-tight leading-tight mb-6">
-              Turn Family Bedtime Whispers Into{" "}
+              You Live the Moments.{" "}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-300 via-cyan-200 to-sky-400 italic">
-                Bound, Tangible
-              </span>{" "}
-              Keepsakes.
+                We Bind the Book.
+              </span>
             </h1>
 
             {/* Editorial Subtitle */}
-            <p className="text-base md:text-lg text-[#a0b4c4] max-w-3xl mb-10 leading-relaxed font-normal">
-              Co-create original narrative adventures with our multi-agent AI editorial director, generate 300 DPI print-ready vector line art, and ship bookstore-grade 8.5x8.5 softcover editions to your doorstep.
+            <p className="text-base md:text-lg text-[#a0b4c4] max-w-3xl mb-8 leading-relaxed font-normal">
+              You don&apos;t need InDesign skills or an art degree to hold your own published book. From family heirloom recipes and kids&apos; coloring adventures to fishing guides, math quests, and personal journals — PaperTales AI formats every page, generates crisp vector art, and delivers bookstore-grade softcover editions to your doorstep.
             </p>
 
             {/* Dual Hero Actions */}
-            <div className="flex flex-wrap items-center justify-center gap-4">
+            <div className="flex flex-wrap items-center justify-center gap-4 mb-10">
               <Link
                 href="/studio"
                 className="glacier-btn text-base font-bold px-8 py-4 rounded-xl flex items-center gap-2 hover:scale-[1.02] active:scale-95 transition-all shadow-xl"
               >
                 <Sparkles className="w-4 h-4" />
-                <span>Start Co-Creating (5 Free Pages)</span>
+                <span>Start Designing (5 Free Pages)</span>
               </Link>
               <a
-                href="#ecosystem"
+                href="#showcase"
                 className="glacier-glass px-7 py-4 rounded-xl border border-sky-400/30 text-white hover:text-sky-300 hover:border-sky-400/60 text-base font-semibold flex items-center gap-2 transition-all shadow-lg"
               >
                 <BookOpen className="w-4 h-4 text-sky-400" />
-                <span>Explore Print Quality</span>
+                <span>Explore Book Types</span>
               </a>
+            </div>
+
+            {/* Quick Inspiration Badges Strip */}
+            <div className="flex flex-wrap items-center justify-center gap-2 max-w-4xl text-xs">
+              <span className="text-slate-400 font-medium mr-1 hidden sm:inline">What you can create:</span>
+              <span className="px-3 py-1.5 rounded-full bg-slate-900/60 border border-sky-400/20 text-sky-200 flex items-center gap-1.5 hover:border-sky-400/50 transition-colors">
+                🍳 Family Recipe Heirlooms
+              </span>
+              <span className="px-3 py-1.5 rounded-full bg-slate-900/60 border border-sky-400/20 text-sky-200 flex items-center gap-1.5 hover:border-sky-400/50 transition-colors">
+                🎨 Custom Coloring Books
+              </span>
+              <span className="px-3 py-1.5 rounded-full bg-slate-900/60 border border-sky-400/20 text-sky-200 flex items-center gap-1.5 hover:border-sky-400/50 transition-colors">
+                🎣 Dad&apos;s Fishing Guides
+              </span>
+              <span className="px-3 py-1.5 rounded-full bg-slate-900/60 border border-sky-400/20 text-sky-200 flex items-center gap-1.5 hover:border-sky-400/50 transition-colors">
+                🧮 Math &amp; Logic Quests
+              </span>
+              <span className="px-3 py-1.5 rounded-full bg-slate-900/60 border border-sky-400/20 text-sky-200 flex items-center gap-1.5 hover:border-sky-400/50 transition-colors">
+                📔 Guided Daily Journals
+              </span>
+              <span className="px-3 py-1.5 rounded-full bg-slate-900/60 border border-sky-400/20 text-sky-200 flex items-center gap-1.5 hover:border-sky-400/50 transition-colors">
+                📸 Memory Lane Albums
+              </span>
+            </div>
+          </section>
+
+          {/* ========================================================================= */}
+          {/* SHOWCASE SECTION: "NOT A DESIGNER? THAT'S WHERE WE COME IN."              */}
+          {/* ========================================================================= */}
+          <section className="max-w-7xl mx-auto px-4 md:px-8" id="showcase">
+            <div className="text-center max-w-3xl mx-auto mb-14">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full glacier-glass-subtle text-sky-300 text-xs font-semibold border border-sky-400/20 mb-4">
+                <Palette className="w-3.5 h-3.5" />
+                <span>Empowering Everyday Creators, Parents &amp; Hobbyists</span>
+              </div>
+              <h2 className="text-3xl md:text-5xl font-extrabold text-white tracking-tight">
+                Not a Designer?{" "}
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-300 via-cyan-200 to-sky-400">
+                  That&apos;s Where We Come In.
+                </span>
+              </h2>
+              <p className="text-base md:text-lg text-[#a0b4c4] mt-3">
+                No complex desktop software or graphic design courses required. You bring the heart, recipes, lessons, or stories — our multi-agent AI formats the typography, margins, bleed, and vector artwork automatically.
+              </p>
+            </div>
+
+            {/* 6 Personal Book Use-Cases Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
+              {/* Card 1: Family Recipe Heirloom */}
+              <div className="p-6 rounded-2xl glacier-glass border border-sky-400/25 hover:border-sky-400/60 transition-all duration-300 flex flex-col justify-between group shadow-xl">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-10 h-10 rounded-xl bg-amber-400/15 border border-amber-400/30 flex items-center justify-center text-amber-300 shadow-inner group-hover:scale-105 transition-transform">
+                      <ChefHat className="w-5 h-5" />
+                    </div>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-400/15 text-amber-300 border border-amber-400/25">
+                      Family Keepsake
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-bold text-white group-hover:text-amber-200 transition-colors">
+                    Mom&apos;s Family Recipe Heirloom
+                  </h3>
+                  <p className="text-xs text-[#a0b4c4] mt-2 leading-relaxed">
+                    Preserve handwritten culinary secrets, holiday traditions, and grandmother&apos;s sauce notes. Formatted with ingredients checklists, prep times, and vintage kitchen borders.
+                  </p>
+                </div>
+                <div className="mt-5 pt-4 border-t border-white/10 flex items-center justify-between text-[11px] text-amber-200/90 font-mono">
+                  <span>Archival Satin Paper</span>
+                  <Link href="/studio" className="flex items-center gap-1 hover:underline text-amber-300 font-bold">
+                    Create <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
+              </div>
+
+              {/* Card 2: Custom Coloring Book */}
+              <div className="p-6 rounded-2xl glacier-glass border border-sky-400/25 hover:border-sky-400/60 transition-all duration-300 flex flex-col justify-between group shadow-xl">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-10 h-10 rounded-xl bg-sky-400/15 border border-sky-400/30 flex items-center justify-center text-sky-300 shadow-inner group-hover:scale-105 transition-transform">
+                      <Palette className="w-5 h-5" />
+                    </div>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-sky-400/15 text-sky-300 border border-sky-400/25">
+                      Kids &amp; Adults
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-bold text-white group-hover:text-sky-200 transition-colors">
+                    Custom Coloring Books
+                  </h3>
+                  <p className="text-xs text-[#a0b4c4] mt-2 leading-relaxed">
+                    Transform your child&apos;s favorite pets, space fantasies, or mindfulness mandalas into 300 DPI vector linework on thick paper that markers won&apos;t bleed through.
+                  </p>
+                </div>
+                <div className="mt-5 pt-4 border-t border-white/10 flex items-center justify-between text-[11px] text-sky-200/90 font-mono">
+                  <span>300 DPI Vector Linework</span>
+                  <Link href="/studio" className="flex items-center gap-1 hover:underline text-sky-300 font-bold">
+                    Create <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
+              </div>
+
+              {/* Card 3: Dad's Fishing & Hobby Guide */}
+              <div className="p-6 rounded-2xl glacier-glass border border-sky-400/25 hover:border-sky-400/60 transition-all duration-300 flex flex-col justify-between group shadow-xl">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-400/15 border border-emerald-400/30 flex items-center justify-center text-emerald-300 shadow-inner group-hover:scale-105 transition-transform">
+                      <Compass className="w-5 h-5" />
+                    </div>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-400/15 text-emerald-300 border border-emerald-400/25">
+                      Hands-On Mentorship
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-bold text-white group-hover:text-emerald-200 transition-colors">
+                    Dad&apos;s Hobby &amp; Teaching Guide
+                  </h3>
+                  <p className="text-xs text-[#a0b4c4] mt-2 leading-relaxed">
+                    Pass down outdoor and maker skills. Step-by-step illustrated guides for teaching lake fishing, tying knots, woodworking safety, camping, or gardening traditions.
+                  </p>
+                </div>
+                <div className="mt-5 pt-4 border-t border-white/10 flex items-center justify-between text-[11px] text-emerald-200/90 font-mono">
+                  <span>Illustrated How-To Spreads</span>
+                  <Link href="/studio" className="flex items-center gap-1 hover:underline text-emerald-300 font-bold">
+                    Create <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
+              </div>
+
+              {/* Card 4: Math & Logic Quests */}
+              <div className="p-6 rounded-2xl glacier-glass border border-sky-400/25 hover:border-sky-400/60 transition-all duration-300 flex flex-col justify-between group shadow-xl">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-10 h-10 rounded-xl bg-cyan-400/15 border border-cyan-400/30 flex items-center justify-center text-cyan-300 shadow-inner group-hover:scale-105 transition-transform">
+                      <GraduationCap className="w-5 h-5" />
+                    </div>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-cyan-400/15 text-cyan-300 border border-cyan-400/25">
+                      Learning &amp; Phonics
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-bold text-white group-hover:text-cyan-200 transition-colors">
+                    Math &amp; Logic Learning Quests
+                  </h3>
+                  <p className="text-xs text-[#a0b4c4] mt-2 leading-relaxed">
+                    Interactive educational workbooks personalized for your child or classroom. Age-calibrated multiplication quests, mazes, and word puzzles that turn practice into an adventure.
+                  </p>
+                </div>
+                <div className="mt-5 pt-4 border-t border-white/10 flex items-center justify-between text-[11px] text-cyan-200/90 font-mono">
+                  <span>Custom Activity Worksheets</span>
+                  <Link href="/studio" className="flex items-center gap-1 hover:underline text-cyan-300 font-bold">
+                    Create <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
+              </div>
+
+              {/* Card 5: Family Memory Lane Keepsake */}
+              <div className="p-6 rounded-2xl glacier-glass border border-sky-400/25 hover:border-sky-400/60 transition-all duration-300 flex flex-col justify-between group shadow-xl">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-10 h-10 rounded-xl bg-purple-400/15 border border-purple-400/30 flex items-center justify-center text-purple-300 shadow-inner group-hover:scale-105 transition-transform">
+                      <BookHeart className="w-5 h-5" />
+                    </div>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-purple-400/15 text-purple-300 border border-purple-400/25">
+                      Milestones &amp; Tributes
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-bold text-white group-hover:text-purple-200 transition-colors">
+                    Family Memory Lane Album
+                  </h3>
+                  <p className="text-xs text-[#a0b4c4] mt-2 leading-relaxed">
+                    Rescue scattered camera rolls and treasured memories from fading in the cloud. Assemble milestone journeys, anniversary tributes, and adoption stories into permanent print.
+                  </p>
+                </div>
+                <div className="mt-5 pt-4 border-t border-white/10 flex items-center justify-between text-[11px] text-purple-200/90 font-mono">
+                  <span>8.5×8.5 Square Softcover</span>
+                  <Link href="/studio" className="flex items-center gap-1 hover:underline text-purple-300 font-bold">
+                    Create <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
+              </div>
+
+              {/* Card 6: Bespoke Guided Daily Journal */}
+              <div className="p-6 rounded-2xl glacier-glass border border-sky-400/25 hover:border-sky-400/60 transition-all duration-300 flex flex-col justify-between group shadow-xl">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-400/15 border border-indigo-400/30 flex items-center justify-center text-indigo-300 shadow-inner group-hover:scale-105 transition-transform">
+                      <PenTool className="w-5 h-5" />
+                    </div>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-indigo-400/15 text-indigo-300 border border-indigo-400/25">
+                      Mindfulness &amp; Habits
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-bold text-white group-hover:text-indigo-200 transition-colors">
+                    Bespoke Guided Journals
+                  </h3>
+                  <p className="text-xs text-[#a0b4c4] mt-2 leading-relaxed">
+                    Tired of generic journals that don&apos;t fit your flow? Design a 30 to 64 page journal tailored to your exact mindfulness rituals, habit trackers, and personal reflection questions.
+                  </p>
+                </div>
+                <div className="mt-5 pt-4 border-t border-white/10 flex items-center justify-between text-[11px] text-indigo-200/90 font-mono">
+                  <span>Custom Prompts &amp; Ruled Grids</span>
+                  <Link href="/studio" className="flex items-center gap-1 hover:underline text-indigo-300 font-bold">
+                    Create <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
+              </div>
+            </div>
+
+            {/* The 3-Step "Idea to Doorstep" Pipeline */}
+            <div className="p-8 md:p-10 rounded-2xl glacier-glass border border-sky-400/30 shadow-2xl">
+              <div className="text-center max-w-xl mx-auto mb-10">
+                <span className="text-xs font-mono font-bold uppercase tracking-wider text-sky-300">
+                  The Non-Designer&apos;s Publishing Pipeline
+                </span>
+                <h3 className="text-2xl md:text-3xl font-extrabold text-white mt-1">
+                  How Your Thoughts Become a Physical Book
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div className="flex items-start gap-4 p-4 rounded-xl glacier-glass-subtle border border-sky-400/20">
+                  <div className="w-10 h-10 rounded-xl bg-sky-400/20 border border-sky-400/40 flex items-center justify-center text-sky-300 font-bold font-mono shrink-0">
+                    01
+                  </div>
+                  <div>
+                    <h4 className="text-base font-bold text-white">1. Share Your Idea</h4>
+                    <p className="text-xs text-[#a0b4c4] mt-1.5 leading-relaxed">
+                      Type your recipe notes, child&apos;s favorite characters, or teaching concepts in plain text. No layout software required.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-4 p-4 rounded-xl glacier-glass-subtle border border-purple-400/20">
+                  <div className="w-10 h-10 rounded-xl bg-purple-400/20 border border-purple-400/40 flex items-center justify-center text-purple-300 font-bold font-mono shrink-0">
+                    02
+                  </div>
+                  <div>
+                    <h4 className="text-base font-bold text-white">2. AI Typesets &amp; Illustrates</h4>
+                    <p className="text-xs text-[#a0b4c4] mt-1.5 leading-relaxed">
+                      PaperTales automates typography, 300 DPI vector linework, spine calculations, and Lulu-certified bleed margins.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-4 p-4 rounded-xl glacier-glass-subtle border border-emerald-400/20">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-400/20 border border-emerald-400/40 flex items-center justify-center text-emerald-300 font-bold font-mono shrink-0">
+                    03
+                  </div>
+                  <div>
+                    <h4 className="text-base font-bold text-white">3. Lulu Prints &amp; Ships</h4>
+                    <p className="text-xs text-[#a0b4c4] mt-1.5 leading-relaxed">
+                      Review your flipbook preview, checkout in 1 click with PayPal, and hold a bookstore-grade bound copy at your door.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
 
