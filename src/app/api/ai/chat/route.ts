@@ -9,11 +9,15 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { messages = [], currentBook, referenceImageUrl } = body;
-    const apiKey = process.env.OPENAI_API_KEY;
+    const groqKey = process.env.GROQ_API_KEY;
+    const openaiKey = process.env.OPENAI_API_KEY;
+
+    const useGroq = Boolean(groqKey && groqKey.startsWith("gsk_"));
+    const apiKey = useGroq ? groqKey : openaiKey;
 
     if (!apiKey) {
       return NextResponse.json(
-        { success: false, error: "OPENAI_API_KEY is not configured" },
+        { success: false, error: "Neither GROQ_API_KEY nor OPENAI_API_KEY is configured" },
         { status: 500 }
       );
     }
@@ -29,6 +33,10 @@ We support 4 Creative Lanes:
 
 First 5 pages are 100% free gift. Additional pages scale at $0.17/page (~₹14.50 INR). Lulu POD print cost is ~$4.14 + tracked shipping ~$5.69.
 
+Copyright & Lulu Print Safety Guidelines:
+If the user's idea references a known trademarked franchise or character (e.g. Spider-Man, Elsa/Frozen, Pokemon/Pikachu, Batman, Disney, Mario), DO NOT refuse or block them!
+Instead, populate the "printAdvisory" object so the user can choose whether to adopt a print-safe homage title (e.g. 'Leo & The Web-Weaver') for guaranteed Lulu POD factory printing, or keep their original custom title.
+
 Your response MUST be valid JSON adhering strictly to this schema:
 {
   "reply": "Your warm, helpful conversational response explaining your creative ideas, asking a clarifying question, or celebrating their concept (keep it 2-3 paragraphs max).",
@@ -43,7 +51,14 @@ Your response MUST be valid JSON adhering strictly to this schema:
     "pageCount": 5,
     "channel3Query": "Specific search query for physical art supplies or companion toys matching this exact story (e.g. 'crayola washable markers', 'space stickers metallic pens', 'kids baking apron set', 'wooden counting abacus')"
   },
-  "quickReplies": ["3 short, engaging suggested next questions or prompts the user could click"]
+  "quickReplies": ["3 short, engaging suggested next questions or prompts the user could click"],
+  "printAdvisory": {
+    "hasRisk": boolean,
+    "franchiseName": "Name of detected franchise or null",
+    "safeTitle": "Suggested print-safe title or null",
+    "safeCharacter": "Suggested print-safe character archetype or null",
+    "explanation": "Friendly note explaining why the print-safe version guarantees factory approval, or null"
+  }
 }
 
 Always keep tone encouraging, imaginative, and concise. Only output valid JSON with no markdown backticks outside.`;
@@ -56,14 +71,19 @@ Always keep tone encouraging, imaginative, and concise. Only output valid JSON w
       })),
     ];
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const apiUrl = useGroq
+      ? "https://api.groq.com/openai/v1/chat/completions"
+      : "https://api.openai.com/v1/chat/completions";
+    const model = useGroq ? "openai/gpt-oss-120b" : "gpt-4o-mini";
+
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model,
         messages: formattedMessages,
         temperature: 0.7,
         response_format: { type: "json_object" },
@@ -72,9 +92,9 @@ Always keep tone encouraging, imaginative, and concise. Only output valid JSON w
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error("OpenAI API error:", response.status, errText);
+      console.error("AI API error:", response.status, errText);
       return NextResponse.json(
-        { success: false, error: `OpenAI error: ${response.statusText}` },
+        { success: false, error: `AI error: ${response.statusText}` },
         { status: response.status }
       );
     }
@@ -88,6 +108,8 @@ Always keep tone encouraging, imaginative, and concise. Only output valid JSON w
       reply: parsed.reply,
       bookDraft: parsed.bookDraft,
       quickReplies: parsed.quickReplies || [],
+      printAdvisory: parsed.printAdvisory || { hasRisk: false },
+      engine: useGroq ? "groq-120b" : "openai-gpt-4o-mini",
     });
   } catch (error: any) {
     console.error("Error in PaperTales AI chat:", error);

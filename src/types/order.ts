@@ -82,3 +82,22 @@ export interface TokenPack {
   badge?: string;
   features: string[];
 }
+
+export interface PublishOrder {
+  id: string;
+  bookTitle: string;
+  authorName: string;
+  genre: string;
+  characterName: string;
+  pageCount: number;
+  printRiskStatus: "safe" | "custom_requested";
+  fulfillmentStatus: "proof_confirmed" | "sent_to_lulu" | "printing" | "shipped";
+  luluJobId?: string;
+  trackingNumber?: string;
+  trackingUrl?: string;
+  paypalTxnId?: string;
+  totalAmountUsd: number;
+  tokensUsed: number;
+  createdAt: string;
+}
+

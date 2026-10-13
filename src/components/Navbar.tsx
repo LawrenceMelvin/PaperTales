@@ -8,9 +8,10 @@ import { getClientTokenBalance } from "@/lib/token-store";
 
 interface NavbarProps {
   onOpenTokenModal?: () => void;
+  onOpenOrderTracking?: () => void;
 }
 
-export default function Navbar({ onOpenTokenModal }: NavbarProps) {
+export default function Navbar({ onOpenTokenModal, onOpenOrderTracking }: NavbarProps) {
   const [tokens, setTokens] = useState<number>(120);
 
   useEffect(() => {
@@ -55,13 +56,24 @@ export default function Navbar({ onOpenTokenModal }: NavbarProps) {
             <Printer className="w-3.5 h-3.5" />
             Lulu POD
           </a>
-          <Link
-            href="/dashboard"
-            className="text-[#a0b4c4] hover:text-sky-300 transition-colors duration-150 flex items-center gap-1.5"
-          >
-            <LayoutDashboard className="w-3.5 h-3.5 text-purple-300" />
-            AG Grid Orders
-          </Link>
+          {onOpenOrderTracking ? (
+            <button
+              type="button"
+              onClick={onOpenOrderTracking}
+              className="text-[#a0b4c4] hover:text-sky-300 transition-colors duration-150 flex items-center gap-1.5 cursor-pointer"
+            >
+              <LayoutDashboard className="w-3.5 h-3.5 text-purple-300" />
+              AG Grid Orders
+            </button>
+          ) : (
+            <Link
+              href="/dashboard"
+              className="text-[#a0b4c4] hover:text-sky-300 transition-colors duration-150 flex items-center gap-1.5"
+            >
+              <LayoutDashboard className="w-3.5 h-3.5 text-purple-300" />
+              AG Grid Orders
+            </Link>
+          )}
         </nav>
 
         {/* Trailing Action Badges and CTAs */}

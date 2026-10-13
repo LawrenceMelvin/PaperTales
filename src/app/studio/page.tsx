@@ -8,6 +8,7 @@ import MascotQuoter from "@/components/MascotQuoter";
 import TokenModal from "@/components/TokenModal";
 import OrderSummaryModal from "@/components/OrderSummaryModal";
 import BookDetailsModal from "@/components/BookDetailsModal";
+import OrderTrackingGrid from "@/components/OrderTrackingGrid";
 import { BookProject, BookPage, CharacterAnchor } from "@/types/book";
 import { CompanionProduct } from "@/types/order";
 import { deductClientTokens, getClientTokenBalance } from "@/lib/token-store";
@@ -31,6 +32,9 @@ import {
   Plus,
   Check,
   ShoppingBag,
+  ShieldCheck,
+  AlertTriangle,
+  Package,
 } from "lucide-react";
 
 type BookGenre = "coloring_book" | "memory_book" | "math_book" | "science_book";
@@ -149,11 +153,20 @@ const GENRE_LANES: GenreConfig[] = [
   },
 ];
 
+interface PrintAdvisoryData {
+  hasRisk: boolean;
+  franchiseName?: string;
+  safeTitle?: string;
+  safeCharacter?: string;
+  explanation?: string;
+}
+
 interface ChatMessageItem {
   id: string;
   role: "user" | "assistant";
   content: string;
   quickReplies?: string[];
+  printAdvisory?: PrintAdvisoryData;
 }
 
 const INITIAL_MESSAGES: ChatMessageItem[] = [];
@@ -240,6 +253,7 @@ export default function StudioPage() {
   const [tokenModalOpen, setTokenModalOpen] = useState<boolean>(false);
   const [orderModalOpen, setOrderModalOpen] = useState<boolean>(false);
   const [bookDetailsOpen, setBookDetailsOpen] = useState<boolean>(false);
+  const [orderTrackingOpen, setOrderTrackingOpen] = useState<boolean>(false);
 
   // Auto-scroll ref for chat thread
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -347,6 +361,7 @@ export default function StudioPage() {
           role: "assistant",
           content: data.reply,
           quickReplies: data.quickReplies || [],
+          printAdvisory: data.printAdvisory,
         };
         setMessages([...newThread, assistantMsg]);
 
@@ -525,12 +540,15 @@ export default function StudioPage() {
       </div>
 
       <div className="relative z-10 flex flex-col min-h-screen">
-        <Navbar onOpenTokenModal={() => setTokenModalOpen(true)} />
+        <Navbar
+          onOpenTokenModal={() => setTokenModalOpen(true)}
+          onOpenOrderTracking={() => setOrderTrackingOpen(true)}
+        />
 
         <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
           {/* =========================================================================
               SECTION 1 (TOP): BOOK CREATOR ASSISTANCE (PAPERTALES)
-              Interactive AI Assistant Copilot powered by gpt-4o-mini
+              Interactive AI Assistant Copilot powered by Groq & GPT-4o
               ========================================================================= */}
           <section className="glacier-glass rounded-2xl border border-sky-400/30 p-5 sm:p-7 shadow-2xl relative overflow-hidden space-y-6">
             {/* Header: Book Creator Assistance */}
@@ -544,14 +562,24 @@ export default function StudioPage() {
                     Book Creator Assistance
                   </h2>
                   <p className="text-xs text-[#a0b4c4]">
-                    Meet <strong className="text-sky-300">PaperTales</strong> &bull; AI Co-Creation Copilot (GPT-4o-mini)
+                    Meet <strong className="text-sky-300">PaperTales</strong> &bull; Powered by Groq LPU &amp; GPT-4o
                   </p>
                 </div>
               </div>
-              <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                Copilot Online
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOrderTrackingOpen(true)}
+                  className="text-[11px] font-bold px-3 py-1 rounded-full glacier-glass hover:bg-slate-800 text-sky-200 border border-sky-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                >
+                  <Package className="w-3.5 h-3.5 text-sky-400" />
+                  <span>AG Grid Orders</span>
+                </button>
+                <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  Copilot Online
+                </span>
+              </div>
             </div>
 
             {/* Conversation Thread */}
@@ -638,6 +666,54 @@ export default function StudioPage() {
                         }`}
                       >
                         <p className="whitespace-pre-wrap">{msg.content}</p>
+
+                        {/* Print-Safe & Copyright Advisory Card */}
+                        {!isUser && msg.printAdvisory?.hasRisk && (
+                          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-400/40 text-xs space-y-2.5 animate-in fade-in">
+                            <div className="flex items-center gap-2 text-amber-300 font-bold">
+                              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                              <span>
+                                Print-on-Demand Factory Notice ({msg.printAdvisory.franchiseName || "Trademark Detected"})
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-300 leading-relaxed">
+                              {msg.printAdvisory.explanation ||
+                                "If printing a physical copy through Lulu POD, industrial print facilities may flag exact trademarked names. You can adopt our print-safe homage title or keep your original choice!"}
+                            </p>
+                            <div className="flex flex-wrap gap-2 pt-1">
+                              {msg.printAdvisory.safeTitle && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (msg.printAdvisory?.safeTitle) {
+                                      setBook((prev) => ({
+                                        ...prev,
+                                        title: msg.printAdvisory!.safeTitle!,
+                                        character: msg.printAdvisory!.safeCharacter
+                                          ? { ...prev.character, name: msg.printAdvisory!.safeCharacter! }
+                                          : prev.character,
+                                      }));
+                                      handleSendMessage(`I choose the print-safe title: "${msg.printAdvisory.safeTitle}"`);
+                                    }
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                                >
+                                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>Adopt Safe: &quot;{msg.printAdvisory.safeTitle}&quot;</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleSendMessage("Keep my original character and book title, send to print queue");
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-amber-200 border border-amber-400/30 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                              >
+                                <span>Keep Original &amp; Proceed to Print</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Quick Replies for Assistant Messages */}
                         {!isUser && msg.quickReplies && msg.quickReplies.length > 0 && (
@@ -974,6 +1050,11 @@ export default function StudioPage() {
           isOpen={orderModalOpen}
           onClose={() => setOrderModalOpen(false)}
           book={book}
+        />
+
+        <OrderTrackingGrid
+          isOpen={orderTrackingOpen}
+          onClose={() => setOrderTrackingOpen(false)}
         />
       </div>
     </div>

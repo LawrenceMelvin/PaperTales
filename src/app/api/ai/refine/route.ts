@@ -17,9 +17,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
+    const groqKey = process.env.GROQ_API_KEY;
+    const openAiKey = process.env.OPENAI_API_KEY;
 
-    if (apiKey && apiKey.startsWith("sk-")) {
+    const useGroq = Boolean(groqKey && groqKey.startsWith("gsk_"));
+    const apiKey = useGroq ? groqKey : openAiKey;
+    const apiUrl = useGroq
+      ? "https://api.groq.com/openai/v1/chat/completions"
+      : "https://api.openai.com/v1/chat/completions";
+    const model = useGroq ? "openai/gpt-oss-20b" : "gpt-4o-mini";
+
+    if (apiKey) {
       try {
         const systemPrompt = `You are a world-class book editor, creative writing mentor, and publishing specialist for PaperTales AI.
 Your task is to refine, rewrite, or polish a specific highlighted passage from a book based on the user's instructions.
@@ -47,14 +55,14 @@ Highlighted Text to Refine:
 User's Change Instruction:
 "${instruction}"`;
 
-        const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        const res = await fetch(apiUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            model: "gpt-4o-mini",
+            model,
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
@@ -73,11 +81,12 @@ User's Change Instruction:
               refinedText: parsed.refinedText,
               explanation: parsed.explanation || "Text refined by PaperTales AI",
               tokensUsed: 1,
+              engine: useGroq ? "groq-20b" : "openai-gpt-4o-mini",
             });
           }
         }
       } catch (apiErr) {
-        console.warn("OpenAI refine live call error, using smart fallback:", apiErr);
+        console.warn("AI refine live call error, using smart fallback:", apiErr);
       }
     }
 
