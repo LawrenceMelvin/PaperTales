@@ -6,6 +6,7 @@ import Image from "next/image";
 import Navbar from "@/components/Navbar";
 import TokenModal from "@/components/TokenModal";
 import Logo from "@/components/Logo";
+import Interactive3DBook from "@/components/Interactive3DBook";
 import {
   Sparkles,
   BookOpen,
@@ -117,6 +118,13 @@ export default function LandingPage() {
                 📸 Memory Lane Albums
               </span>
             </div>
+          </section>
+
+          {/* ========================================================================= */}
+          {/* TACTILE 3D INTERACTIVE CENTERPIECE INSPECTOR                              */}
+          {/* ========================================================================= */}
+          <section className="max-w-7xl mx-auto px-4 md:px-8 py-2" id="3d-book-inspector">
+            <Interactive3DBook />
           </section>
 
           {/* ========================================================================= */}
