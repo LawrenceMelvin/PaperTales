@@ -373,7 +373,7 @@ export default function LandingPage() {
                 </span>
               </h2>
               <p className="text-base md:text-lg text-[#a0b4c4] mt-3">
-                No monthly subscription fatigue. You only pay for the AI model compute and paper manufacturing you actually use. The first 5 pages are 100% free on every book.
+                No monthly subscription fatigue. You only pay for the AI model compute you use ($0.02 – $0.05/page) and paper manufacturing if you choose physical print. Digital PDF downloads are always 100% free.
               </p>
             </div>
 
@@ -402,7 +402,10 @@ export default function LandingPage() {
                     </div>
                     <div className="flex justify-between items-baseline">
                       <span className="text-xs text-[#a0b4c4]">Digital PDF:</span>
-                      <span className="text-sm font-bold text-white font-mono">$2.99 Flat</span>
+                      <span className="text-sm font-bold text-emerald-300 font-mono flex items-center gap-1.5">
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] uppercase tracking-wider font-semibold">Free</span>
+                        <span>$0.00</span>
+                      </span>
                     </div>
                     <div className="flex justify-between items-baseline">
                       <span className="text-xs text-[#a0b4c4]">Physical Print:</span>
@@ -414,6 +417,10 @@ export default function LandingPage() {
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                       <span>First 5 introductory pages 100% free</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Instant 300 DPI vector PDF export 100% free</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -464,7 +471,10 @@ export default function LandingPage() {
                     </div>
                     <div className="flex justify-between items-baseline">
                       <span className="text-xs text-[#a0b4c4]">Digital PDF:</span>
-                      <span className="text-sm font-bold text-white font-mono">$4.99 Flat</span>
+                      <span className="text-sm font-bold text-emerald-300 font-mono flex items-center gap-1.5">
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] uppercase tracking-wider font-semibold">Free</span>
+                        <span>$0.00</span>
+                      </span>
                     </div>
                     <div className="flex justify-between items-baseline">
                       <span className="text-xs text-[#a0b4c4]">Physical Print:</span>
@@ -476,6 +486,10 @@ export default function LandingPage() {
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-sky-400 shrink-0" />
                       <span>First 5 introductory pages 100% free</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-sky-400 shrink-0" />
+                      <span>Unlimited home printing with free vector PDF downloads</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-sky-400 shrink-0" />

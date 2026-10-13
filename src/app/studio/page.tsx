@@ -156,25 +156,7 @@ interface ChatMessageItem {
   quickReplies?: string[];
 }
 
-const INITIAL_MESSAGES: ChatMessageItem[] = [
-  {
-    id: "msg_1",
-    role: "user",
-    content: "Hey, PaperTales what can you do",
-  },
-  {
-    id: "msg_2",
-    role: "assistant",
-    content: "Hi there! I'm PaperTales, your AI book creation copilot. I turn your ideas, family memories, and learning milestones into beautifully illustrated, physical books delivered straight to your door!\n\nI can create Coloring Books (300 DPI vector linework), Family Keepsakes, Math & Logic Quests, or Science Explorers. I also source matching physical art supplies through Channel3 and prepare print-on-demand books via Lulu with PayPal checkout.\n\nTell me: who is this book for, or choose an idea below to begin!",
-    quickReplies: [
-      "🍦 Barnaby's Sweet Ice Cream Parlor",
-      "🚀 Space Puppy visits Mars",
-      "🏖️ Family Summer Beach Road Trip",
-      "🔢 Detective Owl's Castle Math Quest",
-      "🦕 Dinosaur Fossil Dig Adventure",
-    ],
-  },
-];
+const INITIAL_MESSAGES: ChatMessageItem[] = [];
 
 const INITIAL_BOOK: BookProject = {
   id: "book_initial",
@@ -325,6 +307,27 @@ export default function StudioPage() {
     setMessages(newThread);
     setInputMessage("");
     setIsChatting(true);
+
+    // Fast path: If asking "what can you do" as the first message, return instant rich overview
+    if (trimmed.toLowerCase().includes("what can you do") && messages.length === 0) {
+      setTimeout(() => {
+        const assistantMsg: ChatMessageItem = {
+          id: `msg_${Date.now() + 1}`,
+          role: "assistant",
+          content:
+            "Hi there! I'm PaperTales, your AI book creation copilot. I turn your ideas, family memories, recipes, and learning milestones into beautifully formatted, physical books delivered straight to your door!\n\nHere is what I can create with you:\n• 🍲 Family Recipe Heirlooms & Culinary Guides\n• 🎨 Custom Kids' Coloring Books (300 DPI vector linework ready for crayons)\n• 🎣 Dad's Fishing & Wilderness Knot Reference Guides\n• 📖 Guided Daily Habit & Mindfulness Planners\n• 🔢 Math & Logic Quests for young learners\n\n✨ Digital 300 DPI vector PDF downloads are 100% Free! We also match physical art supplies through Channel3 and print bookstore-grade softcover books via Lulu with seamless PayPal checkout.\n\nTell me: who is this book for, or choose an idea below to begin!",
+          quickReplies: [
+            "🍲 Mom's Sunday Kitchen Recipes",
+            "🎨 Barnaby's Cosmic Space Adventures",
+            "🎣 The Lakefront Fishing Journal",
+            "📖 90 Days of Clarity Habit Journal",
+          ],
+        };
+        setMessages([...newThread, assistantMsg]);
+        setIsChatting(false);
+      }, 300);
+      return;
+    }
 
     try {
       const res = await fetch("/api/ai/chat", {
@@ -553,56 +556,121 @@ export default function StudioPage() {
 
             {/* Conversation Thread */}
             <div className="space-y-4 max-h-[460px] overflow-y-auto pr-1">
-              {messages.map((msg) => {
-                const isUser = msg.role === "user";
-                return (
-                  <div key={msg.id} className={`flex items-start gap-2.5 ${isUser ? "justify-end" : "justify-start"}`}>
-                    {!isUser && (
-                      <div className="w-8 h-8 rounded-full bg-sky-400/20 border border-sky-400/40 flex items-center justify-center text-sky-300 shrink-0 mt-1">
-                        <Sparkles className="w-4 h-4" />
-                      </div>
-                    )}
+              {messages.length === 0 ? (
+                <div className="py-8 px-4 flex flex-col items-center justify-center text-center space-y-4 rounded-xl bg-slate-900/40 border border-sky-400/15">
+                  <div className="w-12 h-12 rounded-2xl bg-sky-400/20 border border-sky-400/30 text-sky-300 flex items-center justify-center shadow-lg">
+                    <Sparkles className="w-6 h-6 text-sky-400" />
+                  </div>
+                  <div className="max-w-md space-y-1.5">
+                    <h3 className="text-sm sm:text-base font-bold text-white">
+                      What kind of personal book would you like to create?
+                    </h3>
+                    <p className="text-xs text-[#a0b4c4]">
+                      Type your idea below, or click to explore what PaperTales AI can do.
+                    </p>
+                  </div>
 
-                    <div
-                      className={`max-w-xl rounded-2xl p-4 text-xs sm:text-sm leading-relaxed shadow-lg ${
-                        isUser
-                          ? "bg-sky-500/20 border border-sky-400/40 text-white rounded-tr-xs"
-                          : "bg-slate-900/80 border border-sky-400/25 text-white rounded-tl-xs space-y-3"
-                      }`}
+                  {/* Clickable Starter Pills */}
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-1 max-w-xl">
+                    <button
+                      type="button"
+                      onClick={() => handleSendMessage("Hey, PaperTales what can you do")}
+                      disabled={isChatting}
+                      className="px-4 py-2 rounded-xl text-xs font-bold bg-sky-500/25 hover:bg-sky-500/40 text-sky-200 border border-sky-400/50 flex items-center gap-2 transition-all hover:scale-102 active:scale-95 shadow-md"
                     >
-                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                      <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                      <span>👋 Hey, PaperTales what can you do</span>
+                    </button>
 
-                      {/* Quick Replies for Assistant Messages */}
-                      {!isUser && msg.quickReplies && msg.quickReplies.length > 0 && (
-                        <div className="pt-2 border-t border-white/10 space-y-1.5">
-                          <span className="text-[10px] uppercase font-bold text-sky-400 tracking-wider block">
-                            Suggested Next Steps:
-                          </span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {msg.quickReplies.map((reply, idx) => (
-                              <button
-                                key={idx}
-                                type="button"
-                                onClick={() => handleSendMessage(reply)}
-                                disabled={isChatting}
-                                className="text-[11px] font-semibold bg-slate-950/80 hover:bg-sky-400/20 text-sky-200 border border-sky-400/25 px-2.5 py-1 rounded-lg transition-all active:scale-95 disabled:opacity-50"
-                              >
-                                {reply}
-                              </button>
-                            ))}
+                    <button
+                      type="button"
+                      onClick={() => handleSendMessage("I want to design a family heirloom recipe book")}
+                      disabled={isChatting}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-950/80 hover:bg-white/10 text-slate-300 border border-white/15 transition-all active:scale-95"
+                    >
+                      🍲 Family Recipe Book
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSendMessage("Help me create a custom children's coloring adventure book")}
+                      disabled={isChatting}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-950/80 hover:bg-white/10 text-slate-300 border border-white/15 transition-all active:scale-95"
+                    >
+                      🎨 Kids Coloring Book
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSendMessage("I want to create a Dad's fishing and outdoor knots guide")}
+                      disabled={isChatting}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-950/80 hover:bg-white/10 text-slate-300 border border-white/15 transition-all active:scale-95"
+                    >
+                      🎣 Dad&apos;s Fishing Guide
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSendMessage("I want to make a 90-day guided daily habit and clarity journal")}
+                      disabled={isChatting}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-950/80 hover:bg-white/10 text-slate-300 border border-white/15 transition-all active:scale-95"
+                    >
+                      📖 Daily Habit Journal
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                messages.map((msg) => {
+                  const isUser = msg.role === "user";
+                  return (
+                    <div key={msg.id} className={`flex items-start gap-2.5 ${isUser ? "justify-end" : "justify-start"}`}>
+                      {!isUser && (
+                        <div className="w-8 h-8 rounded-full bg-sky-400/20 border border-sky-400/40 flex items-center justify-center text-sky-300 shrink-0 mt-1">
+                          <Sparkles className="w-4 h-4" />
+                        </div>
+                      )}
+
+                      <div
+                        className={`max-w-xl rounded-2xl p-4 text-xs sm:text-sm leading-relaxed shadow-lg ${
+                          isUser
+                            ? "bg-sky-500/20 border border-sky-400/40 text-white rounded-tr-xs"
+                            : "bg-slate-900/80 border border-sky-400/25 text-white rounded-tl-xs space-y-3"
+                        }`}
+                      >
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
+
+                        {/* Quick Replies for Assistant Messages */}
+                        {!isUser && msg.quickReplies && msg.quickReplies.length > 0 && (
+                          <div className="pt-2 border-t border-white/10 space-y-1.5">
+                            <span className="text-[10px] uppercase font-bold text-sky-400 tracking-wider block">
+                              Suggested Next Steps:
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {msg.quickReplies.map((reply, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => handleSendMessage(reply)}
+                                  disabled={isChatting}
+                                  className="text-[11px] font-semibold bg-slate-950/80 hover:bg-sky-400/20 text-sky-200 border border-sky-400/25 px-2.5 py-1 rounded-lg transition-all active:scale-95 disabled:opacity-50"
+                                >
+                                  {reply}
+                                </button>
+                              ))}
+                            </div>
                           </div>
+                        )}
+                      </div>
+
+                      {isUser && (
+                        <div className="w-8 h-8 rounded-full bg-slate-800 border border-sky-400/30 flex items-center justify-center text-sky-300 shrink-0 mt-1">
+                          <User className="w-4 h-4" />
                         </div>
                       )}
                     </div>
-
-                    {isUser && (
-                      <div className="w-8 h-8 rounded-full bg-slate-800 border border-sky-400/30 flex items-center justify-center text-sky-300 shrink-0 mt-1">
-                        <User className="w-4 h-4" />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
 
               {/* Chatting Loading Indicator */}
               {isChatting && (
@@ -818,6 +886,7 @@ export default function StudioPage() {
               onPrintFirstPage={handlePrintFirstPage}
               onOpenBookDetails={() => setBookDetailsOpen(true)}
               onOrderPhysical={() => setOrderModalOpen(true)}
+              onOpenTokenModal={() => setTokenModalOpen(true)}
               isDownloading={isDownloadingPdf || isPrintingPageOne}
               isConfirmed={isConfirmed}
             />

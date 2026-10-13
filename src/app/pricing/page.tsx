@@ -95,7 +95,7 @@ export default function PricingPage() {
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>$2.99 flat digital PDF download</span>
+                    <span>100% Free 300 DPI vector PDF download</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
@@ -127,7 +127,7 @@ export default function PricingPage() {
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />
-                    <span>$4.99 flat digital PDF download</span>
+                    <span>100% Free 300 DPI vector PDF download</span>
                   </li>
                 </ul>
               </div>

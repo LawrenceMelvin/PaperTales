@@ -14,7 +14,17 @@ import {
   PenTool,
   Info,
   FileCheck,
+  Smile,
+  Baby,
+  Eye,
+  RotateCcw,
+  Loader2,
+  Send,
+  Palette,
+  RefreshCw,
+  X,
 } from "lucide-react";
+import { getClientTokenBalance, deductClientTokens } from "@/lib/token-store";
 
 interface BookViewerProps {
   book: BookProject;
@@ -23,6 +33,7 @@ interface BookViewerProps {
   onOrderPhysical: () => void;
   onPrintFirstPage?: () => void;
   onOpenBookDetails?: () => void;
+  onOpenTokenModal?: () => void;
   isDownloading?: boolean;
   isConfirmed?: boolean;
 }
@@ -34,6 +45,7 @@ export default function BookViewer({
   onOrderPhysical,
   onPrintFirstPage,
   onOpenBookDetails,
+  onOpenTokenModal,
   isDownloading,
   isConfirmed = true,
 }: BookViewerProps) {
@@ -41,6 +53,24 @@ export default function BookViewer({
   const [editingStory, setEditingStory] = useState<boolean>(false);
   const [editText, setEditText] = useState<string>("");
   const [mobilePageTab, setMobilePageTab] = useState<"story" | "art">("story");
+
+  // Floating AI text refine states
+  const [textSelection, setTextSelection] = useState<{
+    text: string;
+    top: number;
+    left: number;
+    visible: boolean;
+  } | null>(null);
+  const [isRefiningText, setIsRefiningText] = useState<boolean>(false);
+  const [customInstruction, setCustomInstruction] = useState<string>("");
+  const [previousStoryText, setPreviousStoryText] = useState<string | null>(null);
+  const [refineFeedback, setRefineFeedback] = useState<string | null>(null);
+
+  // Art tweak states
+  const [artModalOpen, setArtModalOpen] = useState<boolean>(false);
+  const [artPrompt, setArtPrompt] = useState<string>("");
+  const [isGeneratingArt, setIsGeneratingArt] = useState<boolean>(false);
+  const [artFeedback, setArtFeedback] = useState<string | null>(null);
 
   const totalPages = book.pages.length;
   const isCover = currentPageIndex === 0;
@@ -50,6 +80,8 @@ export default function BookViewer({
     if (currentPageIndex < totalPages) {
       setCurrentPageIndex((prev) => prev + 1);
       setEditingStory(false);
+      setTextSelection(null);
+      setArtModalOpen(false);
     }
   };
 
@@ -57,6 +89,132 @@ export default function BookViewer({
     if (currentPageIndex > 0) {
       setCurrentPageIndex((prev) => prev - 1);
       setEditingStory(false);
+      setTextSelection(null);
+      setArtModalOpen(false);
+    }
+  };
+
+  const handleStoryMouseUp = () => {
+    setTimeout(() => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) {
+        return;
+      }
+      const text = sel.toString().trim();
+      if (text.length < 3) {
+        return;
+      }
+      try {
+        const range = sel.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        setTextSelection({
+          text,
+          top: Math.max(16, rect.top - 8),
+          left: Math.max(160, Math.min(window.innerWidth - 180, rect.left + rect.width / 2)),
+          visible: true,
+        });
+      } catch (e) {
+        console.warn("Selection positioning error:", e);
+      }
+    }, 20);
+  };
+
+  const handleApplyRefine = async (instruction: string) => {
+    if (!textSelection || !activePage) return;
+    const balance = getClientTokenBalance();
+    if (balance < 1) {
+      setTextSelection(null);
+      if (onOpenTokenModal) onOpenTokenModal();
+      return;
+    }
+
+    setIsRefiningText(true);
+    const targetSnippet = textSelection.text;
+    const currentFullStory = activePage.storyText;
+
+    try {
+      const res = await fetch("/api/ai/refine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          originalText: targetSnippet,
+          instruction,
+          fullStoryText: currentFullStory,
+          bookTitle: book.title,
+          genre: book.genre,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.refinedText) {
+        deductClientTokens(1);
+        setPreviousStoryText(currentFullStory);
+        const updatedStory = currentFullStory.replace(targetSnippet, data.refinedText);
+        onPageUpdate({ ...activePage, storyText: updatedStory });
+        setRefineFeedback(data.explanation || "Text polished with AI!");
+        setTimeout(() => setRefineFeedback(null), 5000);
+      }
+    } catch (err) {
+      console.error("Failed to refine story snippet:", err);
+    } finally {
+      setIsRefiningText(false);
+      setTextSelection(null);
+      setCustomInstruction("");
+      window.getSelection()?.removeAllRanges();
+    }
+  };
+
+  const handleUndoRefine = () => {
+    if (previousStoryText && activePage) {
+      onPageUpdate({ ...activePage, storyText: previousStoryText });
+      setPreviousStoryText(null);
+      setRefineFeedback("Restored previous text");
+      setTimeout(() => setRefineFeedback(null), 3000);
+    }
+  };
+
+  const handleTweakArt = async (customInstruction?: string) => {
+    if (!activePage) return;
+    const balance = getClientTokenBalance();
+    if (balance < 2) {
+      setArtModalOpen(false);
+      if (onOpenTokenModal) onOpenTokenModal();
+      return;
+    }
+
+    setIsGeneratingArt(true);
+    try {
+      const fullPrompt = customInstruction
+        ? `${activePage.imagePrompt || "coloring page illustration"}, modification: ${customInstruction}`
+        : `${activePage.imagePrompt || "coloring page illustration"}, fresh alternative composition`;
+
+      const res = await fetch("/api/ai/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: fullPrompt,
+          characterTraits: book.character?.traits?.join(", ") || "",
+          pageNumber: activePage.pageNumber,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        deductClientTokens(2);
+        if (data.imageUrl) {
+          onPageUpdate({ ...activePage, imageUrl: data.imageUrl, svgData: undefined });
+        } else if (data.svg) {
+          onPageUpdate({ ...activePage, svgData: data.svg, imageUrl: undefined });
+        }
+        setArtFeedback("Artwork updated!");
+        setTimeout(() => setArtFeedback(null), 4000);
+      }
+    } catch (err) {
+      console.error("Failed to tweak art:", err);
+    } finally {
+      setIsGeneratingArt(false);
+      setArtModalOpen(false);
+      setArtPrompt("");
     }
   };
 
@@ -209,15 +367,39 @@ export default function BookViewer({
                   </div>
                 ) : (
                   <div className="group relative">
-                    <p className="text-sm sm:text-base lg:text-lg font-serif text-slate-800 leading-relaxed sm:leading-loose">
+                    <div className="text-[11px] font-medium text-sky-600 mb-1 flex items-center gap-1 select-none">
+                      <Sparkles className="w-3 h-3 text-sky-500" />
+                      <span>Highlight any text to polish or rewrite with AI (1 🪙)</span>
+                    </div>
+                    <p
+                      onMouseUp={handleStoryMouseUp}
+                      onTouchEnd={handleStoryMouseUp}
+                      className="text-sm sm:text-base lg:text-lg font-serif text-slate-800 leading-relaxed sm:leading-loose cursor-text selection:bg-sky-200 selection:text-sky-950"
+                    >
                       {activePage?.storyText}
                     </p>
-                    <button
-                      onClick={() => startEdit(activePage?.storyText || "")}
-                      className="sm:opacity-0 group-hover:opacity-100 transition-opacity mt-3 text-xs text-sky-700 font-semibold flex items-center gap-1 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200 w-fit"
-                    >
-                      <Edit3 className="w-3 h-3 text-sky-600" /> Edit Story Text
-                    </button>
+                    <div className="flex items-center gap-2 mt-3 flex-wrap">
+                      <button
+                        onClick={() => startEdit(activePage?.storyText || "")}
+                        className="sm:opacity-0 group-hover:opacity-100 transition-opacity text-xs text-sky-700 font-semibold flex items-center gap-1 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200 w-fit"
+                      >
+                        <Edit3 className="w-3 h-3 text-sky-600" /> Manual Edit
+                      </button>
+                      {previousStoryText && (
+                        <button
+                          onClick={handleUndoRefine}
+                          className="text-xs font-bold text-sky-600 hover:text-sky-800 flex items-center gap-1 bg-sky-50/80 px-2.5 py-1 rounded-lg border border-sky-300 w-fit transition-all active:scale-95"
+                        >
+                          <RotateCcw className="w-3 h-3" /> Undo AI Refinement
+                        </button>
+                      )}
+                    </div>
+                    {refineFeedback && (
+                      <div className="mt-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1.5 animate-in fade-in">
+                        <Check className="w-3 h-3 text-emerald-600" />
+                        <span>{refineFeedback}</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -238,7 +420,39 @@ export default function BookViewer({
 
               {/* Vector coloring line art container */}
               <div className="w-full flex-1 border-2 border-slate-900 rounded-xl p-4 flex flex-col items-center justify-center relative overflow-hidden bg-white min-h-[260px] sm:min-h-[320px]">
-                {isIceCreamTheme ? (
+                {/* Tweak art trigger button in top-right */}
+                <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setArtModalOpen(true)}
+                    disabled={isGeneratingArt}
+                    className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-900/90 hover:bg-slate-950 text-sky-300 border border-sky-400/40 shadow-md flex items-center gap-1.5 transition-all hover:scale-102 active:scale-95 cursor-pointer"
+                  >
+                    {isGeneratingArt ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
+                    ) : (
+                      <Palette className="w-3.5 h-3.5 text-sky-400" />
+                    )}
+                    <span>Tweak Art</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-400/20 text-sky-300 font-mono">
+                      2 🪙
+                    </span>
+                  </button>
+                </div>
+
+                {/* Render customized illustration if generated, else fall back to theme template */}
+                {activePage?.imageUrl ? (
+                  <img
+                    src={activePage.imageUrl}
+                    alt={activePage.title}
+                    className="w-full h-full max-h-[340px] object-contain"
+                  />
+                ) : activePage?.svgData ? (
+                  <div
+                    dangerouslySetInnerHTML={{ __html: activePage.svgData }}
+                    className="w-full h-full flex items-center justify-center max-h-[340px]"
+                  />
+                ) : isIceCreamTheme ? (
                   /* Ice Cream Cone Vector Line Art (Matching User's Hand-drawn Sketch!) */
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" className="w-full h-full max-h-[340px]">
                     <rect width="400" height="400" fill="#FFFFFF" />
@@ -448,6 +662,177 @@ export default function BookViewer({
           <span>Order Physical Print</span>
         </button>
       </div>
+
+      {/* Floating AI Text Refine Popover */}
+      {textSelection?.visible && (
+        <div
+          style={{
+            position: "fixed",
+            top: `${textSelection.top}px`,
+            left: `${textSelection.left}px`,
+            transform: "translate(-50%, -100%)",
+            zIndex: 60,
+          }}
+          className="glacier-glass rounded-2xl p-3 border border-sky-400/40 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 w-[300px] sm:w-[360px]"
+        >
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-sky-200">
+              <Sparkles className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
+              <span>Refine with AI</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-400/20 text-sky-300 font-mono border border-sky-400/30">
+                1 Token
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTextSelection(null)}
+              className="text-slate-400 hover:text-white p-0.5 rounded cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Snippet Preview */}
+          <div className="text-[11px] text-slate-300 italic line-clamp-2 bg-slate-950/60 p-2 rounded-lg border border-white/10 mb-2.5">
+            &ldquo;{textSelection.text}&rdquo;
+          </div>
+
+          {/* Preset Action Chips */}
+          <div className="flex flex-wrap gap-1.5 mb-2.5">
+            <button
+              type="button"
+              disabled={isRefiningText}
+              onClick={() => handleApplyRefine("Make it playful, humorous, and full of giggles")}
+              className="text-[11px] px-2.5 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-400/30 flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+            >
+              <Smile className="w-3 h-3 text-sky-400" /> Playful
+            </button>
+            <button
+              type="button"
+              disabled={isRefiningText}
+              onClick={() => handleApplyRefine("Simplify language for younger readers")}
+              className="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+            >
+              <Baby className="w-3 h-3 text-emerald-400" /> Simplify
+            </button>
+            <button
+              type="button"
+              disabled={isRefiningText}
+              onClick={() => handleApplyRefine("Add rich sensory details and vivid imagery")}
+              className="text-[11px] px-2.5 py-1 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-400/30 flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+            >
+              <Eye className="w-3 h-3 text-purple-400" /> Sensory
+            </button>
+          </div>
+
+          {/* Custom Instruction Input */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (customInstruction.trim()) {
+                handleApplyRefine(customInstruction.trim());
+              }
+            }}
+            className="flex items-center gap-1.5"
+          >
+            <input
+              type="text"
+              value={customInstruction}
+              onChange={(e) => setCustomInstruction(e.target.value)}
+              placeholder="Or type custom change..."
+              disabled={isRefiningText}
+              className="flex-1 bg-slate-900/90 text-xs text-white placeholder-slate-400 px-2.5 py-1.5 rounded-lg border border-sky-400/30 focus:outline-none focus:ring-1 focus:ring-sky-400"
+            />
+            <button
+              type="submit"
+              disabled={isRefiningText || !customInstruction.trim()}
+              className="px-2.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs flex items-center gap-1 disabled:opacity-50 transition-all cursor-pointer"
+            >
+              {isRefiningText ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Send className="w-3.5 h-3.5" />
+              )}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* Art Tweak Modal */}
+      {artModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="glacier-glass rounded-2xl border border-sky-400/40 p-5 sm:p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-sky-400/20 text-sky-300 flex items-center justify-center border border-sky-400/30">
+                  <Palette className="w-4 h-4 text-sky-400" />
+                </div>
+                <div>
+                  <h4 className="text-sm sm:text-base font-extrabold text-white">
+                    Tweak Illustration
+                  </h4>
+                  <p className="text-[11px] text-[#a0b4c4]">
+                    Page {activePage?.pageNumber} Line Art &bull; 2 Tokens
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setArtModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Tell the AI Helper what visual elements you want added, removed, or modified for this page.
+            </p>
+
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={artPrompt}
+                onChange={(e) => setArtPrompt(e.target.value)}
+                placeholder="e.g. Add butterflies in background, make puppy wear a crown..."
+                disabled={isGeneratingArt}
+                className="w-full bg-slate-900/90 text-xs text-white placeholder-slate-400 p-3 rounded-xl border border-sky-400/30 focus:outline-none focus:ring-2 focus:ring-sky-400 font-sans"
+              />
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isGeneratingArt}
+                onClick={() => handleTweakArt()}
+                className="w-full sm:w-1/2 py-2.5 px-3 text-xs font-bold rounded-xl glacier-glass-subtle hover:bg-slate-800 text-sky-200 border border-sky-400/30 flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-sky-400" />
+                <span>Re-roll Scene (2 🪙)</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={isGeneratingArt || !artPrompt.trim()}
+                onClick={() => handleTweakArt(artPrompt.trim())}
+                className="w-full sm:w-1/2 py-2.5 px-3 text-xs font-extrabold rounded-xl glacier-btn text-[#001f2e] flex items-center justify-center gap-1.5 shadow-lg transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+              >
+                {isGeneratingArt ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Drawing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Apply Tweak (2 🪙)</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

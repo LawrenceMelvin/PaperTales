@@ -33,7 +33,7 @@ export default function PricingCalculator({ className = "" }: PricingCalculatorP
 
   // Dynamic Compute Rate per Page: $0.02 for Words vs $0.05 for Illustrated
   const aiRatePerPage = bookType === "words" ? 0.02 : 0.05;
-  const digitalBasePrice = bookType === "words" ? 2.99 : 4.99;
+  const digitalBasePrice = 0;
 
   let bindingCost = 0;
   let aiCost = 0;
@@ -44,8 +44,8 @@ export default function PricingCalculator({ className = "" }: PricingCalculatorP
   if (selectedEdition === "digital") {
     bindingCost = 0;
     aiCost = billablePages * aiRatePerPage;
-    margin = bookType === "words" ? 1.5 : 2.5;
-    totalOrder = digitalBasePrice;
+    margin = 0;
+    totalOrder = aiCost;
   } else if (selectedEdition === "physical") {
     bindingCost = billablePages * 0.17;
     aiCost = billablePages * aiRatePerPage;
@@ -207,14 +207,14 @@ export default function PricingCalculator({ className = "" }: PricingCalculatorP
                 }`}
               >
                 <div className="flex justify-between items-start">
-                  <FileText className="w-5 h-5 text-sky-400" />
-                  <span className="text-xs font-bold text-slate-300 font-mono">
-                    ${digitalBasePrice.toFixed(2)} Flat
+                  <FileText className="w-5 h-5 text-emerald-400" />
+                  <span className="text-[10px] font-bold text-emerald-300 font-mono px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/30">
+                    FREE PDF
                   </span>
                 </div>
                 <div className="mt-3">
                   <p className="text-sm font-bold text-white">Digital PDF Only</p>
-                  <p className="text-xs text-[#a0b4c4]">300 DPI Instant Vector</p>
+                  <p className="text-xs text-[#a0b4c4]">100% Free Vector Download</p>
                 </div>
               </button>
 
