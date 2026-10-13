@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Sparkles,
   BookOpen,
@@ -23,6 +24,7 @@ interface BookData {
   icon: React.ReactNode;
   themeColor: string;
   accentBg: string;
+  coverImage: string;
   coverTitle: string;
   coverSubtitle: string;
   coverBadge: string;
@@ -42,6 +44,7 @@ const BOOKS: Record<BookKey, BookData> = {
     icon: <ChefHat className="w-4 h-4" />,
     themeColor: "#f59e0b",
     accentBg: "from-amber-950/80 via-slate-900/90 to-amber-900/50",
+    coverImage: "/covers/cover-recipe.png",
     coverTitle: "Rosa's Sunday Kitchen",
     coverSubtitle: "Twelve Generational Recipes & Sunday Gravy Traditions",
     coverBadge: "Heirloom Edition",
@@ -98,6 +101,7 @@ const BOOKS: Record<BookKey, BookData> = {
     icon: <Palette className="w-4 h-4" />,
     themeColor: "#38bdf8",
     accentBg: "from-sky-950/80 via-slate-900/90 to-cyan-950/60",
+    coverImage: "/covers/cover-coloring.png",
     coverTitle: "Captain Barnaby's Cosmos",
     coverSubtitle: "Starlight Rovers & Planetary Coloring Quests",
     coverBadge: "Coloring Studio",
@@ -158,6 +162,7 @@ const BOOKS: Record<BookKey, BookData> = {
     icon: <Compass className="w-4 h-4" />,
     themeColor: "#10b981",
     accentBg: "from-emerald-950/80 via-slate-900/90 to-teal-950/60",
+    coverImage: "/covers/cover-fishing.png",
     coverTitle: "The Lakefront Journal",
     coverSubtitle: "Dad's Field Notes on Knots, Lures & Camping Traditions",
     coverBadge: "Mentor Guide",
@@ -210,6 +215,7 @@ const BOOKS: Record<BookKey, BookData> = {
     icon: <PenTool className="w-4 h-4" />,
     themeColor: "#c084fc",
     accentBg: "from-purple-950/80 via-slate-900/90 to-indigo-950/60",
+    coverImage: "/covers/cover-journal.png",
     coverTitle: "90 Days of Clarity",
     coverSubtitle: "A Guided Morning Routine & Mindfulness Companion",
     coverBadge: "Personal Edition",
@@ -479,49 +485,66 @@ export default function Interactive3DBook() {
                 backfaceVisibility: "hidden",
               }}
             >
+              {/* Full-Bleed AI Generated Cover Artwork */}
+              <div className="absolute inset-0 pointer-events-none">
+                <Image
+                  src={activeBook.coverImage}
+                  alt={activeBook.coverTitle}
+                  fill
+                  sizes="(max-width: 768px) 100vw, 500px"
+                  className="object-cover object-center filter brightness-[0.85] contrast-[1.08] transition-transform duration-700 hover:scale-105"
+                  priority
+                />
+                {/* Vignette & Soft Gradient for Luxury Foil Feel and Typography Contrast */}
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-slate-950/75" />
+              </div>
+
               {/* Dynamic Specular Glare Layer that tracks mouse */}
               <div
-                className="absolute inset-0 pointer-events-none transition-opacity duration-300"
+                className="absolute inset-0 pointer-events-none transition-opacity duration-300 z-10"
                 style={{
-                  background: `radial-gradient(circle at ${glarePos.x}% ${glarePos.y}%, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0) 55%)`,
-                  opacity: isHovered ? 0.9 : 0.3,
+                  background: `radial-gradient(circle at ${glarePos.x}% ${glarePos.y}%, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0) 55%)`,
+                  opacity: isHovered ? 0.95 : 0.35,
                 }}
               />
 
               {/* Decorative Luxury Gold/Sky Foil Frame */}
-              <div className="absolute inset-3 rounded-xl border border-sky-400/25 pointer-events-none" />
-              <div className="absolute inset-4 rounded-lg border border-dashed border-sky-300/15 pointer-events-none" />
+              <div className="absolute inset-3 rounded-xl border border-sky-300/30 pointer-events-none z-10 shadow-[inset_0_0_12px_rgba(56,189,248,0.15)]" />
+              <div className="absolute inset-4 rounded-lg border border-dashed border-sky-200/20 pointer-events-none z-10" />
 
               {/* Left Spine Book Texture / Crease simulation */}
-              <div className="absolute inset-y-0 left-0 w-5 bg-gradient-to-r from-black/50 via-white/5 to-transparent pointer-events-none" />
+              <div className="absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-black/70 via-black/20 to-transparent pointer-events-none z-10" />
 
               {/* Cover Header Badge */}
-              <div className="relative z-10 flex items-center justify-between">
-                <span className="text-[10px] font-mono font-bold uppercase tracking-widest px-2.5 py-1 rounded-md bg-white/10 backdrop-blur-md border border-white/20 text-sky-200">
+              <div className="relative z-20 flex items-center justify-between">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-widest px-2.5 py-1 rounded-md bg-black/50 backdrop-blur-md border border-white/25 text-sky-200 shadow-md">
                   {activeBook.coverBadge}
                 </span>
-                <span className="text-[10px] font-mono text-[#a0b4c4] flex items-center gap-1">
+                <span className="text-[10px] font-mono text-slate-200 flex items-center gap-1 bg-black/40 backdrop-blur-sm px-2 py-0.5 rounded border border-white/10">
                   <Printer className="w-3 h-3 text-sky-400" /> 8.5&times;8.5&quot;
                 </span>
               </div>
 
               {/* Cover Artwork & Typography Centerpiece */}
-              <div className="relative z-10 text-center my-auto flex flex-col items-center px-2">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-white/15 to-white/5 border border-white/25 flex items-center justify-center mb-4 shadow-inner group-hover:scale-105 transition-transform">
-                  <div className="text-sky-300 text-3xl">{activeBook.icon}</div>
+              <div className="relative z-20 text-center my-auto flex flex-col items-center px-4 py-3 rounded-2xl bg-black/45 backdrop-blur-md border border-white/20 shadow-2xl max-w-[280px] mx-auto">
+                <div className="w-12 h-12 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center mb-2.5 shadow-inner backdrop-blur-sm">
+                  <div className="text-sky-300 text-2xl">{activeBook.icon}</div>
                 </div>
 
-                <h3 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white drop-shadow-md">
+                <h3 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)] font-serif leading-tight">
                   {activeBook.coverTitle}
                 </h3>
-                <p className="mt-2 text-xs text-sky-100/80 font-medium max-w-[240px] leading-relaxed">
+                <p className="mt-1.5 text-[11px] text-sky-100/90 font-medium leading-relaxed drop-shadow">
                   {activeBook.coverSubtitle}
                 </p>
+                <span className="text-[8px] font-mono uppercase tracking-wider text-amber-300/90 mt-2 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-400/30">
+                  AI Generated Cover
+                </span>
               </div>
 
               {/* Cover Bottom Certification Footer */}
-              <div className="relative z-10 flex items-center justify-between text-[9px] font-mono text-[#a0b4c4] border-t border-white/10 pt-3">
-                <span className="flex items-center gap-1 text-sky-300">
+              <div className="relative z-20 flex items-center justify-between text-[9px] font-mono text-slate-200 border-t border-white/15 pt-2.5 bg-black/30 backdrop-blur-sm px-2 rounded-b">
+                <span className="flex items-center gap-1 text-sky-300 font-medium">
                   <CheckCircle2 className="w-3 h-3 text-sky-400" /> Lulu Print Verified
                 </span>
                 <span>Softcover Velvet</span>

@@ -36,6 +36,7 @@ Parents, educators, and children can co-create personalized narrative adventures
 | **Agentic Commerce** | [Channel3 API](https://trychannel3.com/) | Real-time product search and companion art supply bundles. |
 | **Data Grid & Portal** | [AG Grid Community / React](https://www.ag-grid.com/) | Enterprise data grid for author order tracking and CSV reporting. |
 | **PDF Generation** | [pdf-lib](https://pdf-lib.js.org/) | Client and server-side 300 DPI vector PDF compilation. |
+| **API Tooling & Context** | [APIMatic Context Plugin](https://www.apimatic.io/) (`context-matic`) | Injects version-accurate PayPal Server SDK schemas & Orders v2 contracts into AI coding agents. |
 | **AI Orchestration** | OpenAI / Gemini Models | Narrative storytelling, prompt structuring, and vector line art generation. |
 
 ---
@@ -128,6 +129,18 @@ To verify production compilation and run the optimized build:
 npm run build
 npm start
 ```
+
+---
+
+## ⚡ PayPal & APIMatic Integration
+
+PaperTales AI integrates the modern **PayPal Server SDK (Orders v2 API)** for frictionless payments, dynamic print-on-demand fulfillment billing, and automated order reconciliation.
+
+### APIMatic Context Plugin Usage
+To ensure robust, hallucination-free implementation of the PayPal SDK across our development workflow, we utilized the **APIMatic Context Plugin** (`context-matic`):
+- **Deterministic SDK Context:** Guided our coding agents with official PayPal Server SDK schemas, preventing legacy v1 method calls and deprecated parameters.
+- **Dynamic Line-Item Breakdown:** Streamlined the implementation of server-side multi-item orders (`/api/paypal/create-order`) combining on-demand Lulu print manufacturing, AI compute units, and shipping.
+- **Secure Payment Capture & Webhooks:** Provided exact contract definitions for payment capture (`/api/paypal/capture-order`) and cryptographic webhook signature verification (`/api/paypal/webhook`).
 
 ---
 
