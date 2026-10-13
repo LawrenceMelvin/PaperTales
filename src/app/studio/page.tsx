@@ -3,8 +3,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import Navbar from "@/components/Navbar";
 import BookViewer from "@/components/BookViewer";
-import CharacterAnchorComponent from "@/components/CharacterAnchor";
-import MascotQuoter from "@/components/MascotQuoter";
 import TokenModal from "@/components/TokenModal";
 import OrderSummaryModal from "@/components/OrderSummaryModal";
 import BookDetailsModal from "@/components/BookDetailsModal";
@@ -35,6 +33,7 @@ import {
   ShieldCheck,
   AlertTriangle,
   Package,
+  Coins,
 } from "lucide-react";
 
 type BookGenre = "coloring_book" | "memory_book" | "math_book" | "science_book";
@@ -161,15 +160,55 @@ interface PrintAdvisoryData {
   explanation?: string;
 }
 
+interface BookDraftData {
+  title?: string;
+  subtitle?: string;
+  genre?: BookGenre;
+  characterName?: string;
+  characterType?: string;
+  characterTraits?: string[];
+  prompt?: string;
+  pageCount?: number;
+  channel3Query?: string;
+  recommendedAction?: "design_hero_page" | "expand_full_spread";
+  designerNote?: string;
+}
+
 interface ChatMessageItem {
   id: string;
   role: "user" | "assistant";
   content: string;
   quickReplies?: string[];
   printAdvisory?: PrintAdvisoryData;
+  bookDraft?: BookDraftData;
 }
 
-const INITIAL_MESSAGES: ChatMessageItem[] = [];
+const INITIAL_MESSAGES: ChatMessageItem[] = [
+  {
+    id: "msg_welcome",
+    role: "assistant",
+    content:
+      "Hi there! I'm PaperTales, your AI Personal Book Designer. I turn your ideas, daily journals, family recipes, and children's adventures into beautifully formatted physical books with Lulu print-on-demand.\n\nTell me: who is this book for, or select an idea below to customize your spread!",
+    quickReplies: [
+      "🎨 Barnaby's Cosmic Space Adventures",
+      "🍲 Mom's Sunday Kitchen Recipes",
+      "🎣 The Lakefront Fishing Journal",
+      "📖 90 Days of Clarity Habit Journal",
+    ],
+    bookDraft: {
+      title: "Barnaby's Ice Cream Adventure",
+      subtitle: "A Personalized AI Coloring Storybook",
+      genre: "coloring_book",
+      characterName: "Barnaby",
+      characterType: "Golden Retriever Puppy",
+      characterTraits: ["Wearing a cozy red scarf", "Floppy ears", "Curious tail wag"],
+      prompt: "Barnaby visits the Sweet Dream Ice Cream Parlor and makes magical rainbow sundaes",
+      pageCount: 5,
+      recommendedAction: "design_hero_page",
+      designerNote: "Let's design Page 1 first to preview the line-art thickness before creating the full story!",
+    },
+  },
+];
 
 const INITIAL_BOOK: BookProject = {
   id: "book_initial",
@@ -306,10 +345,21 @@ export default function StudioPage() {
     }
   };
 
-  // Conversational AI Helper Message Handler (Powered by gpt-4o-mini)
+  // Conversational AI Helper Message Handler (Powered by Groq & GPT-4o)
   const handleSendMessage = async (textToSend: string) => {
     const trimmed = textToSend.trim();
     if (!trimmed || isChatting) return;
+
+    // Detect requested page count from user prompt (e.g. "proceed with 30 pages", "make it 24 pages", "30 pages")
+    const pageMatch = trimmed.match(/\b(\d+)\s*pages?\b/i);
+    let requestedPages = pageCount;
+    if (pageMatch) {
+      const parsed = parseInt(pageMatch[1], 10);
+      if (parsed >= 4 && parsed <= 60) {
+        requestedPages = parsed;
+        setPageCount(parsed);
+      }
+    }
 
     const userMsg: ChatMessageItem = {
       id: `msg_${Date.now()}`,
@@ -321,27 +371,6 @@ export default function StudioPage() {
     setMessages(newThread);
     setInputMessage("");
     setIsChatting(true);
-
-    // Fast path: If asking "what can you do" as the first message, return instant rich overview
-    if (trimmed.toLowerCase().includes("what can you do") && messages.length === 0) {
-      setTimeout(() => {
-        const assistantMsg: ChatMessageItem = {
-          id: `msg_${Date.now() + 1}`,
-          role: "assistant",
-          content:
-            "Hi there! I'm PaperTales, your AI book creation copilot. I turn your ideas, family memories, recipes, and learning milestones into beautifully formatted, physical books delivered straight to your door!\n\nHere is what I can create with you:\n• 🍲 Family Recipe Heirlooms & Culinary Guides\n• 🎨 Custom Kids' Coloring Books (300 DPI vector linework ready for crayons)\n• 🎣 Dad's Fishing & Wilderness Knot Reference Guides\n• 📖 Guided Daily Habit & Mindfulness Planners\n• 🔢 Math & Logic Quests for young learners\n\n✨ Digital 300 DPI vector PDF downloads are 100% Free! We also match physical art supplies through Channel3 and print bookstore-grade softcover books via Lulu with seamless PayPal checkout.\n\nTell me: who is this book for, or choose an idea below to begin!",
-          quickReplies: [
-            "🍲 Mom's Sunday Kitchen Recipes",
-            "🎨 Barnaby's Cosmic Space Adventures",
-            "🎣 The Lakefront Fishing Journal",
-            "📖 90 Days of Clarity Habit Journal",
-          ],
-        };
-        setMessages([...newThread, assistantMsg]);
-        setIsChatting(false);
-      }, 300);
-      return;
-    }
 
     try {
       const res = await fetch("/api/ai/chat", {
@@ -356,17 +385,12 @@ export default function StudioPage() {
 
       const data = await res.json();
       if (data.success) {
-        const assistantMsg: ChatMessageItem = {
-          id: `msg_${Date.now() + 1}`,
-          role: "assistant",
-          content: data.reply,
-          quickReplies: data.quickReplies || [],
-          printAdvisory: data.printAdvisory,
-        };
-        setMessages([...newThread, assistantMsg]);
-
         // Automatically synchronize book draft parameters into studio state
         if (data.bookDraft) {
+          if (typeof data.bookDraft.pageCount === "number" && data.bookDraft.pageCount >= 4) {
+            setPageCount(data.bookDraft.pageCount);
+            requestedPages = data.bookDraft.pageCount;
+          }
           if (data.bookDraft.genre) {
             setSelectedGenre(data.bookDraft.genre);
           }
@@ -407,6 +431,21 @@ export default function StudioPage() {
             }
           }
         }
+
+        const assistantMsg: ChatMessageItem = {
+          id: `msg_${Date.now() + 1}`,
+          role: "assistant",
+          content: data.reply,
+          quickReplies: data.quickReplies || [],
+          printAdvisory: data.printAdvisory,
+          bookDraft: data.bookDraft
+            ? {
+                ...data.bookDraft,
+                pageCount: data.bookDraft.pageCount || requestedPages,
+              }
+            : undefined,
+        };
+        setMessages([...newThread, assistantMsg]);
       }
     } catch (err) {
       console.error("AI Helper chat failed:", err);
@@ -415,7 +454,50 @@ export default function StudioPage() {
     }
   };
 
-  const handleConfirmAndGenerate = async () => {
+  // Stage 1: Design Master Hero Page (Page 1 Proof) First - 100% Free Instant Preview
+  const handleDesignHeroPage = async () => {
+    setIsGenerating(true);
+    try {
+      const res = await fetch("/api/ai/story", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt,
+          authorName,
+          targetAge,
+          genre: selectedGenre,
+          characterName: character.name,
+          characterType: character.type,
+          characterTraits: character.traits,
+          referenceImageUrl: referenceImageUrl || undefined,
+          pageCount: 1, // Single Hero Master Page
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.book) {
+        setBook({
+          ...data.book,
+          title: data.book.title,
+          pageCount: 1,
+        });
+        setIsConfirmed(false); // Hero proof ready for inspection
+
+        // Smooth scroll to the Book Display below
+        const displayEl = document.getElementById("book-display-section");
+        if (displayEl) {
+          displayEl.scrollIntoView({ behavior: "smooth" });
+        }
+      }
+    } catch (err) {
+      console.error("Hero page design failed:", err);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Stage 2: Expand to Full Spread (e.g. 30 pages) based on approved hero template
+  const handleExpandFullSpread = async () => {
     if (quote.tokensRequired > 0) {
       const balance = getClientTokenBalance();
       if (balance < quote.tokensRequired) {
@@ -438,7 +520,7 @@ export default function StudioPage() {
           characterType: character.type,
           characterTraits: character.traits,
           referenceImageUrl: referenceImageUrl || undefined,
-          pageCount,
+          pageCount, // Full requested page count
         }),
       });
 
@@ -457,11 +539,14 @@ export default function StudioPage() {
         }
       }
     } catch (err) {
-      console.error("Book generation error:", err);
+      console.error("Full book expansion failed:", err);
     } finally {
       setIsGenerating(false);
     }
   };
+
+  // Direct alias for backward-compatible full generation
+  const handleConfirmAndGenerate = handleExpandFullSpread;
 
   const handlePrintFirstPage = async () => {
     setIsPrintingPageOne(true);
@@ -648,8 +733,10 @@ export default function StudioPage() {
                   </div>
                 </div>
               ) : (
-                messages.map((msg) => {
+                messages.map((msg, index) => {
                   const isUser = msg.role === "user";
+                  const lastAssistantIndex = messages.map((m) => m.role).lastIndexOf("assistant");
+                  const isLatestAssistant = !isUser && index === lastAssistantIndex;
                   return (
                     <div key={msg.id} className={`flex items-start gap-2.5 ${isUser ? "justify-end" : "justify-start"}`}>
                       {!isUser && (
@@ -712,6 +799,268 @@ export default function StudioPage() {
                                 <span>Keep Original &amp; Proceed to Print</span>
                               </button>
                             </div>
+                          </div>
+                        )}
+
+                        {/* Interactive In-Chat Book Synthesis Card (Active on Latest Assistant Turn) */}
+                        {isLatestAssistant && (
+                          <div className="mt-3 p-4 rounded-xl bg-slate-950/90 border border-sky-400/40 shadow-xl space-y-3.5 animate-in fade-in">
+                            {/* Card Header: Draft Identity */}
+                            <div className="flex items-start justify-between gap-3 border-b border-sky-400/15 pb-2.5">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs sm:text-sm font-black text-white tracking-tight">
+                                    {book.title || "Custom Book Spread"}
+                                  </span>
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-400/30">
+                                    {activeGenreConfig.label}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-[#a0b4c4]">
+                                  Protagonist: <strong className="text-white">{character.name}</strong> ({character.type})
+                                </p>
+                              </div>
+
+                              <div className="text-right shrink-0">
+                                <span className="text-xs font-black text-sky-300 block">
+                                  {pageCount} Pages
+                                </span>
+                                <span className="text-[10px] text-emerald-400 font-semibold">
+                                  {quote.tokensRequired === 0 ? "100% Free Gift" : `${quote.tokensRequired} Tokens`}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Creative Lane Quick Switcher (Compact Pills) */}
+                            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0 mr-1">
+                                Lane:
+                              </span>
+                              {GENRE_LANES.map((lane) => {
+                                const isSel = selectedGenre === lane.id;
+                                return (
+                                  <button
+                                    key={lane.id}
+                                    type="button"
+                                    onClick={() => handleSelectGenre(lane.id)}
+                                    className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all shrink-0 cursor-pointer ${
+                                      isSel
+                                        ? "bg-sky-400/25 border-sky-400 text-sky-200 ring-1 ring-sky-400/30 shadow-sm"
+                                        : "bg-slate-900/60 border-white/10 text-slate-400 hover:text-white hover:border-sky-400/30"
+                                    }`}
+                                  >
+                                    {lane.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* Reference Photo / Sketch Dropzone (Inline) */}
+                            <div className="p-2.5 rounded-lg bg-slate-900/80 border border-sky-400/20 flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-7 h-7 rounded-md bg-sky-400/15 border border-sky-400/30 text-sky-300 flex items-center justify-center shrink-0">
+                                  <ImageIcon className="w-3.5 h-3.5" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-[11px] font-bold text-white truncate">
+                                    Reference Photo / Sketch (Optional)
+                                  </p>
+                                  <p className="text-[10px] text-[#a0b4c4] truncate">
+                                    {referenceImageUrl ? "Grounding character visual likeness" : "Upload photo or pet drawing"}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {referenceImageUrl ? (
+                                <div className="flex items-center gap-2 shrink-0">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={referenceImageUrl}
+                                    alt="Reference"
+                                    className="w-7 h-7 object-cover rounded-md border border-sky-400/40"
+                                  />
+                                  <span className="text-[10px] font-bold text-emerald-300 hidden sm:inline">Active</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setReferenceImageUrl(null)}
+                                    className="text-red-400 hover:text-red-300 p-1 cursor-pointer"
+                                    title="Remove reference photo"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <label className="cursor-pointer px-2.5 py-1 rounded-md border border-sky-400/30 hover:border-sky-400 bg-slate-900 hover:bg-sky-400/10 text-[11px] text-sky-200 font-semibold flex items-center gap-1.5 transition-all shrink-0">
+                                  <UploadCloud className="w-3 h-3 text-sky-400" />
+                                  <span>Upload Image</span>
+                                  <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+                                </label>
+                              )}
+                            </div>
+
+                            {/* Book Length Quick Pills & Dynamic Quoting */}
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="font-bold text-[#a0b4c4]">Book Length:</span>
+                                <span className="text-[10px] font-medium text-sky-300">
+                                  {quote.tokensRequired === 0 ? "🎁 5 Free Pages Included" : `⚡ ${quote.tokensRequired} Tokens ($${quote.priceUsd.toFixed(2)})`}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-4 gap-1.5">
+                                {[
+                                  { pages: 5, label: "5 Pages", tag: "Free" },
+                                  { pages: 12, label: "12 Pages", tag: "7 Tokens" },
+                                  { pages: 24, label: "24 Pages", tag: "19 Tokens" },
+                                  { pages: 30, label: "30 Pages", tag: "25 Tokens" },
+                                ].map((preset) => {
+                                  const isSel = pageCount === preset.pages;
+                                  return (
+                                    <button
+                                      key={preset.pages}
+                                      type="button"
+                                      onClick={() => setPageCount(preset.pages)}
+                                      className={`py-1.5 px-2 rounded-lg border text-center transition-all cursor-pointer ${
+                                        isSel
+                                          ? "bg-sky-500/25 border-sky-400 text-white shadow-sm ring-1 ring-sky-400/40"
+                                          : "bg-slate-900/60 border-white/10 hover:border-sky-400/30 text-slate-300"
+                                      }`}
+                                    >
+                                      <div className="text-[11px] font-bold">{preset.label}</div>
+                                      <div className={`text-[9px] ${isSel ? "text-sky-300 font-semibold" : "text-slate-400"}`}>
+                                        {preset.tag}
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Fine-tuning range slider */}
+                              <div className="flex items-center gap-2 pt-1">
+                                <input
+                                  type="range"
+                                  min={5}
+                                  max={60}
+                                  step={1}
+                                  value={pageCount}
+                                  onChange={(e) => setPageCount(parseInt(e.target.value, 10))}
+                                  className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-400"
+                                />
+                                <span className="text-[11px] font-bold text-sky-300 w-14 text-right">
+                                  {pageCount} pgs
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Token Balance Telemetry if > 5 pages */}
+                            {quote.tokensRequired > 0 && (
+                              <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-900/60 border border-sky-400/15 text-[11px]">
+                                <div className="flex items-center gap-1.5 text-slate-300">
+                                  <Coins className="w-3.5 h-3.5 text-sky-400" />
+                                  <span>Balance: <strong className="text-white">{userTokens} tokens</strong></span>
+                                </div>
+                                {userTokens < quote.tokensRequired ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setTokenModalOpen(true)}
+                                    className="text-[10px] font-bold text-amber-300 hover:underline cursor-pointer"
+                                  >
+                                    Need {quote.tokensRequired - userTokens} more tokens &rarr;
+                                  </button>
+                                ) : (
+                                  <span className="text-[10px] text-emerald-400 font-medium">Sufficient Balance</span>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Two-Stage Personal Book Designer Action Controls */}
+                            {book.pages.length === 1 ? (
+                              <div className="space-y-2.5 pt-1">
+                                <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-xs space-y-1 animate-in fade-in">
+                                  <div className="flex items-center gap-1.5 text-emerald-300 font-bold">
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                                    <span>Master Page 1 Proof Ready for Inspection!</span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                                    Your hero layout is rendered in the Book Display below. Review the illustration and story layout. If you want changes, ask in chat or highlight text. Otherwise, expand your full volume!
+                                  </p>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={handleExpandFullSpread}
+                                  disabled={isGenerating}
+                                  className="w-full py-3 px-4 rounded-xl glacier-btn text-[#001f2e] font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 transition-all hover:brightness-110 active:scale-98 disabled:opacity-50 cursor-pointer"
+                                >
+                                  {isGenerating ? (
+                                    <>
+                                      <RefreshCw className="w-4 h-4 animate-spin text-[#001f2e]" />
+                                      <span>Expanding to Full {pageCount}-Page Spread...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Sparkles className="w-4 h-4 text-[#001f2e]" />
+                                      <span>✨ Looks Great! Expand to Full {pageCount}-Page Spread</span>
+                                    </>
+                                  )}
+                                </button>
+
+                                <div className="flex items-center justify-between text-[11px] pt-0.5 px-1">
+                                  <button
+                                    type="button"
+                                    onClick={handleDesignHeroPage}
+                                    disabled={isGenerating}
+                                    className="text-[#a0b4c4] hover:text-sky-300 underline font-medium cursor-pointer"
+                                  >
+                                    🔄 Redesign Master Page 1
+                                  </button>
+                                  <span className="text-slate-400 text-[10px]">
+                                    {quote.tokensRequired === 0 ? "100% Free Gift" : `${quote.tokensRequired} Tokens`}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="space-y-2.5 pt-1">
+                                {/* Designer Recommendation Banner */}
+                                <div className="p-2.5 rounded-lg bg-sky-500/10 border border-sky-400/25 flex items-start gap-2 text-[11px] text-sky-200">
+                                  <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" />
+                                  <p className="leading-relaxed">
+                                    <strong>Designer Recommendation:</strong> Let&apos;s design your Master Page 1 Proof first for free to check layout and visual style before creating all {pageCount} pages.
+                                  </p>
+                                </div>
+
+                                {/* Stage 1: Design Hero Page First (Primary) */}
+                                <button
+                                  type="button"
+                                  onClick={handleDesignHeroPage}
+                                  disabled={isGenerating}
+                                  className="w-full py-3 px-4 rounded-xl glacier-btn text-[#001f2e] font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 transition-all hover:brightness-110 active:scale-98 disabled:opacity-50 cursor-pointer"
+                                >
+                                  {isGenerating ? (
+                                    <>
+                                      <RefreshCw className="w-4 h-4 animate-spin text-[#001f2e]" />
+                                      <span>Designing Master Page 1 Proof...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Palette className="w-4 h-4 text-[#001f2e]" />
+                                      <span>🎨 Design Master Page 1 First (Instant Free Preview)</span>
+                                    </>
+                                  )}
+                                </button>
+
+                                {/* Fast-Track: Generate All Pages Directly */}
+                                <div className="text-center pt-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={handleExpandFullSpread}
+                                    disabled={isGenerating}
+                                    className="text-[11px] text-[#a0b4c4] hover:text-sky-300 underline font-medium transition-colors cursor-pointer"
+                                  >
+                                    ⚡ Or generate all {pageCount} pages directly &rarr;
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -782,155 +1131,6 @@ export default function StudioPage() {
                 <span>Send</span>
               </button>
             </form>
-
-            {/* Assistance Configuration Controls (Lane Selector, Reference & Confirmation) */}
-            <div className="pt-4 border-t border-sky-400/20 space-y-4">
-              {/* 4 Creative Lanes */}
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#a0b4c4] mb-2">
-                  Creative Book Lane
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {GENRE_LANES.map((lane) => {
-                    const IconComponent = lane.icon;
-                    const isSelected = selectedGenre === lane.id;
-                    return (
-                      <button
-                        key={lane.id}
-                        type="button"
-                        onClick={() => handleSelectGenre(lane.id)}
-                        className={`p-2.5 rounded-xl border text-left transition-all ${
-                          isSelected
-                            ? "bg-sky-400/20 border-sky-400 text-white shadow-sm ring-1 ring-sky-400/30"
-                            : "bg-slate-950/50 border-sky-400/15 hover:border-sky-400/40 text-[#a0b4c4] hover:text-white"
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <IconComponent className={`w-3.5 h-3.5 ${isSelected ? "text-sky-300" : "text-slate-400"}`} />
-                          <span className="text-xs font-bold truncate">{lane.label}</span>
-                        </div>
-                        <p className="text-[10px] text-slate-400 truncate">{lane.badge}</p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Reference Asset Uploader */}
-              <div className="glacier-glass-subtle p-3 rounded-xl border border-sky-400/20 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-sky-400/15 border border-sky-400/30 text-sky-300 flex items-center justify-center shrink-0">
-                    <ImageIcon className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-bold text-white">Reference Photo / Sketch (Optional)</h5>
-                    <p className="text-[10px] text-[#a0b4c4]">Upload child photo, pet, or drawing to anchor character consistency</p>
-                  </div>
-                </div>
-
-                {referenceImageUrl ? (
-                  <div className="flex items-center gap-2">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={referenceImageUrl} alt="Reference" className="w-9 h-9 object-cover rounded-lg border border-sky-400/40" />
-                    <span className="text-[10px] font-bold text-emerald-300">Grounding Active</span>
-                    <button
-                      type="button"
-                      onClick={() => setReferenceImageUrl(null)}
-                      className="text-red-400 hover:text-red-300 p-1"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ) : (
-                  <label className="cursor-pointer px-3 py-1.5 rounded-lg border border-sky-400/30 hover:border-sky-400 bg-slate-900/60 hover:bg-sky-400/10 text-xs text-sky-200 font-semibold flex items-center gap-1.5 transition-all">
-                    <UploadCloud className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Upload Image</span>
-                    <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
-                  </label>
-                )}
-              </div>
-
-              {/* Character & Page Settings */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-[11px] font-semibold text-[#a0b4c4] mb-1">Protagonist Name</label>
-                  <input
-                    type="text"
-                    value={character.name}
-                    onChange={(e) => setCharacter({ ...character, name: e.target.value })}
-                    className="w-full text-xs px-3 py-2 rounded-lg bg-slate-900/70 border border-sky-400/20 text-white placeholder-slate-500 focus:outline-none focus:border-sky-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-[#a0b4c4] mb-1">Archetype / Species</label>
-                  <input
-                    type="text"
-                    value={character.type}
-                    onChange={(e) => setCharacter({ ...character, type: e.target.value })}
-                    className="w-full text-xs px-3 py-2 rounded-lg bg-slate-900/70 border border-sky-400/20 text-white placeholder-slate-500 focus:outline-none focus:border-sky-400"
-                  />
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[11px] font-semibold text-[#a0b4c4]">Book Length</label>
-                    <span className="text-[10px] text-sky-300 font-bold">{pageCount} Pages (5 Free)</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={5}
-                    max={60}
-                    step={1}
-                    value={pageCount}
-                    onChange={(e) => setPageCount(parseInt(e.target.value, 10))}
-                    className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-400 mt-2"
-                  />
-                </div>
-              </div>
-
-              {/* Mascot Quoter Component */}
-              <MascotQuoter
-                quote={quote}
-                userTokens={userTokens}
-                onOpenTokenModal={() => setTokenModalOpen(true)}
-              />
-
-              {/* Confirmation Banner & Synthesis Trigger */}
-              <div className="p-4 rounded-xl bg-slate-950/70 border border-sky-400/30 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 flex items-center justify-center shrink-0">
-                    <CheckCircle2 className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-bold text-white">
-                      Confirm Book Details &amp; Pages
-                    </h5>
-                    <p className="text-[11px] text-[#a0b4c4]">
-                      {activeGenreConfig.label} &bull; {pageCount} Pages &bull; Featuring {character.name} &bull;{" "}
-                      {quote.tokensRequired === 0 ? "100% Free Gift" : `${quote.tokensRequired} Tokens`}
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleConfirmAndGenerate}
-                  disabled={isGenerating}
-                  className="w-full sm:w-auto px-6 py-3 rounded-xl glacier-btn text-[#001f2e] font-extrabold text-xs shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
-                >
-                  {isGenerating ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Synthesizing Pages with PaperTales...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4" />
-                      <span>Confirm Details &amp; Generate Spread</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
           </section>
 
           {/* =========================================================================
