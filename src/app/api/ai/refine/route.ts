@@ -25,24 +25,25 @@ export async function POST(req: NextRequest) {
     const apiUrl = useGroq
       ? "https://api.groq.com/openai/v1/chat/completions"
       : "https://api.openai.com/v1/chat/completions";
-    const model = useGroq ? "openai/gpt-oss-20b" : "gpt-4o-mini";
+    const model = useGroq ? "openai/gpt-oss-120b" : "gpt-4o-mini";
 
     if (apiKey) {
       try {
-        const systemPrompt = `You are a world-class book editor, creative writing mentor, and publishing specialist for PaperTales AI.
-Your task is to refine, rewrite, or polish a specific highlighted passage from a book based on the user's instructions.
+        const systemPrompt = `You are a world-class book editor, creative writing mentor, and publishing layout specialist for PaperTales AI.
+Your task is to refine, rewrite, or reformat a specific highlighted passage from a book based on the user's instructions.
 Book Title: "${bookTitle}"
 Genre / Type: "${genre}"
 
 Guidelines:
-1. Maintain tone, rhythm, and character consistency suitable for the genre.
+1. Maintain tone, rhythm, and layout precision suitable for the genre.
 2. If it's a children's coloring book, keep vocabulary vivid, age-appropriate, and visual.
-3. If it's a family recipe or journal, keep it warm, precise, and authentic.
-4. Replace only what was requested; do not bloat the word count excessively.
+3. If it's a journal, task book, or log, keep it crisp, clean, and organized.
+4. Replace ONLY what was requested; do not bloat or add unrequested commentary.
+5. If the user asks to format items one below the other or as a vertical list/checklist, separate each item with a newline (\\n) and ensure each checkbox begins with "[ ] ".
 
 Output strictly valid JSON with this schema:
 {
-  "refinedText": "The refined version of the highlighted text",
+  "refinedText": "The refined or reformatted version of the highlighted text",
   "explanation": "A friendly 1-sentence note explaining what you enhanced"
 }`;
 
@@ -81,7 +82,7 @@ User's Change Instruction:
               refinedText: parsed.refinedText,
               explanation: parsed.explanation || "Text refined by PaperTales AI",
               tokensUsed: 1,
-              engine: useGroq ? "groq-20b" : "openai-gpt-4o-mini",
+              engine: useGroq ? "groq-120b" : "openai-gpt-4o-mini",
             });
           }
         }
@@ -94,14 +95,35 @@ User's Change Instruction:
     let fallbackRefined = originalText;
     const lowerInst = instruction.toLowerCase();
 
-    if (lowerInst.includes("playful") || lowerInst.includes("fun")) {
+    if (
+      lowerInst.includes("one below the other") ||
+      lowerInst.includes("vertical") ||
+      lowerInst.includes("checklist") ||
+      lowerInst.includes("below") ||
+      lowerInst.includes("new line") ||
+      lowerInst.includes("stack")
+    ) {
+      // Reformat checkboxes or list items onto separate lines
+      if (originalText.includes("[ ]")) {
+        fallbackRefined = originalText
+          .split(/(\[\s*\]\s*[^\[]+)/g)
+          .map((s: string) => s.trim())
+          .filter(Boolean)
+          .join("\n");
+      } else {
+        fallbackRefined = originalText
+          .split(/\s*,\s*|\s+and\s+/i)
+          .map((s: string) => `[ ] ${s.replace(/^\[\s*\]\s*/, "").trim()}`)
+          .join("\n");
+      }
+    } else if (lowerInst.includes("playful") || lowerInst.includes("fun")) {
       fallbackRefined = `${originalText.replace(/\.$/, "")}, bubbling with giggles and wonder!`;
     } else if (lowerInst.includes("simplify") || lowerInst.includes("easy")) {
       fallbackRefined = originalText.split(".")[0] + ".";
     } else if (lowerInst.includes("sensory") || lowerInst.includes("detail")) {
       fallbackRefined = `${originalText.replace(/\.$/, "")}, glowing under the warm golden sunshine with crisp, fresh air.`;
     } else {
-      fallbackRefined = `${originalText} (${instruction})`;
+      fallbackRefined = originalText;
     }
 
     return NextResponse.json({

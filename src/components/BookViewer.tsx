@@ -149,7 +149,28 @@ export default function BookViewer({
       if (data.success && data.refinedText) {
         deductClientTokens(1);
         setPreviousStoryText(currentFullStory);
-        const updatedStory = currentFullStory.replace(targetSnippet, data.refinedText);
+
+        let updatedStory = currentFullStory;
+        if (currentFullStory.includes(targetSnippet)) {
+          updatedStory = currentFullStory.replace(targetSnippet, data.refinedText);
+        } else {
+          // Robust whitespace-agnostic replacement if browser collapsed newlines into spaces
+          const escaped = targetSnippet
+            .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+            .replace(/\s+/g, "\\s+");
+          const regex = new RegExp(escaped);
+          if (regex.test(currentFullStory)) {
+            updatedStory = currentFullStory.replace(regex, data.refinedText);
+          } else {
+            const trimmedTarget = targetSnippet.trim();
+            if (currentFullStory.includes(trimmedTarget)) {
+              updatedStory = currentFullStory.replace(trimmedTarget, data.refinedText);
+            } else {
+              updatedStory = data.refinedText;
+            }
+          }
+        }
+
         onPageUpdate({ ...activePage, storyText: updatedStory });
         setRefineFeedback(data.explanation || "Text polished with AI!");
         setTimeout(() => setRefineFeedback(null), 5000);
@@ -236,6 +257,12 @@ export default function BookViewer({
     activePage?.storyText.toLowerCase().includes("ice cream") ||
     activePage?.storyText.toLowerCase().includes("biscuit");
 
+  const isJournalOrTask =
+    book.genre === "memory_book" ||
+    /\b(journal|task|planner|log|coding|checklist|agenda|developer|notes)\b/i.test(book.title || "") ||
+    Boolean(book.subtitle && /\b(journal|task|planner|log|coding|checklist|agenda|developer|notes)\b/i.test(book.subtitle)) ||
+    Boolean(activePage?.title && /\b(day\s*\d+|task|log|checklist)\b/i.test(activePage.title));
+
   return (
     <div className="flex flex-col items-center w-full">
       {/* Top Header & Spread Status */}
@@ -320,7 +347,7 @@ export default function BookViewer({
                 }`}
               >
                 <BookOpen className="w-3.5 h-3.5 text-sky-600" />
-                Reading Text (Page {activePage?.pageNumber})
+                {isJournalOrTask ? `Daily Task Sheet` : `Reading Text`} (Page {activePage?.pageNumber})
               </button>
               <button
                 type="button"
@@ -330,11 +357,11 @@ export default function BookViewer({
                 }`}
               >
                 <PenTool className="w-3.5 h-3.5 text-sky-600" />
-                Coloring Art
+                {isJournalOrTask ? `Ruled Notes Page` : `Coloring Art`}
               </button>
             </div>
 
-            {/* Left Page (Story & Reading Text) */}
+            {/* Left Page (Story & Reading Text OR Daily Task Sheet) */}
             <div
               className={`flex-1 p-5 sm:p-8 lg:p-10 flex flex-col justify-between border-b sm:border-b-0 sm:border-r border-slate-200 relative bg-amber-50/25 ${
                 mobilePageTab === "art" ? "hidden sm:flex" : "flex"
@@ -344,7 +371,7 @@ export default function BookViewer({
 
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Chapter {activePage?.pageNumber}
+                  {isJournalOrTask ? `Daily Task Plan` : `Chapter ${activePage?.pageNumber}`}
                 </span>
                 <h3 className="text-lg sm:text-2xl font-black font-serif text-slate-900 mt-1 mb-4">
                   {activePage?.title}
@@ -374,7 +401,7 @@ export default function BookViewer({
                     <p
                       onMouseUp={handleStoryMouseUp}
                       onTouchEnd={handleStoryMouseUp}
-                      className="text-sm sm:text-base lg:text-lg font-serif text-slate-800 leading-relaxed sm:leading-loose cursor-text selection:bg-sky-200 selection:text-sky-950"
+                      className="text-sm sm:text-base lg:text-lg font-serif text-slate-800 leading-relaxed sm:leading-loose cursor-text selection:bg-sky-200 selection:text-sky-950 whitespace-pre-wrap"
                     >
                       {activePage?.storyText}
                     </p>
@@ -406,11 +433,11 @@ export default function BookViewer({
 
               <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-200/60 pt-3 mt-4">
                 <span className="truncate max-w-[150px]">{book.title}</span>
-                <span>Page {activePage?.pageNumber}</span>
+                <span>{isJournalOrTask ? `Page ${activePage?.pageNumber} (Daily Checklist)` : `Page ${activePage?.pageNumber}`}</span>
               </div>
             </div>
 
-            {/* Right Page (Coloring Line-Art Illustration) */}
+            {/* Right Page (Ruled Journal Page OR Coloring Line-Art Illustration) */}
             <div
               className={`flex-1 p-5 sm:p-8 lg:p-10 flex flex-col justify-between relative bg-white ${
                 mobilePageTab === "story" ? "hidden sm:flex" : "flex"
@@ -418,10 +445,49 @@ export default function BookViewer({
             >
               <div className="hidden sm:block absolute top-0 bottom-0 left-0 w-5 spine-gradient pointer-events-none" />
 
-              {/* Vector coloring line art container */}
-              <div className="w-full flex-1 border-2 border-slate-900 rounded-xl p-4 flex flex-col items-center justify-center relative overflow-hidden bg-white min-h-[260px] sm:min-h-[320px]">
-                {/* Tweak art trigger button in top-right */}
-                <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
+              {isJournalOrTask ? (
+                /* Authentic Printed Ruled Notebook & Journal Page */
+                <div className="w-full flex-1 border border-slate-300/80 rounded-xl p-5 sm:p-7 flex flex-col justify-between bg-[#fafaf7] min-h-[280px] sm:min-h-[340px] shadow-inner relative">
+                  {/* Journal Top Header */}
+                  <div className="flex items-center justify-between border-b-2 border-slate-300 pb-2.5 mb-2">
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 uppercase tracking-wider font-sans">
+                        Daily Notes &amp; Reflection
+                      </span>
+                      <span className="text-[11px] text-sky-700 font-mono ml-2 font-bold">
+                        Day {activePage?.pageNumber}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-400 font-mono">
+                      Date: _______________
+                    </div>
+                  </div>
+
+                  {/* Physical Printed Ruled Lines for Pen & Pencil Writing */}
+                  <div className="flex-1 flex flex-col justify-between py-2 space-y-3.5">
+                    {[...Array(8)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="w-full border-b border-slate-300/70 h-6 flex items-end"
+                      >
+                        <span className="text-[10px] text-slate-300 font-mono select-none pl-1">
+                          {i === 0 ? "// Key notes, links or code thoughts:" : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Bottom Daily Goal / Sign-off Footer */}
+                  <div className="flex items-center justify-between pt-3 border-t border-slate-300/80 text-[11px] text-slate-500 font-sans mt-2">
+                    <span className="font-semibold text-slate-600">Daily Video Status:</span>
+                    <span className="text-slate-500 font-mono">[ ] Recorded &bull; [ ] Published</span>
+                  </div>
+                </div>
+              ) : (
+                /* Vector coloring line art container */
+                <div className="w-full flex-1 border-2 border-slate-900 rounded-xl p-4 flex flex-col items-center justify-center relative overflow-hidden bg-white min-h-[260px] sm:min-h-[320px]">
+                  {/* Tweak art trigger button in top-right */}
+                  <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => setArtModalOpen(true)}
@@ -598,12 +664,13 @@ export default function BookViewer({
                   Crisp Vector Line-Art &bull; Print Ready (300 DPI) &bull; {book.genre.replace("_", " ").toUpperCase()}
                 </div>
               </div>
+            )}
 
-              <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-200/60 pt-3 mt-4">
-                <span>Activity &amp; Coloring Sheet</span>
-                <span>Page {activePage?.pageNumber} Illustration</span>
-              </div>
+            <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-200/60 pt-3 mt-4">
+              <span>{isJournalOrTask ? "Ruled Journal & Notes Spread" : "Activity & Coloring Sheet"}</span>
+              <span>{isJournalOrTask ? "Lulu Print-Ready (300 DPI)" : `Page ${activePage?.pageNumber} Illustration`}</span>
             </div>
+          </div>
           </div>
         )}
       </div>

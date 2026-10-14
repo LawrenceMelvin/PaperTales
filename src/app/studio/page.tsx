@@ -34,6 +34,10 @@ import {
   AlertTriangle,
   Package,
   Coins,
+  Paperclip,
+  ArrowLeft,
+  ArrowRight,
+  MessageSquare,
 } from "lucide-react";
 
 type BookGenre = "coloring_book" | "memory_book" | "math_book" | "science_book";
@@ -178,37 +182,14 @@ interface ChatMessageItem {
   id: string;
   role: "user" | "assistant";
   content: string;
+  discussionStage?: "discovery" | "brainstorming" | "concept_locked";
+  isReadyForProof?: boolean;
   quickReplies?: string[];
   printAdvisory?: PrintAdvisoryData;
   bookDraft?: BookDraftData;
 }
 
-const INITIAL_MESSAGES: ChatMessageItem[] = [
-  {
-    id: "msg_welcome",
-    role: "assistant",
-    content:
-      "Hi there! I'm PaperTales, your AI Personal Book Designer. I turn your ideas, daily journals, family recipes, and children's adventures into beautifully formatted physical books with Lulu print-on-demand.\n\nTell me: who is this book for, or select an idea below to customize your spread!",
-    quickReplies: [
-      "🎨 Barnaby's Cosmic Space Adventures",
-      "🍲 Mom's Sunday Kitchen Recipes",
-      "🎣 The Lakefront Fishing Journal",
-      "📖 90 Days of Clarity Habit Journal",
-    ],
-    bookDraft: {
-      title: "Barnaby's Ice Cream Adventure",
-      subtitle: "A Personalized AI Coloring Storybook",
-      genre: "coloring_book",
-      characterName: "Barnaby",
-      characterType: "Golden Retriever Puppy",
-      characterTraits: ["Wearing a cozy red scarf", "Floppy ears", "Curious tail wag"],
-      prompt: "Barnaby visits the Sweet Dream Ice Cream Parlor and makes magical rainbow sundaes",
-      pageCount: 5,
-      recommendedAction: "design_hero_page",
-      designerNote: "Let's design Page 1 first to preview the line-art thickness before creating the full story!",
-    },
-  },
-];
+const INITIAL_MESSAGES: ChatMessageItem[] = [];
 
 const INITIAL_BOOK: BookProject = {
   id: "book_initial",
@@ -277,6 +258,7 @@ export default function StudioPage() {
   const [messages, setMessages] = useState<ChatMessageItem[]>(INITIAL_MESSAGES);
   const [inputMessage, setInputMessage] = useState<string>("");
   const [isChatting, setIsChatting] = useState<boolean>(false);
+  const [isDiscussionDone, setIsDiscussionDone] = useState<boolean>(false);
 
   // Live Channel3 companion products
   const [companionProducts, setCompanionProducts] = useState<CompanionProduct[]>([]);
@@ -294,8 +276,18 @@ export default function StudioPage() {
   const [bookDetailsOpen, setBookDetailsOpen] = useState<boolean>(false);
   const [orderTrackingOpen, setOrderTrackingOpen] = useState<boolean>(false);
 
-  // Auto-scroll ref for chat thread
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  // Dedicated ref strictly for the internal chat scroll container
+  const chatScrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll strictly the internal chat container (never the outer studio window)
+  useEffect(() => {
+    if (chatScrollContainerRef.current) {
+      chatScrollContainerRef.current.scrollTo({
+        top: chatScrollContainerRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [messages, isChatting]);
 
   // Compute dynamic quote
   const quote = calculateBookQuote(pageCount);
@@ -436,6 +428,8 @@ export default function StudioPage() {
           id: `msg_${Date.now() + 1}`,
           role: "assistant",
           content: data.reply,
+          discussionStage: data.discussionStage || (data.isReadyForProof ? "concept_locked" : "brainstorming"),
+          isReadyForProof: Boolean(data.isReadyForProof),
           quickReplies: data.quickReplies || [],
           printAdvisory: data.printAdvisory,
           bookDraft: data.bookDraft
@@ -462,6 +456,8 @@ export default function StudioPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          title: book.title,
+          subtitle: book.subtitle,
           prompt,
           authorName,
           targetAge,
@@ -512,6 +508,8 @@ export default function StudioPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          title: book.title,
+          subtitle: book.subtitle,
           prompt,
           authorName,
           targetAge,
@@ -635,503 +633,497 @@ export default function StudioPage() {
               SECTION 1 (TOP): BOOK CREATOR ASSISTANCE (PAPERTALES)
               Interactive AI Assistant Copilot powered by Groq & GPT-4o
               ========================================================================= */}
-          <section className="glacier-glass rounded-2xl border border-sky-400/30 p-5 sm:p-7 shadow-2xl relative overflow-hidden space-y-6">
-            {/* Header: Book Creator Assistance */}
-            <div className="flex items-center justify-between border-b border-sky-400/20 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-sky-400/20 border border-sky-400/30 text-sky-300 flex items-center justify-center shadow-sm">
-                  <Bot className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
-                    Book Creator Assistance
+          {/* =========================================================================
+              SECTION 1: BOOK CREATOR ASSISTANCE
+              Two-Phase Interaction:
+              - Phase 1 (Discussion Canvas): Matches wireframe sketch
+              - Phase 2 (Confirmation Card): Rendered once book discussion is done
+              ========================================================================= */}
+          {!isDiscussionDone ? (
+            /* =====================================================================
+               PHASE 1: BOOK CREATOR ASSISTANCE (DISCUSSION & BRAINSTORMING CANVAS)
+               ===================================================================== */
+            <section className="rounded-3xl border-2 border-sky-400/80 bg-[#091122]/90 p-5 sm:p-7 shadow-2xl relative flex flex-col justify-between min-h-[480px] sm:min-h-[520px]">
+              {/* Header: BOOK CREATOR ASSISTANCE */}
+              <div className="flex items-center justify-between border-b border-sky-400/20 pb-4">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-base sm:text-lg font-black tracking-wider text-sky-400 uppercase select-none">
+                    BOOK CREATOR ASSISTANCE
                   </h2>
-                  <p className="text-xs text-[#a0b4c4]">
-                    Meet <strong className="text-sky-300">PaperTales</strong> &bull; Powered by Groq LPU &amp; GPT-4o
-                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {messages.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setIsDiscussionDone(true)}
+                      className="text-[11px] font-bold px-3 py-1 rounded-full bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                    >
+                      <span>Review Book Setup</span>
+                      <ArrowRight className="w-3.5 h-3.5 text-sky-400" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setOrderTrackingOpen(true)}
+                    className="text-[11px] font-bold px-3 py-1 rounded-full glacier-glass hover:bg-slate-800 text-sky-200 border border-sky-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                  >
+                    <Package className="w-3.5 h-3.5 text-sky-400" />
+                    <span className="hidden sm:inline">AG Grid Orders</span>
+                  </button>
+                  <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    Copilot Online
+                  </span>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+
+              {/* Chat Canvas & Conversation */}
+              <div className="flex-1 flex flex-col justify-between">
+                {messages.length === 0 ? (
+                  /* Initial Clean Canvas: Matches wireframe sketch with starter bubble on the right */
+                  <div className="flex-1 flex flex-col justify-end items-end py-12 px-2 sm:px-6 space-y-4">
+                    <button
+                      type="button"
+                      onClick={() => handleSendMessage("hey papertales, what can you do")}
+                      disabled={isChatting}
+                      className="px-5 py-2.5 rounded-2xl border-2 border-sky-400/80 bg-[#0c1c38]/90 hover:bg-[#11274e] text-sky-200 text-xs sm:text-sm font-semibold shadow-md transition-all hover:scale-102 active:scale-95 cursor-pointer"
+                    >
+                      hey papertales, what can you do
+                    </button>
+                  </div>
+                ) : (
+                  /* Conversation Thread with Messages (Internal scroll container) */
+                  <div ref={chatScrollContainerRef} className="space-y-4 max-h-[380px] overflow-y-auto pr-2 py-4 glacier-scrollbar">
+                    {messages.map((msg, index) => {
+                      const isUser = msg.role === "user";
+                      const lastAssistantIndex = messages.map((m) => m.role).lastIndexOf("assistant");
+                      const isLatestAssistant = !isUser && index === lastAssistantIndex;
+
+                      return (
+                        <div key={msg.id} className={`flex items-start gap-2.5 ${isUser ? "justify-end" : "justify-start"}`}>
+                          {!isUser && (
+                            <div className="w-8 h-8 rounded-full bg-sky-400/20 border border-sky-400/40 flex items-center justify-center text-sky-300 shrink-0 mt-1">
+                              <Sparkles className="w-4 h-4" />
+                            </div>
+                          )}
+
+                          <div
+                            className={`max-w-xl rounded-2xl p-4 text-xs sm:text-sm leading-relaxed shadow-lg ${
+                              isUser
+                                ? "bg-sky-500/20 border-2 border-sky-400/80 text-white rounded-tr-xs"
+                                : "bg-slate-900/90 border border-sky-400/30 text-white rounded-tl-xs space-y-3"
+                            }`}
+                          >
+                            <p className="whitespace-pre-wrap">{msg.content}</p>
+
+                            {/* Print-Safe & Copyright Advisory Card */}
+                            {!isUser && msg.printAdvisory?.hasRisk && (
+                              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-400/40 text-xs space-y-2.5 animate-in fade-in">
+                                <div className="flex items-center gap-2 text-amber-300 font-bold">
+                                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                                  <span>
+                                    Print-on-Demand Factory Notice ({msg.printAdvisory.franchiseName || "Trademark Detected"})
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-300 leading-relaxed">
+                                  {msg.printAdvisory.explanation ||
+                                    "If printing a physical copy through Lulu POD, industrial print facilities may flag exact trademarked names. You can adopt our print-safe homage title or keep your original choice!"}
+                                </p>
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                  {msg.printAdvisory.safeTitle && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (msg.printAdvisory?.safeTitle) {
+                                          setBook((prev) => ({
+                                            ...prev,
+                                            title: msg.printAdvisory!.safeTitle!,
+                                            character: msg.printAdvisory!.safeCharacter
+                                              ? { ...prev.character, name: msg.printAdvisory!.safeCharacter! }
+                                              : prev.character,
+                                          }));
+                                          handleSendMessage(`I choose the print-safe title: "${msg.printAdvisory.safeTitle}"`);
+                                        }
+                                      }}
+                                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                                    >
+                                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                                      <span>Adopt Safe: &quot;{msg.printAdvisory.safeTitle}&quot;</span>
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleSendMessage("Keep my original character and book title, send to print queue");
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-amber-200 border border-amber-400/30 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                                  >
+                                    <span>Keep Original &amp; Proceed to Print</span>
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Quick Replies for Assistant Messages */}
+                            {!isUser && msg.quickReplies && msg.quickReplies.length > 0 && (
+                              <div className="pt-2 border-t border-white/10 space-y-1.5">
+                                <span className="text-[10px] uppercase font-bold text-sky-400 tracking-wider block">
+                                  Suggested Next Steps:
+                                </span>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {msg.quickReplies.map((reply, idx) => (
+                                    <button
+                                      key={idx}
+                                      type="button"
+                                      onClick={() => handleSendMessage(reply)}
+                                      disabled={isChatting}
+                                      className="text-[11px] font-semibold bg-slate-950/80 hover:bg-sky-400/20 text-sky-200 border border-sky-400/25 px-2.5 py-1 rounded-lg transition-all active:scale-95 disabled:opacity-50"
+                                    >
+                                      {reply}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Transition Prompt to Confirmation Card on Latest Turn: ONLY when concept is locked */}
+                            {isLatestAssistant && msg.isReadyForProof && (
+                              <div className="pt-2.5 border-t border-sky-400/20 flex flex-wrap items-center justify-between gap-2 animate-in fade-in">
+                                <span className="text-[11px] text-sky-300 font-medium">
+                                  ✨ Concept locked! Review your book specs and design your free master proof.
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsDiscussionDone(true)}
+                                  className="px-3.5 py-1.5 rounded-xl bg-sky-400 text-slate-950 font-bold text-xs hover:bg-sky-300 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow"
+                                >
+                                  <span>Review Book Specs &amp; Master Proof &rarr;</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {isUser && (
+                            <div className="w-8 h-8 rounded-full bg-slate-800 border border-sky-400/30 flex items-center justify-center text-sky-300 shrink-0 mt-1">
+                              <User className="w-4 h-4" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {/* Chatting Loading Indicator */}
+                    {isChatting && (
+                      <div className="flex items-center gap-2 text-xs text-sky-300 italic py-1">
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>PaperTales is brainstorming your book idea...</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Bottom Input Bar: Matches wireframe sketch with rounded blue border, att button & send button */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSendMessage(inputMessage);
+                  }}
+                  className="mt-4 flex items-end gap-2 border-2 border-sky-400/80 bg-[#070e1c] rounded-2xl p-1.5 sm:p-2 shadow-inner"
+                >
+                  <textarea
+                    rows={1}
+                    value={inputMessage}
+                    onChange={(e) => {
+                      setInputMessage(e.target.value);
+                      e.target.style.height = "auto";
+                      e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage(inputMessage);
+                      }
+                    }}
+                    placeholder="Ask papertales, suggest a new story arc or describe a child ..."
+                    className="flex-1 bg-transparent px-3 py-1.5 text-xs sm:text-sm text-white placeholder-sky-300/40 focus:outline-none resize-none max-h-32 leading-relaxed glacier-scrollbar"
+                  />
+
+                  {/* Attached photo indicator */}
+                  {referenceImageUrl && (
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-sky-500/20 border border-sky-400/40 text-[10px] text-sky-200">
+                      <ImageIcon className="w-3 h-3 text-sky-400" />
+                      <span className="max-w-[70px] truncate">Photo</span>
+                      <button
+                        type="button"
+                        onClick={() => setReferenceImageUrl(null)}
+                        className="text-red-400 hover:text-red-300 ml-0.5 cursor-pointer"
+                        title="Remove photo"
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Attachment button (Just the clean paperclip symbol, no "att" text) */}
+                  <label
+                    title="Upload reference photo or sketch"
+                    className="border-2 border-sky-400/80 hover:bg-sky-400/20 text-sky-300 p-2 rounded-xl cursor-pointer transition-all active:scale-95 flex items-center justify-center shrink-0"
+                  >
+                    <Paperclip className="w-4 h-4 text-sky-400" />
+                    <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+                  </label>
+
+                  {/* Send button ("send") */}
+                  <button
+                    type="submit"
+                    disabled={!inputMessage.trim() || isChatting}
+                    className="border-2 border-sky-400/80 bg-sky-500/20 hover:bg-sky-400 hover:text-slate-950 text-sky-300 font-bold px-4 py-1 rounded-xl text-xs sm:text-sm transition-all active:scale-95 disabled:opacity-40 cursor-pointer shrink-0"
+                  >
+                    send
+                  </button>
+                </form>
+              </div>
+            </section>
+          ) : (
+            /* =====================================================================
+               PHASE 2: BOOK CONFIRMATION CARD (POST-DISCUSSION VIEW)
+               Matches exact layout and styling of user's second screenshot
+               ===================================================================== */
+            <section className="rounded-2xl border-2 border-sky-500/60 bg-[#091122]/95 p-5 sm:p-7 shadow-2xl relative space-y-4 sm:space-y-5 animate-in fade-in">
+              {/* Top Navigation bar */}
+              <div className="flex items-center justify-between border-b border-sky-400/20 pb-3">
                 <button
                   type="button"
-                  onClick={() => setOrderTrackingOpen(true)}
-                  className="text-[11px] font-bold px-3 py-1 rounded-full glacier-glass hover:bg-slate-800 text-sky-200 border border-sky-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                  onClick={() => setIsDiscussionDone(false)}
+                  className="text-xs text-sky-300 hover:text-white flex items-center gap-1.5 font-semibold px-2.5 py-1 rounded-lg hover:bg-sky-400/10 transition-all cursor-pointer"
                 >
-                  <Package className="w-3.5 h-3.5 text-sky-400" />
-                  <span>AG Grid Orders</span>
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Back to Discussion</span>
                 </button>
-                <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  Copilot Online
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOrderTrackingOpen(true)}
+                    className="text-[11px] font-bold px-3 py-1 rounded-full glacier-glass hover:bg-slate-800 text-sky-200 border border-sky-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                  >
+                    <Package className="w-3.5 h-3.5 text-sky-400" />
+                    <span>AG Grid Orders</span>
+                  </button>
+                  <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    Ready for Master Proof
+                  </span>
+                </div>
               </div>
-            </div>
 
-            {/* Conversation Thread */}
-            <div className="space-y-4 max-h-[460px] overflow-y-auto pr-1">
-              {messages.length === 0 ? (
-                <div className="py-8 px-4 flex flex-col items-center justify-center text-center space-y-4 rounded-xl bg-slate-900/40 border border-sky-400/15">
-                  <div className="w-12 h-12 rounded-2xl bg-sky-400/20 border border-sky-400/30 text-sky-300 flex items-center justify-center shadow-lg">
-                    <Sparkles className="w-6 h-6 text-sky-400" />
+              {/* Identity Row: Title, Genre Pill, Protagonist & Pages / 100% Free Gift */}
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h2 className="text-base sm:text-xl font-black text-white tracking-tight">
+                      {book.title || "Barnaby's Ice Cream Adventure"}
+                    </h2>
+                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#122840] text-[#38bdf8] border border-[#1e486d]">
+                      {activeGenreConfig.label}
+                    </span>
                   </div>
-                  <div className="max-w-md space-y-1.5">
-                    <h3 className="text-sm sm:text-base font-bold text-white">
-                      What kind of personal book would you like to create?
-                    </h3>
-                    <p className="text-xs text-[#a0b4c4]">
-                      Type your idea below, or click to explore what PaperTales AI can do.
+                  <p className="text-xs sm:text-sm text-[#94a3b8]">
+                    Protagonist: <strong className="text-white font-bold">{character.name || "Barnaby"}</strong> ({character.type || "Golden Retriever Puppy"})
+                  </p>
+                </div>
+
+                <div className="text-right shrink-0">
+                  <span className="text-base sm:text-lg font-black text-white block">
+                    {pageCount} Pages
+                  </span>
+                  <span className="text-xs text-[#34d399] font-bold block">
+                    {quote.tokensRequired === 0 ? "100% Free Gift" : `${quote.tokensRequired} Tokens`}
+                  </span>
+                </div>
+              </div>
+
+              {/* LANE Selector: Coloring Book | Family Keepsake | Math & Logic Quest | Science Explorer */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none pt-1">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#94a3b8] shrink-0 mr-1">
+                  LANE:
+                </span>
+                {GENRE_LANES.map((lane) => {
+                  const isSel = selectedGenre === lane.id;
+                  return (
+                    <button
+                      key={lane.id}
+                      type="button"
+                      onClick={() => handleSelectGenre(lane.id)}
+                      className={`text-xs font-bold px-3.5 py-1.5 rounded-xl border transition-all shrink-0 cursor-pointer ${
+                        isSel
+                          ? "bg-[#0c2842] border-[#38bdf8] text-[#38bdf8] ring-1 ring-[#38bdf8]/40 shadow-sm"
+                          : "bg-[#101a2e] border-white/10 text-[#94a3b8] hover:text-white hover:border-sky-400/30"
+                      }`}
+                    >
+                      {lane.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Reference Photo / Sketch (Optional) Box */}
+              <div className="p-3 rounded-xl bg-[#0e182a] border border-[#1e3450] flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-lg bg-[#14233c] border border-[#1f375c] text-[#38bdf8] flex items-center justify-center shrink-0">
+                    <ImageIcon className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm font-bold text-white truncate">
+                      Reference Photo / Sketch (Optional)
+                    </p>
+                    <p className="text-[11px] text-[#94a3b8] truncate">
+                      {referenceImageUrl ? "Grounding character visual likeness" : "Upload photo or pet drawing"}
                     </p>
                   </div>
+                </div>
 
-                  {/* Clickable Starter Pills */}
-                  <div className="flex flex-wrap items-center justify-center gap-2 pt-1 max-w-xl">
+                {referenceImageUrl ? (
+                  <div className="flex items-center gap-2 shrink-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={referenceImageUrl}
+                      alt="Reference"
+                      className="w-8 h-8 object-cover rounded-lg border border-sky-400/40"
+                    />
                     <button
                       type="button"
-                      onClick={() => handleSendMessage("Hey, PaperTales what can you do")}
-                      disabled={isChatting}
-                      className="px-4 py-2 rounded-xl text-xs font-bold bg-sky-500/25 hover:bg-sky-500/40 text-sky-200 border border-sky-400/50 flex items-center gap-2 transition-all hover:scale-102 active:scale-95 shadow-md"
+                      onClick={() => setReferenceImageUrl(null)}
+                      className="text-red-400 hover:text-red-300 p-1 cursor-pointer"
+                      title="Remove reference photo"
                     >
-                      <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-                      <span>👋 Hey, PaperTales what can you do</span>
+                      <X className="w-4 h-4" />
                     </button>
+                  </div>
+                ) : (
+                  <label className="cursor-pointer px-3.5 py-1.5 rounded-lg border border-[#1f3d67] hover:border-sky-400 bg-[#11223b] hover:bg-sky-400/10 text-xs text-sky-200 font-semibold flex items-center gap-2 transition-all shrink-0">
+                    <UploadCloud className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Upload Image</span>
+                    <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+                  </label>
+                )}
+              </div>
 
+              {/* Book Length: 4 Preset Grid & Slider */}
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between text-xs sm:text-sm">
+                  <span className="font-bold text-white">Book Length:</span>
+                  <span className="text-xs font-bold text-sky-300">
+                    🎁 5 Free Pages Included
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { pages: 5, label: "5 Pages", tag: "Free" },
+                    { pages: 12, label: "12 Pages", tag: "7 Tokens" },
+                    { pages: 24, label: "24 Pages", tag: "19 Tokens" },
+                    { pages: 30, label: "30 Pages", tag: "25 Tokens" },
+                  ].map((preset) => {
+                    const isSel = pageCount === preset.pages;
+                    return (
+                      <button
+                        key={preset.pages}
+                        type="button"
+                        onClick={() => setPageCount(preset.pages)}
+                        className={`py-2.5 px-3 rounded-xl border text-center transition-all cursor-pointer ${
+                          isSel
+                            ? "bg-[#0c2842] border-[#38bdf8] text-white shadow-sm ring-1 ring-[#38bdf8]/40"
+                            : "bg-[#101a2e] border-white/10 hover:border-sky-400/30 text-slate-300"
+                        }`}
+                      >
+                        <div className="text-xs sm:text-sm font-bold">{preset.label}</div>
+                        <div className={`text-[10px] mt-0.5 ${isSel ? "text-sky-300 font-semibold" : "text-slate-400"}`}>
+                          {preset.tag}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Slider */}
+                <div className="flex items-center gap-3 pt-1">
+                  <input
+                    type="range"
+                    min={5}
+                    max={60}
+                    step={1}
+                    value={pageCount}
+                    onChange={(e) => setPageCount(parseInt(e.target.value, 10))}
+                    className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-[#38bdf8]"
+                  />
+                  <span className="text-xs font-bold text-sky-300 w-14 text-right">
+                    {pageCount} pgs
+                  </span>
+                </div>
+              </div>
+
+              {/* Designer Recommendation Banner */}
+              <div className="p-3 rounded-xl bg-[#0b1c30] border border-[#1a385c] flex items-start gap-2.5 text-xs text-sky-200">
+                <Sparkles className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+                <p className="leading-relaxed text-slate-200">
+                  <strong className="text-white">Designer Recommendation:</strong> Let&apos;s design your Master Page 1 Proof first for free to check layout and visual style before creating all {pageCount} pages.
+                </p>
+              </div>
+
+              {/* Stage 1 Master Page CTA Button */}
+              {book.pages.length === 1 ? (
+                <div className="space-y-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleExpandFullSpread}
+                    disabled={isGenerating}
+                    className="w-full py-3.5 px-5 rounded-2xl bg-[#7dd3fc] hover:bg-[#a0e3ff] text-[#001f2e] font-black text-sm sm:text-base shadow-xl flex items-center justify-center gap-2.5 transition-all hover:brightness-105 active:scale-98 disabled:opacity-50 cursor-pointer"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-[#001f2e]" />
+                        <span>Expanding to Full {pageCount}-Page Spread...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 text-[#001f2e]" />
+                        <span>✨ Looks Great! Expand to Full {pageCount}-Page Spread</span>
+                      </>
+                    )}
+                  </button>
+                  <div className="text-center">
                     <button
                       type="button"
-                      onClick={() => handleSendMessage("I want to design a family heirloom recipe book")}
-                      disabled={isChatting}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-950/80 hover:bg-white/10 text-slate-300 border border-white/15 transition-all active:scale-95"
+                      onClick={handleDesignHeroPage}
+                      disabled={isGenerating}
+                      className="text-xs text-[#a0b4c4] hover:text-sky-300 underline font-medium cursor-pointer"
                     >
-                      🍲 Family Recipe Book
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleSendMessage("Help me create a custom children's coloring adventure book")}
-                      disabled={isChatting}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-950/80 hover:bg-white/10 text-slate-300 border border-white/15 transition-all active:scale-95"
-                    >
-                      🎨 Kids Coloring Book
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleSendMessage("I want to create a Dad's fishing and outdoor knots guide")}
-                      disabled={isChatting}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-950/80 hover:bg-white/10 text-slate-300 border border-white/15 transition-all active:scale-95"
-                    >
-                      🎣 Dad&apos;s Fishing Guide
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleSendMessage("I want to make a 90-day guided daily habit and clarity journal")}
-                      disabled={isChatting}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-950/80 hover:bg-white/10 text-slate-300 border border-white/15 transition-all active:scale-95"
-                    >
-                      📖 Daily Habit Journal
+                      🔄 Redesign Master Page 1 Proof
                     </button>
                   </div>
                 </div>
               ) : (
-                messages.map((msg, index) => {
-                  const isUser = msg.role === "user";
-                  const lastAssistantIndex = messages.map((m) => m.role).lastIndexOf("assistant");
-                  const isLatestAssistant = !isUser && index === lastAssistantIndex;
-                  return (
-                    <div key={msg.id} className={`flex items-start gap-2.5 ${isUser ? "justify-end" : "justify-start"}`}>
-                      {!isUser && (
-                        <div className="w-8 h-8 rounded-full bg-sky-400/20 border border-sky-400/40 flex items-center justify-center text-sky-300 shrink-0 mt-1">
-                          <Sparkles className="w-4 h-4" />
-                        </div>
-                      )}
-
-                      <div
-                        className={`max-w-xl rounded-2xl p-4 text-xs sm:text-sm leading-relaxed shadow-lg ${
-                          isUser
-                            ? "bg-sky-500/20 border border-sky-400/40 text-white rounded-tr-xs"
-                            : "bg-slate-900/80 border border-sky-400/25 text-white rounded-tl-xs space-y-3"
-                        }`}
-                      >
-                        <p className="whitespace-pre-wrap">{msg.content}</p>
-
-                        {/* Print-Safe & Copyright Advisory Card */}
-                        {!isUser && msg.printAdvisory?.hasRisk && (
-                          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-400/40 text-xs space-y-2.5 animate-in fade-in">
-                            <div className="flex items-center gap-2 text-amber-300 font-bold">
-                              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-                              <span>
-                                Print-on-Demand Factory Notice ({msg.printAdvisory.franchiseName || "Trademark Detected"})
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-slate-300 leading-relaxed">
-                              {msg.printAdvisory.explanation ||
-                                "If printing a physical copy through Lulu POD, industrial print facilities may flag exact trademarked names. You can adopt our print-safe homage title or keep your original choice!"}
-                            </p>
-                            <div className="flex flex-wrap gap-2 pt-1">
-                              {msg.printAdvisory.safeTitle && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (msg.printAdvisory?.safeTitle) {
-                                      setBook((prev) => ({
-                                        ...prev,
-                                        title: msg.printAdvisory!.safeTitle!,
-                                        character: msg.printAdvisory!.safeCharacter
-                                          ? { ...prev.character, name: msg.printAdvisory!.safeCharacter! }
-                                          : prev.character,
-                                      }));
-                                      handleSendMessage(`I choose the print-safe title: "${msg.printAdvisory.safeTitle}"`);
-                                    }
-                                  }}
-                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
-                                >
-                                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                                  <span>Adopt Safe: &quot;{msg.printAdvisory.safeTitle}&quot;</span>
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleSendMessage("Keep my original character and book title, send to print queue");
-                                }}
-                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-amber-200 border border-amber-400/30 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-                              >
-                                <span>Keep Original &amp; Proceed to Print</span>
-                              </button>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Interactive In-Chat Book Synthesis Card (Active on Latest Assistant Turn) */}
-                        {isLatestAssistant && (
-                          <div className="mt-3 p-4 rounded-xl bg-slate-950/90 border border-sky-400/40 shadow-xl space-y-3.5 animate-in fade-in">
-                            {/* Card Header: Draft Identity */}
-                            <div className="flex items-start justify-between gap-3 border-b border-sky-400/15 pb-2.5">
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-xs sm:text-sm font-black text-white tracking-tight">
-                                    {book.title || "Custom Book Spread"}
-                                  </span>
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-400/30">
-                                    {activeGenreConfig.label}
-                                  </span>
-                                </div>
-                                <p className="text-[11px] text-[#a0b4c4]">
-                                  Protagonist: <strong className="text-white">{character.name}</strong> ({character.type})
-                                </p>
-                              </div>
-
-                              <div className="text-right shrink-0">
-                                <span className="text-xs font-black text-sky-300 block">
-                                  {pageCount} Pages
-                                </span>
-                                <span className="text-[10px] text-emerald-400 font-semibold">
-                                  {quote.tokensRequired === 0 ? "100% Free Gift" : `${quote.tokensRequired} Tokens`}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Creative Lane Quick Switcher (Compact Pills) */}
-                            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0 mr-1">
-                                Lane:
-                              </span>
-                              {GENRE_LANES.map((lane) => {
-                                const isSel = selectedGenre === lane.id;
-                                return (
-                                  <button
-                                    key={lane.id}
-                                    type="button"
-                                    onClick={() => handleSelectGenre(lane.id)}
-                                    className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all shrink-0 cursor-pointer ${
-                                      isSel
-                                        ? "bg-sky-400/25 border-sky-400 text-sky-200 ring-1 ring-sky-400/30 shadow-sm"
-                                        : "bg-slate-900/60 border-white/10 text-slate-400 hover:text-white hover:border-sky-400/30"
-                                    }`}
-                                  >
-                                    {lane.label}
-                                  </button>
-                                );
-                              })}
-                            </div>
-
-                            {/* Reference Photo / Sketch Dropzone (Inline) */}
-                            <div className="p-2.5 rounded-lg bg-slate-900/80 border border-sky-400/20 flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <div className="w-7 h-7 rounded-md bg-sky-400/15 border border-sky-400/30 text-sky-300 flex items-center justify-center shrink-0">
-                                  <ImageIcon className="w-3.5 h-3.5" />
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="text-[11px] font-bold text-white truncate">
-                                    Reference Photo / Sketch (Optional)
-                                  </p>
-                                  <p className="text-[10px] text-[#a0b4c4] truncate">
-                                    {referenceImageUrl ? "Grounding character visual likeness" : "Upload photo or pet drawing"}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {referenceImageUrl ? (
-                                <div className="flex items-center gap-2 shrink-0">
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img
-                                    src={referenceImageUrl}
-                                    alt="Reference"
-                                    className="w-7 h-7 object-cover rounded-md border border-sky-400/40"
-                                  />
-                                  <span className="text-[10px] font-bold text-emerald-300 hidden sm:inline">Active</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => setReferenceImageUrl(null)}
-                                    className="text-red-400 hover:text-red-300 p-1 cursor-pointer"
-                                    title="Remove reference photo"
-                                  >
-                                    <X className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              ) : (
-                                <label className="cursor-pointer px-2.5 py-1 rounded-md border border-sky-400/30 hover:border-sky-400 bg-slate-900 hover:bg-sky-400/10 text-[11px] text-sky-200 font-semibold flex items-center gap-1.5 transition-all shrink-0">
-                                  <UploadCloud className="w-3 h-3 text-sky-400" />
-                                  <span>Upload Image</span>
-                                  <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
-                                </label>
-                              )}
-                            </div>
-
-                            {/* Book Length Quick Pills & Dynamic Quoting */}
-                            <div className="space-y-1.5">
-                              <div className="flex items-center justify-between text-[11px]">
-                                <span className="font-bold text-[#a0b4c4]">Book Length:</span>
-                                <span className="text-[10px] font-medium text-sky-300">
-                                  {quote.tokensRequired === 0 ? "🎁 5 Free Pages Included" : `⚡ ${quote.tokensRequired} Tokens ($${quote.priceUsd.toFixed(2)})`}
-                                </span>
-                              </div>
-                              <div className="grid grid-cols-4 gap-1.5">
-                                {[
-                                  { pages: 5, label: "5 Pages", tag: "Free" },
-                                  { pages: 12, label: "12 Pages", tag: "7 Tokens" },
-                                  { pages: 24, label: "24 Pages", tag: "19 Tokens" },
-                                  { pages: 30, label: "30 Pages", tag: "25 Tokens" },
-                                ].map((preset) => {
-                                  const isSel = pageCount === preset.pages;
-                                  return (
-                                    <button
-                                      key={preset.pages}
-                                      type="button"
-                                      onClick={() => setPageCount(preset.pages)}
-                                      className={`py-1.5 px-2 rounded-lg border text-center transition-all cursor-pointer ${
-                                        isSel
-                                          ? "bg-sky-500/25 border-sky-400 text-white shadow-sm ring-1 ring-sky-400/40"
-                                          : "bg-slate-900/60 border-white/10 hover:border-sky-400/30 text-slate-300"
-                                      }`}
-                                    >
-                                      <div className="text-[11px] font-bold">{preset.label}</div>
-                                      <div className={`text-[9px] ${isSel ? "text-sky-300 font-semibold" : "text-slate-400"}`}>
-                                        {preset.tag}
-                                      </div>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-
-                              {/* Fine-tuning range slider */}
-                              <div className="flex items-center gap-2 pt-1">
-                                <input
-                                  type="range"
-                                  min={5}
-                                  max={60}
-                                  step={1}
-                                  value={pageCount}
-                                  onChange={(e) => setPageCount(parseInt(e.target.value, 10))}
-                                  className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-400"
-                                />
-                                <span className="text-[11px] font-bold text-sky-300 w-14 text-right">
-                                  {pageCount} pgs
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Token Balance Telemetry if > 5 pages */}
-                            {quote.tokensRequired > 0 && (
-                              <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-900/60 border border-sky-400/15 text-[11px]">
-                                <div className="flex items-center gap-1.5 text-slate-300">
-                                  <Coins className="w-3.5 h-3.5 text-sky-400" />
-                                  <span>Balance: <strong className="text-white">{userTokens} tokens</strong></span>
-                                </div>
-                                {userTokens < quote.tokensRequired ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => setTokenModalOpen(true)}
-                                    className="text-[10px] font-bold text-amber-300 hover:underline cursor-pointer"
-                                  >
-                                    Need {quote.tokensRequired - userTokens} more tokens &rarr;
-                                  </button>
-                                ) : (
-                                  <span className="text-[10px] text-emerald-400 font-medium">Sufficient Balance</span>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Two-Stage Personal Book Designer Action Controls */}
-                            {book.pages.length === 1 ? (
-                              <div className="space-y-2.5 pt-1">
-                                <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-xs space-y-1 animate-in fade-in">
-                                  <div className="flex items-center gap-1.5 text-emerald-300 font-bold">
-                                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                                    <span>Master Page 1 Proof Ready for Inspection!</span>
-                                  </div>
-                                  <p className="text-[11px] text-slate-300 leading-relaxed">
-                                    Your hero layout is rendered in the Book Display below. Review the illustration and story layout. If you want changes, ask in chat or highlight text. Otherwise, expand your full volume!
-                                  </p>
-                                </div>
-
-                                <button
-                                  type="button"
-                                  onClick={handleExpandFullSpread}
-                                  disabled={isGenerating}
-                                  className="w-full py-3 px-4 rounded-xl glacier-btn text-[#001f2e] font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 transition-all hover:brightness-110 active:scale-98 disabled:opacity-50 cursor-pointer"
-                                >
-                                  {isGenerating ? (
-                                    <>
-                                      <RefreshCw className="w-4 h-4 animate-spin text-[#001f2e]" />
-                                      <span>Expanding to Full {pageCount}-Page Spread...</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Sparkles className="w-4 h-4 text-[#001f2e]" />
-                                      <span>✨ Looks Great! Expand to Full {pageCount}-Page Spread</span>
-                                    </>
-                                  )}
-                                </button>
-
-                                <div className="flex items-center justify-between text-[11px] pt-0.5 px-1">
-                                  <button
-                                    type="button"
-                                    onClick={handleDesignHeroPage}
-                                    disabled={isGenerating}
-                                    className="text-[#a0b4c4] hover:text-sky-300 underline font-medium cursor-pointer"
-                                  >
-                                    🔄 Redesign Master Page 1
-                                  </button>
-                                  <span className="text-slate-400 text-[10px]">
-                                    {quote.tokensRequired === 0 ? "100% Free Gift" : `${quote.tokensRequired} Tokens`}
-                                  </span>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="space-y-2.5 pt-1">
-                                {/* Designer Recommendation Banner */}
-                                <div className="p-2.5 rounded-lg bg-sky-500/10 border border-sky-400/25 flex items-start gap-2 text-[11px] text-sky-200">
-                                  <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" />
-                                  <p className="leading-relaxed">
-                                    <strong>Designer Recommendation:</strong> Let&apos;s design your Master Page 1 Proof first for free to check layout and visual style before creating all {pageCount} pages.
-                                  </p>
-                                </div>
-
-                                {/* Stage 1: Design Hero Page First (Primary) */}
-                                <button
-                                  type="button"
-                                  onClick={handleDesignHeroPage}
-                                  disabled={isGenerating}
-                                  className="w-full py-3 px-4 rounded-xl glacier-btn text-[#001f2e] font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 transition-all hover:brightness-110 active:scale-98 disabled:opacity-50 cursor-pointer"
-                                >
-                                  {isGenerating ? (
-                                    <>
-                                      <RefreshCw className="w-4 h-4 animate-spin text-[#001f2e]" />
-                                      <span>Designing Master Page 1 Proof...</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Palette className="w-4 h-4 text-[#001f2e]" />
-                                      <span>🎨 Design Master Page 1 First (Instant Free Preview)</span>
-                                    </>
-                                  )}
-                                </button>
-
-                                {/* Fast-Track: Generate All Pages Directly */}
-                                <div className="text-center pt-0.5">
-                                  <button
-                                    type="button"
-                                    onClick={handleExpandFullSpread}
-                                    disabled={isGenerating}
-                                    className="text-[11px] text-[#a0b4c4] hover:text-sky-300 underline font-medium transition-colors cursor-pointer"
-                                  >
-                                    ⚡ Or generate all {pageCount} pages directly &rarr;
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Quick Replies for Assistant Messages */}
-                        {!isUser && msg.quickReplies && msg.quickReplies.length > 0 && (
-                          <div className="pt-2 border-t border-white/10 space-y-1.5">
-                            <span className="text-[10px] uppercase font-bold text-sky-400 tracking-wider block">
-                              Suggested Next Steps:
-                            </span>
-                            <div className="flex flex-wrap gap-1.5">
-                              {msg.quickReplies.map((reply, idx) => (
-                                <button
-                                  key={idx}
-                                  type="button"
-                                  onClick={() => handleSendMessage(reply)}
-                                  disabled={isChatting}
-                                  className="text-[11px] font-semibold bg-slate-950/80 hover:bg-sky-400/20 text-sky-200 border border-sky-400/25 px-2.5 py-1 rounded-lg transition-all active:scale-95 disabled:opacity-50"
-                                >
-                                  {reply}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {isUser && (
-                        <div className="w-8 h-8 rounded-full bg-slate-800 border border-sky-400/30 flex items-center justify-center text-sky-300 shrink-0 mt-1">
-                          <User className="w-4 h-4" />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
+                <button
+                  type="button"
+                  onClick={handleDesignHeroPage}
+                  disabled={isGenerating}
+                  className="w-full py-3.5 px-5 rounded-2xl bg-[#7dd3fc] hover:bg-[#a0e3ff] text-[#001f2e] font-black text-sm sm:text-base shadow-xl flex items-center justify-center gap-2.5 transition-all hover:brightness-105 active:scale-98 disabled:opacity-50 cursor-pointer"
+                >
+                  {isGenerating ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-[#001f2e]" />
+                      <span>Designing Master Page 1 Proof...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Palette className="w-4 h-4 text-[#001f2e]" />
+                      <span>🎨 Design Master Page 1 First (Instant Free Preview)</span>
+                    </>
+                  )}
+                </button>
               )}
-
-              {/* Chatting Loading Indicator */}
-              {isChatting && (
-                <div className="flex items-center gap-2 text-xs text-sky-300 italic py-1">
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>PaperTales is brainstorming your book idea...</span>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Chat Input Field */}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSendMessage(inputMessage);
-              }}
-              className="flex items-center gap-2 bg-slate-900/90 border border-sky-400/25 rounded-xl p-1.5"
-            >
-              <input
-                type="text"
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                placeholder="Ask PaperTales, suggest a new story arc, or describe your child..."
-                className="flex-1 bg-transparent px-3 py-2 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none"
-              />
-              <button
-                type="submit"
-                disabled={!inputMessage.trim() || isChatting}
-                className="px-4 py-2 rounded-lg glacier-btn text-[#001f2e] font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-40"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>Send</span>
-              </button>
-            </form>
-          </section>
+            </section>
+          )}
 
           {/* =========================================================================
               SECTION 2 (BOTTOM): BOOK DISPLAY (BOOK PREVIEW DISPLAY)
