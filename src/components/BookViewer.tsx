@@ -257,11 +257,135 @@ export default function BookViewer({
     activePage?.storyText.toLowerCase().includes("ice cream") ||
     activePage?.storyText.toLowerCase().includes("biscuit");
 
-  const isJournalOrTask =
+  const is6x9 = book.format?.trimSize === "6x9";
+  const is85x11 = book.format?.trimSize === "8.5x11";
+  const isSquare = !is6x9 && !is85x11;
+
+  const spreadAspectClass = is6x9
+    ? "sm:aspect-[4/3] max-w-4xl"
+    : is85x11
+    ? "sm:aspect-[17/11] max-w-5xl"
+    : "sm:aspect-[2/1] max-w-5xl";
+
+  const coverAspectClass = is6x9
+    ? "aspect-[6/9] max-w-[280px] sm:max-w-[320px]"
+    : is85x11
+    ? "aspect-[8.5/11] max-w-[300px] sm:max-w-[340px]"
+    : "aspect-square max-w-[320px] sm:max-w-[380px]";
+
+  const isJournal =
+    is6x9 ||
     book.genre === "memory_book" ||
-    /\b(journal|task|planner|log|coding|checklist|agenda|developer|notes)\b/i.test(book.title || "") ||
-    Boolean(book.subtitle && /\b(journal|task|planner|log|coding|checklist|agenda|developer|notes)\b/i.test(book.subtitle)) ||
-    Boolean(activePage?.title && /\b(day\s*\d+|task|log|checklist)\b/i.test(activePage.title));
+    Boolean(activePage?.journalData) ||
+    /\b(journal|diary|planner|reflection|gratitude|notes)\b/i.test(book.title || "");
+
+  const renderJournalPage = (
+    page: BookPage | null | undefined,
+    pNum: number,
+    isRightPage: boolean
+  ) => {
+    const hasQuote = Boolean(page?.journalData?.quote && page.journalData.quote.trim() !== "");
+    const reflectionText =
+      page?.journalData?.reflectionPrompt ||
+      page?.storyText ||
+      (isRightPage
+        ? "What went well today, and what are you looking forward to tomorrow?"
+        : "What small action or focus can you cultivate today toward your goal?");
+    const linesCount = hasQuote ? 14 : 19;
+
+    return (
+      <div
+        className={`flex-1 p-5 sm:p-7 lg:p-8 flex flex-col justify-between relative bg-[#fffdfa] ${
+          isRightPage
+            ? mobilePageTab === "story"
+              ? "hidden sm:flex"
+              : "flex"
+            : mobilePageTab === "art"
+            ? "hidden sm:flex"
+            : "flex border-b sm:border-b-0 sm:border-r border-slate-200"
+        }`}
+      >
+        {/* Spine shadow */}
+        <div
+          className={`hidden sm:block absolute top-0 bottom-0 ${
+            isRightPage ? "left-0" : "right-0"
+          } w-5 spine-gradient pointer-events-none`}
+        />
+
+        <div className="flex-1 flex flex-col justify-between space-y-2">
+          {/* Header Row: Day & Date Placeholder */}
+          <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 tracking-wider">
+                Day {pNum}
+              </span>
+              <span className="text-xs font-semibold text-slate-600">
+                Daily Reflection &amp; Mindset
+              </span>
+            </div>
+            <div className="text-xs text-slate-400 font-mono">
+              {page?.journalData?.datePlaceholder || "Date: _______________"}
+            </div>
+          </div>
+
+          {/* Daily Mood Tracker */}
+          <div className="flex items-center justify-between bg-amber-50/60 border border-amber-200/50 rounded-xl px-3 py-1 text-xs">
+            <span className="font-bold text-amber-950 text-[11px] tracking-wide">
+              Today&apos;s Mood:
+            </span>
+            <div className="flex items-center gap-2 text-sm sm:text-base">
+              <span title="Radiant" className="cursor-pointer hover:scale-125 transition-transform">☀️</span>
+              <span title="Joyful" className="cursor-pointer hover:scale-125 transition-transform">😊</span>
+              <span title="Peaceful" className="cursor-pointer hover:scale-125 transition-transform">🌿</span>
+              <span title="Pensive" className="cursor-pointer hover:scale-125 transition-transform">💭</span>
+              <span title="Creative" className="cursor-pointer hover:scale-125 transition-transform">🎨</span>
+            </div>
+          </div>
+
+          {/* Daily Inspiration Quote Card (ONLY if present) */}
+          {hasQuote && (
+            <div className="p-2.5 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50/30 border border-amber-200/70 shadow-xs relative">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 block mb-0.5">
+                Daily Inspiration
+              </span>
+              <p className="text-xs sm:text-sm font-serif italic text-slate-800 leading-snug">
+                &ldquo;{page?.journalData?.quote}&rdquo;
+              </p>
+            </div>
+          )}
+
+          {/* Guided Reflection Question */}
+          <div className="pt-0.5">
+            <p className="text-xs sm:text-sm font-bold text-slate-800 leading-snug">
+              {reflectionText}
+            </p>
+          </div>
+
+          {/* Full College-Ruled Writing Lines (18-19 lines) */}
+          <div className="flex-1 flex flex-col justify-between py-1 min-h-[220px]">
+            {Array.from({ length: linesCount }).map((_, i) => (
+              <div
+                key={i}
+                className="w-full border-b border-slate-300/80 h-5 sm:h-6 flex items-end"
+              >
+                {i === 0 && (
+                  <span className="text-[10px] text-slate-400 font-serif italic select-none pl-1">
+                    write your thoughts here...
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Page Footer */}
+          <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-200/70 pt-2">
+            <span className="truncate max-w-[160px] font-medium">{book.title}</span>
+            <span className="font-mono">Page {pNum}</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="flex flex-col items-center w-full">
@@ -273,7 +397,11 @@ export default function BookViewer({
               {book.title}
             </h2>
             <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-sky-400/20 text-sky-300 font-bold border border-sky-400/30">
-              8.5&quot; &times; 8.5&quot; Square
+              {is6x9
+                ? '6" × 9" Digest Journal'
+                : is85x11
+                ? '8.5" × 11" Letter'
+                : '8.5" × 8.5" Square'}
             </span>
             {isConfirmed && (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 flex items-center gap-1">
@@ -282,7 +410,12 @@ export default function BookViewer({
             )}
           </div>
           <p className="text-xs text-[#a0b4c4] mt-0.5">
-            By <strong className="text-white">{book.authorName}</strong> &bull; {book.pageCount} Pages &bull; Archival Saddle-Stitch POD
+            {book.authorName && book.authorName.trim() !== "" && book.authorName !== "Lawrence & Leo" ? (
+              <>By <strong className="text-white">{book.authorName}</strong> &bull; </>
+            ) : (
+              <>Personal Keepsake Edition &bull; </>
+            )}
+            {book.pageCount} Pages &bull; Archival Saddle-Stitch POD
           </p>
         </div>
 
@@ -291,7 +424,7 @@ export default function BookViewer({
           <button
             onClick={onDownloadPdf}
             disabled={isDownloading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold glacier-glass-subtle hover:bg-slate-800 text-sky-300 border border-sky-400/30 rounded-xl shadow-sm transition-all active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold glacier-glass-subtle hover:bg-slate-800 text-sky-300 border border-sky-400/30 rounded-xl shadow-sm transition-all active:scale-95 cursor-pointer"
             title="Download Full PDF"
           >
             <Download className="w-3.5 h-3.5 text-sky-400" />
@@ -305,14 +438,16 @@ export default function BookViewer({
       <div className="relative w-full min-h-[460px] sm:min-h-[520px] lg:min-h-[560px] glacier-glass rounded-2xl p-3 sm:p-6 lg:p-7 flex items-center justify-center border border-sky-400/25 shadow-2xl">
         {isCover ? (
           /* Cover Spread */
-          <div className="w-full max-w-sm sm:max-w-md aspect-square bg-[#0f1524] rounded-r-2xl border border-sky-400/40 book-shadow flex flex-col justify-between p-6 sm:p-8 relative overflow-hidden text-white">
+          <div
+            className={`w-full ${coverAspectClass} bg-[#0f1524] rounded-r-2xl border border-sky-400/40 book-shadow flex flex-col justify-between p-6 sm:p-8 relative overflow-hidden text-white transition-all duration-300`}
+          >
             <div className="absolute top-0 bottom-0 left-0 w-3 bg-gradient-to-r from-sky-400/40 to-sky-400/10" />
 
             <div className="text-center pt-2 sm:pt-4">
               <span className="text-[10px] sm:text-xs uppercase tracking-widest font-extrabold text-sky-300">
-                Personalized Story &amp; Coloring
+                {isJournal ? "Personalized Reflection Journal" : "Personalized Story & Coloring"}
               </span>
-              <h1 className="text-xl sm:text-3xl font-black text-white tracking-tight mt-1 mb-1 font-serif">
+              <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight mt-1 mb-1 font-serif">
                 {book.title}
               </h1>
               {book.subtitle && <p className="text-xs font-medium text-[#a0b4c4]">{book.subtitle}</p>}
@@ -320,8 +455,8 @@ export default function BookViewer({
 
             {/* Cover Graphic Frame */}
             <div className="w-full flex-1 my-3 sm:my-4 border-2 border-dashed border-sky-400/30 rounded-xl flex flex-col items-center justify-center p-4 bg-slate-900/60">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-sky-400/60 flex items-center justify-center mb-2 bg-slate-950">
-                <Sparkles className="w-7 h-7 sm:w-8 sm:h-8 text-sky-400" />
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 border-sky-400/60 flex items-center justify-center mb-2 bg-slate-950">
+                <Sparkles className="w-6 h-6 sm:w-7 sm:h-7 text-sky-400" />
               </div>
               <p className="text-xs sm:text-sm font-bold text-white">Featuring {book.character.name}</p>
               <p className="text-[11px] text-[#a0b4c4] text-center max-w-[220px] mt-0.5">
@@ -330,13 +465,21 @@ export default function BookViewer({
             </div>
 
             <div className="flex items-center justify-between border-t border-white/10 pt-3 text-xs text-[#a0b4c4]">
-              <span>Author: <strong className="text-white">{book.authorName}</strong></span>
-              <span className="text-[10px] text-sky-300">PaperTales AI Studio</span>
+              <span>
+                {book.authorName && book.authorName.trim() !== "" && book.authorName !== "Lawrence & Leo" ? (
+                  <>Author: <strong className="text-white">{book.authorName}</strong></>
+                ) : (
+                  <strong className="text-white">Personal Keepsake Edition</strong>
+                )}
+              </span>
+              <span className="text-[10px] text-sky-300 font-mono">
+                {is6x9 ? '6" × 9" Lulu POD' : is85x11 ? '8.5" × 11" Lulu POD' : '8.5" × 8.5" Lulu POD'}
+              </span>
             </div>
           </div>
         ) : (
           /* Interior 2-Page Spread */
-          <div className="w-full h-full max-w-5xl flex flex-col sm:flex-row bg-white rounded-2xl border border-slate-300 book-shadow overflow-hidden text-slate-900">
+          <div className={`w-full h-full ${spreadAspectClass} flex flex-col sm:flex-row bg-white rounded-2xl border border-slate-300 book-shadow overflow-hidden text-slate-900 transition-all duration-300`}>
             {/* Mobile Single-Page View Toggle (Only on small phone screens) */}
             <div className="sm:hidden flex border-b border-slate-200 bg-slate-100 p-1">
               <button
@@ -347,7 +490,7 @@ export default function BookViewer({
                 }`}
               >
                 <BookOpen className="w-3.5 h-3.5 text-sky-600" />
-                {isJournalOrTask ? `Daily Task Sheet` : `Reading Text`} (Page {activePage?.pageNumber})
+                {isJournal ? `Day ${activePage?.pageNumber || 1}` : `Reading Text`}
               </button>
               <button
                 type="button"
@@ -357,135 +500,107 @@ export default function BookViewer({
                 }`}
               >
                 <PenTool className="w-3.5 h-3.5 text-sky-600" />
-                {isJournalOrTask ? `Ruled Notes Page` : `Coloring Art`}
+                {isJournal ? `Day ${(activePage?.pageNumber || 1) + 1}` : `Coloring Art`}
               </button>
             </div>
 
-            {/* Left Page (Story & Reading Text OR Daily Task Sheet) */}
-            <div
-              className={`flex-1 p-5 sm:p-8 lg:p-10 flex flex-col justify-between border-b sm:border-b-0 sm:border-r border-slate-200 relative bg-amber-50/25 ${
-                mobilePageTab === "art" ? "hidden sm:flex" : "flex"
-              }`}
-            >
-              <div className="hidden sm:block absolute top-0 bottom-0 right-0 w-5 spine-gradient pointer-events-none" />
+            {isJournal ? (
+              /* Authentic Consistent 2-Page Journal Spread (Both sides look balanced and identical!) */
+              <>
+                {renderJournalPage(activePage, activePage?.pageNumber || 1, false)}
+                {renderJournalPage(
+                  book.pages[currentPageIndex] || null,
+                  (activePage?.pageNumber || 1) + 1,
+                  true
+                )}
+              </>
+            ) : (
+              /* Standard Story & Coloring Spread */
+              <>
+                {/* Left Page (Story & Reading Text) */}
+                <div
+                  className={`flex-1 p-5 sm:p-7 lg:p-8 flex flex-col justify-between border-b sm:border-b-0 sm:border-r border-slate-200 relative bg-[#fffdfa] ${
+                    mobilePageTab === "art" ? "hidden sm:flex" : "flex"
+                  }`}
+                >
+                  <div className="hidden sm:block absolute top-0 bottom-0 right-0 w-5 spine-gradient pointer-events-none" />
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Chapter {activePage?.pageNumber}
+                    </span>
+                    <h3 className="text-lg sm:text-2xl font-black font-serif text-slate-900 mt-1 mb-4">
+                      {activePage?.title}
+                    </h3>
 
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  {isJournalOrTask ? `Daily Task Plan` : `Chapter ${activePage?.pageNumber}`}
-                </span>
-                <h3 className="text-lg sm:text-2xl font-black font-serif text-slate-900 mt-1 mb-4">
-                  {activePage?.title}
-                </h3>
-
-                {editingStory ? (
-                  <div className="flex flex-col gap-2">
-                    <textarea
-                      value={editText}
-                      onChange={(e) => setEditText(e.target.value)}
-                      rows={6}
-                      className="w-full text-sm p-3 rounded-xl border border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500 font-serif leading-relaxed text-slate-900"
-                    />
-                    <button
-                      onClick={saveEdit}
-                      className="self-end px-3 py-1.5 text-xs font-bold bg-sky-600 text-white rounded-lg flex items-center gap-1 shadow-sm"
-                    >
-                      <Check className="w-3.5 h-3.5" /> Save Story
-                    </button>
-                  </div>
-                ) : (
-                  <div className="group relative">
-                    <div className="text-[11px] font-medium text-sky-600 mb-1 flex items-center gap-1 select-none">
-                      <Sparkles className="w-3 h-3 text-sky-500" />
-                      <span>Highlight any text to polish or rewrite with AI (1 🪙)</span>
-                    </div>
-                    <p
-                      onMouseUp={handleStoryMouseUp}
-                      onTouchEnd={handleStoryMouseUp}
-                      className="text-sm sm:text-base lg:text-lg font-serif text-slate-800 leading-relaxed sm:leading-loose cursor-text selection:bg-sky-200 selection:text-sky-950 whitespace-pre-wrap"
-                    >
-                      {activePage?.storyText}
-                    </p>
-                    <div className="flex items-center gap-2 mt-3 flex-wrap">
-                      <button
-                        onClick={() => startEdit(activePage?.storyText || "")}
-                        className="sm:opacity-0 group-hover:opacity-100 transition-opacity text-xs text-sky-700 font-semibold flex items-center gap-1 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200 w-fit"
-                      >
-                        <Edit3 className="w-3 h-3 text-sky-600" /> Manual Edit
-                      </button>
-                      {previousStoryText && (
+                    {editingStory ? (
+                      <div className="flex flex-col gap-2">
+                        <textarea
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          rows={6}
+                          className="w-full text-sm p-3 rounded-xl border border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500 font-serif leading-relaxed text-slate-900"
+                        />
                         <button
-                          onClick={handleUndoRefine}
-                          className="text-xs font-bold text-sky-600 hover:text-sky-800 flex items-center gap-1 bg-sky-50/80 px-2.5 py-1 rounded-lg border border-sky-300 w-fit transition-all active:scale-95"
+                          onClick={saveEdit}
+                          className="self-end px-3 py-1.5 text-xs font-bold bg-sky-600 text-white rounded-lg flex items-center gap-1 shadow-sm"
                         >
-                          <RotateCcw className="w-3 h-3" /> Undo AI Refinement
+                          <Check className="w-3.5 h-3.5" /> Save Story
                         </button>
-                      )}
-                    </div>
-                    {refineFeedback && (
-                      <div className="mt-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1.5 animate-in fade-in">
-                        <Check className="w-3 h-3 text-emerald-600" />
-                        <span>{refineFeedback}</span>
+                      </div>
+                    ) : (
+                      <div className="group relative">
+                        <div className="text-[11px] font-medium text-sky-600 mb-1 flex items-center gap-1 select-none">
+                          <Sparkles className="w-3 h-3 text-sky-500" />
+                          <span>Highlight any text to polish or rewrite with AI (1 🪙)</span>
+                        </div>
+                        <p
+                          onMouseUp={handleStoryMouseUp}
+                          onTouchEnd={handleStoryMouseUp}
+                          className="text-sm sm:text-base lg:text-lg font-serif text-slate-800 leading-relaxed sm:leading-loose cursor-text selection:bg-sky-200 selection:text-sky-950 whitespace-pre-wrap"
+                        >
+                          {activePage?.storyText}
+                        </p>
+                        <div className="flex items-center gap-2 mt-3 flex-wrap">
+                          <button
+                            onClick={() => startEdit(activePage?.storyText || "")}
+                            className="sm:opacity-0 group-hover:opacity-100 transition-opacity text-xs text-sky-700 font-semibold flex items-center gap-1 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200 w-fit"
+                          >
+                            <Edit3 className="w-3 h-3 text-sky-600" /> Manual Edit
+                          </button>
+                          {previousStoryText && (
+                            <button
+                              onClick={handleUndoRefine}
+                              className="text-xs font-bold text-sky-600 hover:text-sky-800 flex items-center gap-1 bg-sky-50/80 px-2.5 py-1 rounded-lg border border-sky-300 w-fit transition-all active:scale-95"
+                            >
+                              <RotateCcw className="w-3 h-3" /> Undo AI Refinement
+                            </button>
+                          )}
+                        </div>
+                        {refineFeedback && (
+                          <div className="mt-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1.5 animate-in fade-in">
+                            <Check className="w-3 h-3 text-emerald-600" />
+                            <span>{refineFeedback}</span>
+                          </div>
+                        )}
                       </div>
                     )}
-                  </div>
-                )}
-              </div>
 
-              <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-200/60 pt-3 mt-4">
-                <span className="truncate max-w-[150px]">{book.title}</span>
-                <span>{isJournalOrTask ? `Page ${activePage?.pageNumber} (Daily Checklist)` : `Page ${activePage?.pageNumber}`}</span>
-              </div>
-            </div>
-
-            {/* Right Page (Ruled Journal Page OR Coloring Line-Art Illustration) */}
-            <div
-              className={`flex-1 p-5 sm:p-8 lg:p-10 flex flex-col justify-between relative bg-white ${
-                mobilePageTab === "story" ? "hidden sm:flex" : "flex"
-              }`}
-            >
-              <div className="hidden sm:block absolute top-0 bottom-0 left-0 w-5 spine-gradient pointer-events-none" />
-
-              {isJournalOrTask ? (
-                /* Authentic Printed Ruled Notebook & Journal Page */
-                <div className="w-full flex-1 border border-slate-300/80 rounded-xl p-5 sm:p-7 flex flex-col justify-between bg-[#fafaf7] min-h-[280px] sm:min-h-[340px] shadow-inner relative">
-                  {/* Journal Top Header */}
-                  <div className="flex items-center justify-between border-b-2 border-slate-300 pb-2.5 mb-2">
-                    <div>
-                      <span className="text-xs font-bold text-slate-800 uppercase tracking-wider font-sans">
-                        Daily Notes &amp; Reflection
-                      </span>
-                      <span className="text-[11px] text-sky-700 font-mono ml-2 font-bold">
-                        Day {activePage?.pageNumber}
-                      </span>
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-200/60 pt-3 mt-4">
+                      <span className="truncate max-w-[150px]">{book.title}</span>
+                      <span>Page {activePage?.pageNumber}</span>
                     </div>
-                    <div className="text-[11px] text-slate-400 font-mono">
-                      Date: _______________
-                    </div>
-                  </div>
-
-                  {/* Physical Printed Ruled Lines for Pen & Pencil Writing */}
-                  <div className="flex-1 flex flex-col justify-between py-2 space-y-3.5">
-                    {[...Array(8)].map((_, i) => (
-                      <div
-                        key={i}
-                        className="w-full border-b border-slate-300/70 h-6 flex items-end"
-                      >
-                        <span className="text-[10px] text-slate-300 font-mono select-none pl-1">
-                          {i === 0 ? "// Key notes, links or code thoughts:" : ""}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Bottom Daily Goal / Sign-off Footer */}
-                  <div className="flex items-center justify-between pt-3 border-t border-slate-300/80 text-[11px] text-slate-500 font-sans mt-2">
-                    <span className="font-semibold text-slate-600">Daily Video Status:</span>
-                    <span className="text-slate-500 font-mono">[ ] Recorded &bull; [ ] Published</span>
                   </div>
                 </div>
-              ) : (
-                /* Vector coloring line art container */
-                <div className="w-full flex-1 border-2 border-slate-900 rounded-xl p-4 flex flex-col items-center justify-center relative overflow-hidden bg-white min-h-[260px] sm:min-h-[320px]">
+
+                {/* Right Page (Coloring Line-Art Illustration) */}
+                <div
+                  className={`flex-1 p-5 sm:p-8 lg:p-10 flex flex-col justify-between relative bg-white ${
+                    mobilePageTab === "story" ? "hidden sm:flex" : "flex"
+                  }`}
+                >
+                  <div className="hidden sm:block absolute top-0 bottom-0 left-0 w-5 spine-gradient pointer-events-none" />
+
+                  <div className="w-full flex-1 border-2 border-slate-900 rounded-xl p-4 flex flex-col items-center justify-center relative overflow-hidden bg-white min-h-[260px] sm:min-h-[320px]">
                   {/* Tweak art trigger button in top-right */}
                   <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
                   <button
@@ -633,6 +748,32 @@ export default function BookViewer({
                     <line x1="100" y1="305" x2="300" y2="305" stroke="#111111" strokeWidth="2.5" strokeDasharray="6,4" />
                     <line x1="120" y1="330" x2="280" y2="330" stroke="#111111" strokeWidth="2" strokeDasharray="6,4" />
                   </svg>
+                ) : book.title?.toLowerCase().includes("doctor") || book.title?.toLowerCase().includes("career") || activePage?.title?.toLowerCase().includes("doctor") ? (
+                  /* Doctor & Career Adventure Vector Line Art */
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" className="w-full h-full max-h-[340px]">
+                    <rect width="400" height="400" fill="#FFFFFF" />
+                    {/* Medical Cross Badge */}
+                    <rect x="175" y="30" width="50" height="50" rx="8" fill="none" stroke="#111111" strokeWidth="4" />
+                    <line x1="200" y1="40" x2="200" y2="70" stroke="#111111" strokeWidth="5" />
+                    <line x1="185" y1="55" x2="215" y2="55" stroke="#111111" strokeWidth="5" />
+                    {/* Stethoscope */}
+                    <path d="M 140 100 C 140 210, 260 210, 260 100" fill="none" stroke="#111111" strokeWidth="5" />
+                    <circle cx="140" cy="95" r="8" fill="#111111" />
+                    <circle cx="260" cy="95" r="8" fill="#111111" />
+                    <path d="M 200 182 L 200 240 Q 200 280 235 280" fill="none" stroke="#111111" strokeWidth="4.5" />
+                    <circle cx="245" cy="280" r="22" fill="#FFFFFF" stroke="#111111" strokeWidth="5" />
+                    <circle cx="245" cy="280" r="10" fill="none" stroke="#111111" strokeWidth="3" />
+                    {/* Doctor Clipboard / Patient Chart */}
+                    <rect x="90" y="240" width="80" height="110" rx="6" fill="#FFFFFF" stroke="#111111" strokeWidth="4" />
+                    <rect x="110" y="230" width="40" height="15" rx="3" fill="#FFFFFF" stroke="#111111" strokeWidth="3" />
+                    <line x1="105" y1="265" x2="155" y2="265" stroke="#111111" strokeWidth="3" />
+                    <line x1="105" y1="285" x2="155" y2="285" stroke="#111111" strokeWidth="3" />
+                    <line x1="105" y1="305" x2="140" y2="305" stroke="#111111" strokeWidth="3" />
+                    {/* Label */}
+                    <text x="200" y="375" textAnchor="middle" fontSize="18" fontWeight="bold" fill="#111111" fontFamily="sans-serif">
+                      Doctor&apos;s Checkup &bull; Color Me In!
+                    </text>
+                  </svg>
                 ) : (
                   /* Whimsical Forest Coloring Art (Barnaby & Friends) */
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" className="w-full h-full max-h-[340px]">
@@ -664,16 +805,17 @@ export default function BookViewer({
                   Crisp Vector Line-Art &bull; Print Ready (300 DPI) &bull; {book.genre.replace("_", " ").toUpperCase()}
                 </div>
               </div>
-            )}
 
-            <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-200/60 pt-3 mt-4">
-              <span>{isJournalOrTask ? "Ruled Journal & Notes Spread" : "Activity & Coloring Sheet"}</span>
-              <span>{isJournalOrTask ? "Lulu Print-Ready (300 DPI)" : `Page ${activePage?.pageNumber} Illustration`}</span>
+              <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-200/60 pt-3 mt-4">
+                <span>Activity & Coloring Sheet</span>
+                <span>Page {activePage?.pageNumber} Illustration</span>
+              </div>
             </div>
-          </div>
-          </div>
+          </>
         )}
       </div>
+    )}
+  </div>
 
       {/* Pagination Controls */}
       <div className="flex items-center justify-between w-full max-w-md my-4 px-2">

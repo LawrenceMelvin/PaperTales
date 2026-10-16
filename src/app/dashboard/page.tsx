@@ -35,7 +35,7 @@ const INITIAL_MOCK_ORDERS: PaperTalesOrder[] = [
     id: "ORD-P910MC",
     bookId: "book_space_2",
     bookTitle: "Barnaby's Journey to Mars",
-    authorName: "Lawrence & Leo",
+    authorName: "Personal Edition",
     fulfillmentType: "physical_print",
     status: "shipped",
     pageCount: 6,

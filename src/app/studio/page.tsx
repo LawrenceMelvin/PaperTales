@@ -184,6 +184,7 @@ interface ChatMessageItem {
   content: string;
   discussionStage?: "discovery" | "brainstorming" | "concept_locked";
   isReadyForProof?: boolean;
+  titleOptions?: string[];
   quickReplies?: string[];
   printAdvisory?: PrintAdvisoryData;
   bookDraft?: BookDraftData;
@@ -195,7 +196,7 @@ const INITIAL_BOOK: BookProject = {
   id: "book_initial",
   title: "Barnaby's Ice Cream Adventure",
   subtitle: "A Personalized AI Coloring Storybook",
-  authorName: "Lawrence & Leo",
+  authorName: "",
   genre: "coloring_book",
   targetAge: "4-8",
   character: GENRE_LANES[0].defaultCharacter,
@@ -246,7 +247,7 @@ export default function StudioPage() {
   const [book, setBook] = useState<BookProject>(INITIAL_BOOK);
   const [character, setCharacter] = useState<CharacterAnchor>(GENRE_LANES[0].defaultCharacter);
   const [prompt, setPrompt] = useState<string>(GENRE_LANES[0].defaultPrompt);
-  const [authorName, setAuthorName] = useState<string>("Lawrence & Leo");
+  const [authorName, setAuthorName] = useState<string>("");
   const [targetAge, setTargetAge] = useState<string>("4-8");
   const [pageCount, setPageCount] = useState<number>(5);
   const [userTokens, setUserTokens] = useState<number>(12);
@@ -259,6 +260,7 @@ export default function StudioPage() {
   const [inputMessage, setInputMessage] = useState<string>("");
   const [isChatting, setIsChatting] = useState<boolean>(false);
   const [isDiscussionDone, setIsDiscussionDone] = useState<boolean>(false);
+  const [isEditingCharacterName, setIsEditingCharacterName] = useState<boolean>(false);
 
   // Live Channel3 companion products
   const [companionProducts, setCompanionProducts] = useState<CompanionProduct[]>([]);
@@ -322,6 +324,14 @@ export default function StudioPage() {
     const cfg = GENRE_LANES.find((g) => g.id === genreId) || GENRE_LANES[0];
     setPrompt(cfg.defaultPrompt);
     setCharacter(cfg.defaultCharacter);
+    setBook((prev) => ({
+      ...prev,
+      genre: genreId,
+      format: {
+        ...prev.format,
+        trimSize: genreId === "memory_book" ? "6x9" : "8.5x8.5",
+      },
+    }));
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -430,6 +440,7 @@ export default function StudioPage() {
           content: data.reply,
           discussionStage: data.discussionStage || (data.isReadyForProof ? "concept_locked" : "brainstorming"),
           isReadyForProof: Boolean(data.isReadyForProof),
+          titleOptions: data.titleOptions || [],
           quickReplies: data.quickReplies || [],
           printAdvisory: data.printAdvisory,
           bookDraft: data.bookDraft
@@ -467,6 +478,7 @@ export default function StudioPage() {
           characterTraits: character.traits,
           referenceImageUrl: referenceImageUrl || undefined,
           pageCount: 1, // Single Hero Master Page
+          trimSize: book.format.trimSize,
         }),
       });
 
@@ -519,6 +531,7 @@ export default function StudioPage() {
           characterTraits: character.traits,
           referenceImageUrl: referenceImageUrl || undefined,
           pageCount, // Full requested page count
+          trimSize: book.format.trimSize,
         }),
       });
 
@@ -764,33 +777,83 @@ export default function StudioPage() {
                               </div>
                             )}
 
-                            {/* Quick Replies for Assistant Messages */}
-                            {!isUser && msg.quickReplies && msg.quickReplies.length > 0 && (
-                              <div className="pt-2 border-t border-white/10 space-y-1.5">
-                                <span className="text-[10px] uppercase font-bold text-sky-400 tracking-wider block">
-                                  Suggested Next Steps:
-                                </span>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {msg.quickReplies.map((reply, idx) => (
-                                    <button
-                                      key={idx}
-                                      type="button"
-                                      onClick={() => handleSendMessage(reply)}
-                                      disabled={isChatting}
-                                      className="text-[11px] font-semibold bg-slate-950/80 hover:bg-sky-400/20 text-sky-200 border border-sky-400/25 px-2.5 py-1 rounded-lg transition-all active:scale-95 disabled:opacity-50"
-                                    >
-                                      {reply}
-                                    </button>
-                                  ))}
+                            {/* Interactive Title Options Suggested by Copilot */}
+                            {!isUser && msg.titleOptions && msg.titleOptions.length > 0 && (
+                              <div className="pt-2.5 border-t border-sky-400/20 space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-bold text-sky-300 flex items-center gap-1.5 uppercase tracking-wider">
+                                    <BookOpen className="w-3.5 h-3.5 text-sky-400" />
+                                    <span>Suggested Book Titles (Click to Pick):</span>
+                                  </span>
+                                  <span className="text-[10px] text-slate-400">Tap to select</span>
+                                </div>
+                                <div className="grid grid-cols-1 gap-1.5">
+                                  {msg.titleOptions.map((titleOpt, tIdx) => {
+                                    const isSelected = book.title === titleOpt;
+                                    return (
+                                      <button
+                                        key={tIdx}
+                                        type="button"
+                                        onClick={() => {
+                                          setBook((prev) => ({ ...prev, title: titleOpt }));
+                                          handleSendMessage(`I pick the title: "${titleOpt}"`);
+                                        }}
+                                        disabled={isChatting}
+                                        className={`w-full text-left text-xs font-semibold px-3 py-2 rounded-xl border transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                                          isSelected
+                                            ? "bg-sky-500/25 border-sky-400 text-sky-200 ring-1 ring-sky-400/50 shadow-sm"
+                                            : "bg-slate-950/70 border-sky-400/20 hover:border-sky-400/60 hover:bg-sky-400/10 text-slate-200"
+                                        }`}
+                                      >
+                                        <span className="truncate">{titleOpt}</span>
+                                        <span className="text-[10px] text-sky-400 shrink-0 font-bold px-2 py-0.5 rounded-full bg-sky-400/15 border border-sky-400/30">
+                                          {isSelected ? "Selected ✓" : "Pick Title →"}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
                                 </div>
                               </div>
                             )}
 
-                            {/* Transition Prompt to Confirmation Card on Latest Turn: ONLY when concept is locked */}
-                            {isLatestAssistant && msg.isReadyForProof && (
+                            {/* Quick Replies for Assistant Messages */}
+                            {!isUser && msg.quickReplies && msg.quickReplies.length > 0 && (() => {
+                              const cleanReplies = msg.quickReplies.filter((r) => {
+                                const trimmed = r.trim().toLowerCase();
+                                if (/^(pick\s*a\s*title|choose\s*a\s*title|select\s*a\s*title)/i.test(trimmed)) return false;
+                                if (/provide\s*child/i.test(trimmed)) return false;
+                                return true;
+                              });
+
+                              if (cleanReplies.length === 0) return null;
+
+                              return (
+                                <div className="pt-2 border-t border-white/10 space-y-1.5">
+                                  <span className="text-[10px] uppercase font-bold text-sky-400 tracking-wider block">
+                                    Suggested Next Steps:
+                                  </span>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {cleanReplies.map((reply, idx) => (
+                                      <button
+                                        key={idx}
+                                        type="button"
+                                        onClick={() => handleSendMessage(reply)}
+                                        disabled={isChatting}
+                                        className="text-[11px] font-semibold bg-slate-950/80 hover:bg-sky-400/20 text-sky-200 border border-sky-400/25 px-2.5 py-1 rounded-lg transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                                      >
+                                        {reply}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Transition Prompt to Confirmation Card on Latest Turn: when concept is locked or title is picked */}
+                            {isLatestAssistant && (msg.isReadyForProof || msg.discussionStage === "concept_locked" || (book.title && book.title === msg.bookDraft?.title && book.title !== INITIAL_BOOK.title)) && (
                               <div className="pt-2.5 border-t border-sky-400/20 flex flex-wrap items-center justify-between gap-2 animate-in fade-in">
                                 <span className="text-[11px] text-sky-300 font-medium">
-                                  ✨ Concept locked! Review your book specs and design your free master proof.
+                                  ✨ Concept ready! Review your book specs and design your free master proof.
                                 </span>
                                 <button
                                   type="button"
@@ -927,9 +990,43 @@ export default function StudioPage() {
                       {activeGenreConfig.label}
                     </span>
                   </div>
-                  <p className="text-xs sm:text-sm text-[#94a3b8]">
-                    Protagonist: <strong className="text-white font-bold">{character.name || "Barnaby"}</strong> ({character.type || "Golden Retriever Puppy"})
-                  </p>
+                  <div className="flex items-center gap-2 text-xs sm:text-sm text-[#94a3b8] flex-wrap">
+                    <span>Protagonist:</span>
+                    {isEditingCharacterName ? (
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={character.name}
+                          onChange={(e) => setCharacter((prev) => ({ ...prev, name: e.target.value }))}
+                          className="bg-[#0b1324] border border-sky-400 text-white px-2.5 py-0.5 rounded-lg text-xs font-bold focus:outline-none focus:ring-1 focus:ring-sky-400"
+                          placeholder="Child's name"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") setIsEditingCharacterName(false);
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingCharacterName(false)}
+                          className="text-[10px] bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 px-2 py-0.5 rounded-md border border-sky-400/40 font-bold cursor-pointer"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="flex items-center gap-1.5">
+                        <strong className="text-white font-bold">{character.name || "Barnaby"}</strong>
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingCharacterName(true)}
+                          className="text-[10px] text-sky-400 hover:text-sky-300 underline font-semibold cursor-pointer"
+                        >
+                          (Change Child's Name)
+                        </button>
+                      </span>
+                    )}
+                    <span>({character.type || "Explorer"})</span>
+                  </div>
                 </div>
 
                 <div className="text-right shrink-0">
@@ -1006,6 +1103,66 @@ export default function StudioPage() {
                     <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
                   </label>
                 )}
+              </div>
+
+              {/* Trim Size & Dimension Selector */}
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between text-xs sm:text-sm">
+                  <span className="font-bold text-white">Trim Size &amp; Book Dimension:</span>
+                  <span className="text-[11px] font-bold text-sky-300">
+                    Lulu POD Industry Standard
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {[
+                    {
+                      id: "6x9",
+                      name: "6\" × 9\" Digest",
+                      desc: "Daily Journals, Reflections & Notes",
+                    },
+                    {
+                      id: "8.5x8.5",
+                      name: "8.5\" × 8.5\" Square",
+                      desc: "Bedtime Storybooks & Coloring",
+                    },
+                    {
+                      id: "8.5x11",
+                      name: "8.5\" × 11\" Letter",
+                      desc: "Large Activity & Workbooks",
+                    },
+                  ].map((dim) => {
+                    const isSel = (book.format?.trimSize || "8.5x8.5") === dim.id;
+                    return (
+                      <button
+                        key={dim.id}
+                        type="button"
+                        onClick={() =>
+                          setBook((prev) => ({
+                            ...prev,
+                            format: { ...prev.format, trimSize: dim.id as any },
+                          }))
+                        }
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                          isSel
+                            ? "bg-[#0c2842] border-[#38bdf8] text-white shadow-sm ring-1 ring-[#38bdf8]/40"
+                            : "bg-[#101a2e] border-white/10 hover:border-sky-400/30 text-slate-300"
+                        }`}
+                      >
+                        <div className="text-xs sm:text-sm font-bold flex items-center justify-between">
+                          <span>{dim.name}</span>
+                          {isSel && <span className="text-sky-300 text-[10px] font-bold">✓ Active</span>}
+                        </div>
+                        <div
+                          className={`text-[10px] mt-0.5 truncate ${
+                            isSel ? "text-sky-300 font-semibold" : "text-slate-400"
+                          }`}
+                        >
+                          {dim.desc}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Book Length: 4 Preset Grid & Slider */}
@@ -1140,7 +1297,12 @@ export default function StudioPage() {
                     Book Display
                   </h3>
                   <p className="text-xs text-[#a0b4c4]">
-                    Interactive two-page spread preview &bull; 8.5&quot; &times; 8.5&quot; Square
+                    Interactive two-page spread preview &bull;{" "}
+                    {book.format?.trimSize === "6x9"
+                      ? "6\" × 9\" US Trade Digest Journal"
+                      : book.format?.trimSize === "8.5x11"
+                      ? "8.5\" × 11\" Letter Workbook"
+                      : "8.5\" × 8.5\" Square Storybook"}
                   </p>
                 </div>
               </div>

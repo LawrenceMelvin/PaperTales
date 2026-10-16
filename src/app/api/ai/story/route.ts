@@ -148,6 +148,7 @@ export async function POST(req: NextRequest) {
       authorName = "Little Author",
       targetAge = "4-8",
       genre = "coloring_book",
+      trimSize,
       characterName = "Barnaby",
       characterType = "Golden Retriever Puppy",
       characterTraits = ["Wearing a cozy red scarf", "Floppy ears", "Curious tail wag"],
@@ -163,15 +164,22 @@ export async function POST(req: NextRequest) {
 
     const count = Math.min(Math.max(pageCount, 1), 60);
 
+    const isJournalMode =
+      genre === "memory_book" ||
+      trimSize === "6x9" ||
+      /\b(journal|diary|planner|notes|reflection|inspiration|gratitude)\b/i.test(prompt || "") ||
+      /\b(journal|diary|planner|inspiration)\b/i.test(title || "");
+
+    const effectiveTrimSize = trimSize || (isJournalMode ? "6x9" : "8.5x8.5");
+
     const groqKey = process.env.GROQ_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
     const useGroq = Boolean(groqKey && groqKey.startsWith("gsk_"));
     const apiKey = useGroq ? groqKey : openaiKey;
 
-    // Detect if the prompt/title is a Task Book, Journal, Planner, or Coding Log
-    const isTaskOrJournal =
-      Boolean(prompt && /\b(task|todo|to-do|journal|planner|habit|log|coding|checklist|agenda|guide|lesson)\b/i.test(prompt)) ||
-      Boolean(title && /\b(task|journal|planner|habit|coding|log)\b/i.test(title));
+    const wantsQuotes =
+      /\b(quote|quotes|inspirational|motivational|inspiration)\b/i.test(prompt || "") ||
+      /\b(quote|quotes|inspiration)\b/i.test(title || "");
 
     // Try AI LLM generation first (Groq LPU or OpenAI GPT-4o-mini)
     if (apiKey) {
@@ -181,56 +189,77 @@ export async function POST(req: NextRequest) {
           : "https://api.openai.com/v1/chat/completions";
         const model = useGroq ? "openai/gpt-oss-120b" : "gpt-4o-mini";
 
-        const systemPrompt = `You are PaperTales' Lead Publishing Engine.
+        const systemPrompt = isJournalMode
+          ? `You are PaperTales' Professional Guided Journal & Planner Engine.
+You generate personalized, physical printed journals formatted for Lulu POD (${effectiveTrimSize} format).
+
+CREATOR'S JOURNAL SPECIFICATIONS:
+- Journal Title: ${title || "Personal Reflection Journal"}
+- Creator's Theme & Prompt: "${prompt || "A daily personal reflection journal"}"
+- Total Days / Pages: ${count} day(s)
+- Include Quotes: ${wantsQuotes ? "YES (include inspirational quotes)" : "NO (do NOT include quotes; user wants clean reflection and maximum straight writing lines)"}
+
+CRITICAL INSTRUCTIONS FOR GUIDED JOURNAL FORMAT:
+1. STRUCTURED DAILY SPREAD:
+   - For every page, assign a Day Title (e.g. "Day 1: Setting the Intent", "Day 2: Finding Clarity").
+   - "quote": ${wantsQuotes ? "An uplifting, thought-provoking quote fitting the day's theme (max 110 characters)." : "null"}
+   - "reflectionPrompt": A warm, specific guided journaling prompt (STRICT LIMIT: max 120 characters) or daily focus.
+   - "gratitudePrompts": Optional array of 3 short prompts or empty array.
+   - "ruledLinesCount": 18
+2. CONCISE BREVITY: Keep text concise so it leaves ample space for 18-20 college-ruled writing lines.
+3. imagePrompt: Describe a subtle decorative border frame matching the creator's theme (e.g. botanical leaves, geometric lines, or cat outlines) framing the outer edges of the page, clean line-art, zero dark fills, pure white background.
+
+OUTPUT SCHEMA (valid JSON only):
+{
+  "title": "Finalized journal title",
+  "subtitle": "A short, descriptive subtitle",
+  "pages": [
+    {
+      "pageNumber": 1,
+      "title": "Day 1: Setting the Intent",
+      "storyText": "Today is the beginning of your journey.",
+      "journalData": {
+        "dayNumber": 1,
+        "quote": ${wantsQuotes ? '"Inspirational quote here"' : 'null'},
+        "reflectionPrompt": "What is one intention you want to set for today?",
+        "ruledLinesCount": 18
+      },
+      "imagePrompt": "Subtle, elegant decorative line-art border framing the outer edges of the page"
+    }
+  ]
+}`
+          : `You are PaperTales' Lead Publishing Engine for Storybooks & Coloring Adventures.
 You generate personalized, professionally formatted book pages ready for physical printing on Lulu POD (8.5" x 8.5" square book format).
 
 CREATOR'S SPECIFICATIONS:
 - Established Title: ${title || "Create an appropriate title based on prompt"}
 - Format / Lane: ${genre}
 - Creator's Concept & Detailed Prompt: "${prompt || "A personalized adventure"}"
-${isTaskOrJournal ? "" : `- Protagonist: ${character.name} (${character.type}) with traits: ${character.traits.join(", ")}`}
+- Protagonist / Star: ${character.name} (${character.type}) with traits: ${character.traits.join(", ")}
 - Total Pages to Generate: ${count} page(s)
 
-CRITICAL INSTRUCTIONS FOR FORMAT & THEME:
-${
-  isTaskOrJournal
-    ? `1. THIS IS A STRUCTURED TASK BOOK / JOURNAL / DAILY CODING LOG.
-   - HERO MASTER PROOF MANDATE: Page 1 MUST be "Day 1: Kickoff & First Lines of Code" (or Day 1 of the requested challenge/journal). DO NOT generate an introduction, title dedication, or book ownership page! The creator is previewing the daily recurring template.
-   - For every page, assign a Day or Milestone title (e.g. "Day 1: Kickoff & First Lines of Code").
-   - STRICT OBEDIENCE & MINIMALISM: Follow the creator's exact layout requirements strictly. If the creator asked for checklist items and normal daily writing lines, output ONLY what the creator requested.
-   - VERTICAL CHECKLIST FORMAT: Every checklist item MUST start on its own separate line with "[ ] " (e.g.
-[ ] Did Coding
-[ ] Making Coding Videos
-   ). NEVER combine multiple checklist items onto the same line!
-   - RULED WRITING LINES: If the creator requested normal lines to write on or a journal section, generate clean horizontal ruled blank lines separated by newlines:
-__________________________________________________
-__________________________________________________
-__________________________________________________
-__________________________________________________
-   - NO BLOAT: DO NOT invent or inject unrequested sections (such as "Daily Briefing", "Practical Tips", "Reflection", or motivational mascot quotes) unless explicitly requested in the prompt.
-   - NO UNREQUESTED MASCOTS: Do NOT quote or invent mascots (like Robo Buddy or Barnaby) for a task book or coding journal unless the creator explicitly asked for a character.
-   - For imagePrompt: Describe clean physical ruled lined paper with subtle margin header for daily notes, ready for physical printing on 8.5" x 8.5" paper.`
-    : `1. THIS IS A CREATIVE STORYBOOK / COLORING BOOK / LEARNING QUEST.
+CRITICAL INSTRUCTIONS:
+1. STRICT ADHERENCE TO CREATOR'S STORY THEME:
+   - Carefully craft each page to match the creator's exact narrative theme, age group, and style.
    - Craft heartwarming, engaging page narratives following a cohesive plot arc starring ${character.name}.
-   - For imagePrompt: Describe high-contrast, clean 300 DPI vector line-art with thick continuous borders, zero shading, pure white background ready for coloring.`
-}
+2. VISUAL LINE-ART DESCRIPTIONS (for imagePrompt):
+   - For every page, write a clear, descriptive visual prompt for 300 DPI high-contrast vector line art matching that exact page scene (pure white background, thick continuous black borders, zero shading, ready for coloring).
 
-OUTPUT SCHEMA:
-You MUST respond with valid JSON adhering to this exact schema:
+OUTPUT SCHEMA (valid JSON only):
 {
   "title": "Finalized creative book title",
   "subtitle": "A short, descriptive subtitle",
   "pages": [
     {
       "pageNumber": 1,
-      "title": "Page or Day Title",
-      "storyText": "Full text printed on this page (tasks, checklist, narrative story, or coding lesson)",
-      "imagePrompt": "Detailed visual description of the line-art illustration or task badge for this page"
+      "title": "Page or Chapter Title",
+      "storyText": "Full text printed on this page",
+      "imagePrompt": "Detailed visual description of the line-art illustration or scene for this page"
     }
   ]
-}
-Generate exactly ${count} page(s).`;
+}`;
 
+        let aiData: any = null;
         const aiRes = await fetch(apiUrl, {
           method: "POST",
           headers: {
@@ -246,39 +275,70 @@ Generate exactly ${count} page(s).`;
         });
 
         if (aiRes.ok) {
-          const aiData = await aiRes.json();
+          aiData = await aiRes.json();
+        } else if (useGroq && openaiKey && openaiKey.startsWith("sk-")) {
+          // Fall back to OpenAI if Groq fails
+          const openAiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${openaiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "gpt-4o-mini",
+              messages: [{ role: "system", content: systemPrompt }],
+              temperature: 0.7,
+              response_format: { type: "json_object" },
+            }),
+          });
+          if (openAiRes.ok) {
+            aiData = await openAiRes.json();
+          }
+        }
+
+        if (aiData) {
           const rawContent = aiData.choices?.[0]?.message?.content;
           const parsed = JSON.parse(rawContent);
 
           if (parsed.pages && Array.isArray(parsed.pages) && parsed.pages.length > 0) {
             const resolvedPages: BookPage[] = parsed.pages.map((p: any, idx: number) => {
               const pNum = idx + 1;
-              let pageTitle = p.title || `Day ${pNum}`;
-              let pageStoryText = p.storyText;
+              const pageTitle = p.title || (isJournalMode ? `Day ${pNum}` : `Chapter ${pNum}`);
+              const pageStoryText = p.storyText || "";
 
-              // Ensure task books always show the Day 1 template instead of an introduction page
-              if (isTaskOrJournal) {
-                if (pageTitle.toLowerCase().includes("introduction") || pageTitle.toLowerCase().includes("preface")) {
-                  pageTitle = `Day ${pNum}: Kickoff & First Lines of Code`;
-                }
-                if (!pageStoryText || !pageStoryText.includes("[ ]")) {
-                  pageStoryText = `[ ] Did Coding\n[ ] Making Coding Videos\n\n__________________________________________________\n__________________________________________________\n__________________________________________________\n__________________________________________________`;
-                }
-              }
+              // For journals: generate a decorative animal coloring border framing a clean white center
+              // For storybooks: generate the full scene vector line-art
+              const promptForImage = isJournalMode
+                ? `Children's coloring page decorative border with cute cartoon animal outlines (kittens, puppies, bunnies) framing a large clean empty white rectangular center space, thick continuous black outlines, zero shading, pure white background, no solid dark fills, strict monochrome vector line art, ready for coloring.`
+                : `Children's coloring book page outline, thick continuous bold black outlines, zero shading, pure white background, no gradients, ${
+                    p.imagePrompt || `${pageTitle} starring ${character.name} the ${character.type}`
+                  }. Strict monochrome black and white vector line art, ready for coloring.`;
+
+              const pageIllustrationUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
+                promptForImage
+              )}?width=1024&height=1024&nologo=true&seed=${100000 + pNum * 1337}`;
 
               return {
                 pageNumber: pNum,
                 title: pageTitle,
-                storyText: pageStoryText || `Task and exercises for Day ${pNum}.`,
-                imagePrompt: p.imagePrompt || `Clean layout for Day ${pNum}`,
-                imageUrl: undefined, // Let BookViewer render the clean physical ruled journal spread
+                storyText: pageStoryText,
+                imagePrompt: p.imagePrompt || `Clean layout for ${pageTitle}`,
+                imageUrl: pageIllustrationUrl,
+                journalData: p.journalData || (isJournalMode ? {
+                  dayNumber: pNum,
+                  datePlaceholder: "Date: _______________",
+                  quote: "Every day holds a new spark of wonder.",
+                  reflectionPrompt: "What made you smile or think today?",
+                  gratitudePrompts: ["One thing I enjoyed", "Someone who made a difference", "A hope for tomorrow"],
+                  ruledLinesCount: 6,
+                } : undefined),
               };
             });
 
             const finalBookProject: BookProject = {
               id: `book_${Date.now().toString(36)}`,
-              title: parsed.title || title || `${character.name}'s Custom Book`,
-              subtitle: parsed.subtitle || subtitle || `A Personalized AI-Designed Book`,
+              title: parsed.title || title || (isJournalMode ? "Daily Inspiration Journal" : `${character.name}'s Custom Book`),
+              subtitle: parsed.subtitle || subtitle || (isJournalMode ? "A 6\" x 9\" Personalized Reflection Journal" : "A Personalized AI-Designed Book"),
               authorName: authorName,
               genre: genre,
               targetAge: targetAge,
@@ -287,7 +347,7 @@ Generate exactly ${count} page(s).`;
               pages: resolvedPages,
               pageCount: resolvedPages.length,
               format: {
-                trimSize: "8.5x8.5",
+                trimSize: effectiveTrimSize as any,
                 binding: "saddle_stitch",
                 interiorColor: "black_and_white",
               },
@@ -309,39 +369,26 @@ Generate exactly ${count} page(s).`;
 
     for (let i = 0; i < count; i++) {
       const pNum = i + 1;
-      let pageTitle = `Day ${pNum}: Kickoff & First Lines of Code`;
-      let storyText = `[ ] Did Coding\n[ ] Making Coding Videos\n\n__________________________________________________\n__________________________________________________\n__________________________________________________\n__________________________________________________`;
-
-      if (!isTaskOrJournal) {
-        const template = templates[i % templates.length];
-        pageTitle = template.title;
-        storyText = template.story(character.name, character.type);
-      }
+      const template = templates[i % templates.length];
+      const pageTitle = template.title;
+      const storyText = template.story(character.name, character.type);
 
       pages.push({
         pageNumber: pNum,
         title: pageTitle,
         storyText: storyText,
-        imagePrompt: isTaskOrJournal
-          ? `Clean developer badge or terminal window for Day ${pNum}`
-          : `Clean vector line-art outline for ${character.name} - Page ${pNum}`,
-        imageUrl: isTaskOrJournal
-          ? `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%"><rect width="500" height="500" fill="%230b1324" rx="24"/><rect x="20" y="20" width="460" height="460" fill="%230f1b33" stroke="%2338bdf8" stroke-width="3" rx="16"/><circle cx="50" cy="50" r="8" fill="%23ef4444"/><circle cx="75" cy="50" r="8" fill="%23f59e0b"/><circle cx="100" cy="50" r="8" fill="%2310b981"/><text x="250" y="55" font-family="monospace" font-size="14" fill="%237dd3fc" text-anchor="middle" font-weight="bold">terminal ~ coding-task-day-${pNum}</text><line x1="20" y1="75" x2="480" y2="75" stroke="%231e3a5f" stroke-width="2"/><text x="45" y="140" font-family="monospace" font-size="16" fill="%2338bdf8" font-weight="bold">$ cat daily_checklist.md</text><text x="45" y="190" font-family="sans-serif" font-size="16" fill="%23ffffff">[x] 1. Did Coding</text><text x="45" y="240" font-family="sans-serif" font-size="16" fill="%23ffffff">[x] 2. Making Coding Videos</text><line x1="45" y1="310" x2="455" y2="310" stroke="%2338bdf8" stroke-dasharray="6,4" stroke-width="2"/><text x="250" y="370" font-family="sans-serif" font-size="16" fill="%2334d399" text-anchor="middle" font-weight="bold">Day ${pNum}: Coding Progress</text><text x="250" y="410" font-family="sans-serif" font-size="13" fill="%2394a3b8" text-anchor="middle">PaperTales Personal Task Edition</text></svg>`
-          : `https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=600&auto=format&fit=crop&q=60`,
+        imagePrompt: `Clean vector line-art outline for ${character.name} - Page ${pNum}`,
+        imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(
+          `Children's coloring book page outline, thick continuous bold black outlines, zero shading, pure white background, no gradients, ${template.scene(
+            character.name,
+            character.type
+          )}. Strict monochrome vector line art, ready for coloring.`
+        )}?width=1024&height=1024&nologo=true&seed=${200000 + pNum * 777}`,
       });
     }
 
-    const fallbackTitle =
-      title ||
-      (isTaskOrJournal
-        ? `15-Day Coding Quest: Daily Developer Task Book`
-        : `${character.name}'s Big Adventure in the Magic Forest`);
-
-    const fallbackSubtitle =
-      subtitle ||
-      (isTaskOrJournal
-        ? `Daily Checklist & Ruled Log Book`
-        : `A Personalized AI Coloring Storybook`);
+    const fallbackTitle = title || `${character.name}'s Big Adventure`;
+    const fallbackSubtitle = subtitle || `A Personalized AI Storybook`;
 
     const bookProject: BookProject = {
       id: `book_${Date.now().toString(36)}`,

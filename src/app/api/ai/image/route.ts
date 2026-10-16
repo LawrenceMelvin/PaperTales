@@ -1,16 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export function getCleanColoringPrompt(rawPrompt: string, characterTraits?: string): string {
+  const base = rawPrompt || "a friendly child explorer on an adventure";
+  const traits = characterTraits ? `, character details: ${characterTraits}` : "";
+  return `Children's coloring book page outline, thick continuous bold black outlines, zero shading, pure white background, no gradients, ${base}${traits}. Strict monochrome black and white line art, ready for coloring with crayons.`;
+}
+
+export function getPollinationsImageUrl(prompt: string): string {
+  const seed = Math.floor(Math.random() * 900000) + 100000;
+  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&seed=${seed}`;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { prompt, characterTraits, pageNumber } = await req.json();
 
     const apiKey = process.env.OPENAI_API_KEY;
+    const enhancedPrompt = getCleanColoringPrompt(prompt, characterTraits);
 
-    // If an OpenAI API key is configured, generate real production coloring images via gpt-image-2.5-flare
+    // 1. Try OpenAI DALL-E 3 first if a valid key is provided
     if (apiKey && apiKey.startsWith("sk-")) {
       try {
-        const enhancedPrompt = `Children's coloring book page outline, thick continuous black outlines, zero shading, pure white background, ${prompt || "a friendly cute puppy with a cozy scarf in a garden"}. Strict monochrome line-art, no colors, no gradients.`;
-
         const openAiRes = await fetch("https://api.openai.com/v1/images/generations", {
           method: "POST",
           headers: {
@@ -18,58 +28,50 @@ export async function POST(req: NextRequest) {
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            model: "gpt-image-2.5-flare",
+            model: "dall-e-3",
             prompt: enhancedPrompt,
             n: 1,
             size: "1024x1024",
+            quality: "standard",
+            response_format: "url",
           }),
         });
 
         if (openAiRes.ok) {
           const data = await openAiRes.json();
           const item = data.data?.[0];
-          const b64 = item?.b64_json;
-          const imageUrl = b64 ? `data:image/png;base64,${b64}` : item?.url;
+          const imageUrl = item?.url;
 
-          return NextResponse.json({
-            success: true,
-            model: "gpt-image-2.5-flare",
-            imageUrl,
-            usage: data.usage,
-            costEstimateUsd: 0.024,
-            message: "Real coloring page line-art generated with gpt-image-2.5-flare",
-          });
+          if (imageUrl) {
+            return NextResponse.json({
+              success: true,
+              model: "dall-e-3",
+              imageUrl,
+              usage: data.usage,
+              costEstimateUsd: 0.04,
+              message: "Real coloring page line-art generated with DALL-E 3",
+            });
+          }
+        } else {
+          const errBody = await openAiRes.text();
+          console.warn("OpenAI DALL-E 3 request error:", openAiRes.status, errBody);
         }
       } catch (apiErr) {
-        console.warn("OpenAI live call fallback:", apiErr);
+        console.warn("OpenAI DALL-E 3 call error, switching to high-res engine:", apiErr);
       }
     }
 
-    // Default fast vector SVG fallback for offline / sandbox testing
-    const svgLineArt = `
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
-        <rect width="500" height="500" fill="#FFFFFF" stroke="#111111" stroke-width="4"/>
-        <circle cx="250" cy="220" r="90" fill="#FFFFFF" stroke="#111111" stroke-width="5"/>
-        <ellipse cx="190" cy="160" rx="25" ry="50" fill="#FFFFFF" stroke="#111111" stroke-width="4" transform="rotate(-15 190 160)"/>
-        <ellipse cx="310" cy="160" rx="25" ry="50" fill="#FFFFFF" stroke="#111111" stroke-width="4" transform="rotate(15 310 160)"/>
-        <circle cx="215" cy="210" r="10" fill="#111111"/>
-        <circle cx="285" cy="210" r="10" fill="#111111"/>
-        <polygon points="250,230 235,250 265,250" fill="#111111"/>
-        <path d="M 235 255 Q 250 275 265 255" fill="none" stroke="#111111" stroke-width="4"/>
-        <path d="M 180 290 Q 250 330 320 290 Q 250 310 180 290" fill="#FFFFFF" stroke="#111111" stroke-width="5"/>
-        <path d="M 40 460 Q 150 400 250 460 Q 380 400 460 460" fill="none" stroke="#111111" stroke-width="4"/>
-        <circle cx="90" cy="100" r="35" fill="none" stroke="#111111" stroke-width="3" stroke-dasharray="6,4"/>
-        <text x="250" y="480" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#333333">Page ${pageNumber || 1}: Color Me In!</text>
-      </svg>
-    `;
+    // 2. High-speed, high-resolution AI line-art generator (Pollinations.ai)
+    const pollinationsUrl = getPollinationsImageUrl(enhancedPrompt);
 
     return NextResponse.json({
       success: true,
-      svg: svgLineArt,
-      model: "vector-svg-fallback",
-      message: "Vector coloring line-art generated successfully",
+      model: "pollinations-lineart",
+      imageUrl: pollinationsUrl,
+      message: "High-contrast vector line-art generated successfully",
     });
   } catch (error: any) {
+    console.error("Error in AI image route:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to generate image" },
       { status: 500 }

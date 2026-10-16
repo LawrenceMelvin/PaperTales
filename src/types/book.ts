@@ -5,6 +5,17 @@ export interface CharacterAnchor {
   colorPalette?: string;
 }
 
+export interface JournalPageData {
+  dayNumber: number;
+  datePlaceholder?: string;
+  moodTracker?: boolean;
+  quote?: string;
+  reflectionPrompt?: string;
+  gratitudePrompts?: string[];
+  doodlePrompt?: string;
+  ruledLinesCount?: number;
+}
+
 export interface BookPage {
   pageNumber: number;
   title: string;
@@ -13,6 +24,7 @@ export interface BookPage {
   imageUrl?: string; // High-contrast monochrome vector line art
   svgData?: string;
   isCover?: boolean;
+  journalData?: JournalPageData;
 }
 
 export interface BookProject {
@@ -27,7 +39,7 @@ export interface BookProject {
   pages: BookPage[];
   pageCount: number;
   format: {
-    trimSize: "8.5x8.5" | "8.5x11";
+    trimSize: "8.5x8.5" | "6x9" | "8.5x11";
     binding: "saddle_stitch" | "perfect_bound";
     interiorColor: "black_and_white" | "standard_color";
   };

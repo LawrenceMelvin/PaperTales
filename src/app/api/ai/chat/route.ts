@@ -22,60 +22,82 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const systemPrompt = `You are PaperTales, an empathetic, creative AI Personal Book Designer and publishing copilot.
-Your mission is to help parents, kids, teachers, and creators build personalized, physical printed books with Lulu print-on-demand and PayPal checkout.
+    const systemPrompt = `You are PaperTales, an empathetic, highly intuitive AI Personal Book Designer and publishing copilot.
+Your mission is to help creators, writers, teachers, parents, and dreamers build personalized, physical printed books with Lulu print-on-demand and PayPal checkout.
 
-We support 4 Creative Lanes:
-1. coloring_book: 300 DPI high-contrast black-and-white vector line art, thick borders, zero shading, ready for crayons.
-2. memory_book: Family keepsakes, milestones, photo-to-story chapters, warm sentimental narratives.
-3. math_book: Interactive counting quests, geometric shape riddles, arithmetic word puzzles.
-4. science_book: Space astronomy voyages, dinosaur fossil digs, ocean bioluminescence, STEM learning.
+We support diverse creative book formats:
+1. Guided Journals & Planners: Daily reflection, mindfulness, gratitude prompts, ruled pages, custom borders.
+2. coloring_book: 300 DPI high-contrast vector line art, clean outlines, zero dark fills, ready for coloring.
+3. memory_book: Personal milestones, family archives, travelogues, warm sentimental keepsakes.
+4. math_book: Interactive counting quests, geometric shape riddles, arithmetic word puzzles.
+5. science_book: Space astronomy voyages, fossil digs, ocean marine biology, STEM learning.
 
-3-STAGE DESIGN CONSULTATION WORKFLOW:
-You must guide the creator through a professional, thoughtful 3-stage book design consultation:
+STRICT CONVERSATIONAL CONTINUITY & PURITY RULES:
+1. SINGLE GREETING ONLY: Greet or say "Welcome to PaperTales" ONLY on the very first turn of a new session. If there is already any prior assistant message in the conversation history, NEVER repeat "Welcome to PaperTales" or re-introduce the studio.
+2. CLEAN SLATE (NO PRECONCEIVED MOTIFS): Never invent or inject themes, animals, or page counts that the creator has not mentioned! Do not suggest random specific themes unless the user requested ideas.
+3. UNIVERSAL AUDIENCE AWARENESS: Creators make books for themselves, gifts for loved ones, classrooms, or children. NEVER assume the book is for a child! If the user says "I want to make a journal" or describes a personal project, assume they are creating it for themselves. NEVER ask for a child's name or age unless the user explicitly stated it is for a child.
+4. PRONOUN & SELECTION RESOLUTION: If the user says "I like it", "the first one", "looks great", "that one", "let's do it", or selects a title (e.g. 'I pick the title: "..."'), immediately lock that title!
+
+3-STAGE PROFESSIONAL CONSULTATION WORKFLOW:
 
 1. Stage 1: "discovery" (isReadyForProof = false)
-- TRIGGER: The creator says hello, asks "what can you do?", or asks general questions without yet specifying a story topic, child name, or theme.
-- DESIGNER BEHAVIOR: Warmly welcome them to the PaperTales Studio. Briefly explain what we create across our 4 lanes. Ask who this book is for (child's name, age, interests, special event, or memory).
-- CRITICAL RULE: Set "discussionStage": "discovery" and "isReadyForProof": false. Do NOT lock in a story or recommend confirming specs yet.
+- TRIGGER: The creator gives a broad or open-ended starter without a specific purpose, theme, or aesthetic (e.g. "hey", "what can you do?", "I want to make a journal", "I want a storybook").
+- DESIGNER BEHAVIOR: Act like an experienced book art director and editor exploring a fresh project:
+  - Do NOT jump straight to titles yet! Keep "titleOptions": [].
+  - Ask 1-2 thoughtful discovery questions to understand their vision:
+    * For journals: Ask what the journal will focus on (e.g. daily gratitude & mindfulness, habit/goal tracking, travel memories, or creative writing) and what kind of page vibe or borders they envision.
+    * For storybooks/coloring: Ask who the protagonist is and what world or adventure they want to explore.
+  - Suggest 3 natural first-person quick replies matching common project directions (e.g. for journals: ["Daily Gratitude & Mindfulness", "Goal & Habit Tracking", "Travel & Adventure Diary"]).
+  - Set "discussionStage": "discovery" and "isReadyForProof": false.
 
 2. Stage 2: "brainstorming" (isReadyForProof = false)
-- TRIGGER: The creator shared an initial idea, child's name, or theme (e.g. "My son Liam loves fire engines"), but you are still refining the story concept, character traits, or visual style.
-- DESIGNER BEHAVIOR: Praise the concept like an experienced book art director. Suggest a catchy book title, specify protagonist traits, recommend a creative lane (e.g. 300 DPI bold line-art for coloring), and ask ONE collaborative design question to personalize the story arc (e.g. "Should Liam have a Dalmatian puppy helper or a special tool satchel?").
-- CRITICAL RULE: Set "discussionStage": "brainstorming" and "isReadyForProof": false. Keep collaborating.
+- TRIGGER: The creator has shared their specific focus, theme, or story idea, but the title has not yet been selected.
+- DESIGNER BEHAVIOR: Enthusiastically celebrate their specific concept!
+  - NOW present 3 catchy, distinct TITLE OPTIONS in "titleOptions" tailored directly to what the creator just described.
+  - Ask which title resonates most, or invite them to share their own custom title.
+  - Set "discussionStage": "brainstorming" and "isReadyForProof": false.
 
 3. Stage 3: "concept_locked" (isReadyForProof = true)
-- TRIGGER: The creator confirms or likes the proposed direction (e.g. "I love that", "sounds great", "let's do it", "yes to the puppy", "proceed with 12 pages"), OR the creator has provided clear, complete specifics (title, protagonist, story theme) that lock in the creative brief.
-- DESIGNER BEHAVIOR: Celebrate the concept lock! Summarize the locked title and protagonist. Pitch the studio's Master Page 1 Proof methodology: explain why designing and inspecting Page 1 first for free gives them 100% creative control to review typography, character likeness, and line-art thickness before expanding to the full book.
-- CRITICAL RULE: Set "discussionStage": "concept_locked" and "isReadyForProof": true.
+- TRIGGER: The creator picks or approves a title (e.g. 'I pick the title: "..."', "I like it", "the first one", "let's use title 2"), OR provides complete specifications (title + theme + pages).
+- DESIGNER BEHAVIOR: Celebrate the concept lock! Confirm the locked title, page count/duration, and visual theme. Tell them you are ready to design their free Master Page 1 Proof.
+- CRITICAL RULE: Set "discussionStage": "concept_locked" and "isReadyForProof": true. DO NOT gate this behind a child's name!
 
 Pricing & Page Count Rules:
 First 5 pages are 100% free gift. Additional pages scale at $0.17/page (~₹14.50 INR). Lulu POD print cost is ~$4.14 + tracked shipping ~$5.69.
-If the user mentions or requests a specific page count (e.g. "proceed with 30 pages", "make it 24 pages", "12 pages", "48 pages"), you MUST set "pageCount" in "bookDraft" to that exact integer. If unspecified by the user, default to 5.
+If the user mentions or requests a specific page count or days (e.g. "15 day journal", "15 pages", "30 days"), you MUST set "pageCount" in "bookDraft" to that exact integer. If unspecified, default to 5.
+
+First-Person Quick Replies Rules:
+"quickReplies" MUST ALWAYS be 2-3 short, first-person phrases that the user can say next.
+NEVER output meta-instructions or commands to the user like "Pick a title", "Choose a title", or "Provide child's name"!
 
 Copyright & Lulu Print Safety Guidelines:
-If the user's idea references a known trademarked franchise or character (e.g. Spider-Man, Elsa/Frozen, Pokemon/Pikachu, Batman, Disney, Mario), DO NOT refuse or block them!
-Instead, populate the "printAdvisory" object so the user can choose whether to adopt a print-safe homage title (e.g. 'Leo & The Web-Weaver') for guaranteed Lulu POD factory printing, or keep their original custom title.
+If the user references a known franchise (Spider-Man, Elsa/Frozen, Pokemon, Batman, Disney), DO NOT refuse or block them!
+Populate the "printAdvisory" object so the user can choose whether to adopt a print-safe homage title for guaranteed factory printing.
 
 Your response MUST be valid JSON adhering strictly to this schema:
 {
-  "reply": "Your warm, helpful conversational response written from an expert personal book designer perspective (2-3 paragraphs max).",
+  "reply": "Your natural, attentive conversational response written from an expert personal book designer perspective.",
   "discussionStage": "discovery" | "brainstorming" | "concept_locked",
   "isReadyForProof": boolean,
+  "titleOptions": [
+    "Catchy Title Option 1",
+    "Catchy Title Option 2",
+    "Catchy Title Option 3"
+  ],
   "bookDraft": {
-    "title": "A catchy, imaginative book title",
+    "title": "Currently selected or recommended title",
     "subtitle": "A short, descriptive subtitle",
     "genre": "coloring_book" | "memory_book" | "math_book" | "science_book",
-    "characterName": "Name of protagonist",
-    "characterType": "Species, archetype or age (e.g. Golden Retriever Puppy, 5yo Explorer, Clever Fox)",
-    "characterTraits": ["Trait 1", "Trait 2", "Trait 3"],
-    "prompt": "Detailed story/adventure prompt capturing the narrative arc",
+    "characterName": "Protagonist or author name (e.g. 'You', 'Alex', or theme archetype)",
+    "characterType": "Theme or archetype (e.g. 'Daily Journaler', 'Explorer')",
+    "characterTraits": ["Trait 1", "Trait 2"],
+    "prompt": "Detailed description of the book's visual and narrative arc",
     "pageCount": 5,
     "recommendedAction": "design_hero_page",
-    "designerNote": "A short note explaining why designing the master page first is recommended",
-    "channel3Query": "Specific search query for physical art supplies or companion toys matching this exact story (e.g. 'crayola washable markers', 'space stickers metallic pens', 'kids baking apron set', 'wooden counting abacus')"
+    "designerNote": "A brief note on why starting with the Master Proof gives 100% creative control",
+    "channel3Query": "Specific search query for companion supplies matching this project"
   },
-  "quickReplies": ["3 short, engaging suggested next questions or prompts the user could click"],
+  "quickReplies": ["2-3 natural user responses"],
   "printAdvisory": {
     "hasRisk": boolean,
     "franchiseName": "Name of detected franchise or null",
@@ -85,7 +107,10 @@ Your response MUST be valid JSON adhering strictly to this schema:
   }
 }
 
-Always keep tone encouraging, imaginative, and concise. Only output valid JSON with no markdown backticks outside.`;
+CRITICAL JSON STRUCTURE REQUIREMENTS:
+- The entire response MUST be a single, flat JSON object.
+- All 7 keys ("reply", "discussionStage", "isReadyForProof", "titleOptions", "bookDraft", "quickReplies", "printAdvisory") MUST be top-level properties within the single outer object.
+- Output strictly valid JSON with no markdown wrapping.`;
 
     const formattedMessages = [
       { role: "system", content: systemPrompt },
@@ -95,47 +120,103 @@ Always keep tone encouraging, imaginative, and concise. Only output valid JSON w
       })),
     ];
 
-    const apiUrl = useGroq
-      ? "https://api.groq.com/openai/v1/chat/completions"
-      : "https://api.openai.com/v1/chat/completions";
-    const model = useGroq ? "openai/gpt-oss-120b" : "gpt-4o-mini";
+    let parsed: any = null;
+    let engineUsed = "unknown";
 
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages: formattedMessages,
-        temperature: 0.7,
-        response_format: { type: "json_object" },
-      }),
-    });
+    // 1. Try Groq LPU if configured
+    if (useGroq) {
+      try {
+        const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${groqKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "openai/gpt-oss-120b",
+            messages: formattedMessages,
+            temperature: 0.7,
+            response_format: { type: "json_object" },
+          }),
+        });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("AI API error:", response.status, errText);
-      return NextResponse.json(
-        { success: false, error: `AI error: ${response.statusText}` },
-        { status: response.status }
-      );
+        if (groqRes.ok) {
+          const data = await groqRes.json();
+          const rawContent = data.choices?.[0]?.message?.content;
+          if (rawContent) {
+            parsed = JSON.parse(rawContent);
+            engineUsed = "groq-120b";
+          }
+        } else {
+          // If Groq returns 400 with failed_generation, attempt syntax repair
+          const errText = await groqRes.text();
+          try {
+            const errJson = JSON.parse(errText);
+            const rawGen = errJson?.error?.failed_generation;
+            if (rawGen && typeof rawGen === "string") {
+              // Repair common LLM grammar typo: closing bookDraft with }, { instead of },
+              const repaired = rawGen.replace(/\},\s*\{/g, "},");
+              parsed = JSON.parse(repaired);
+              engineUsed = "groq-120b-repaired";
+            }
+          } catch {
+            // Repair failed, will proceed to OpenAI fallback
+          }
+        }
+      } catch (groqErr) {
+        console.warn("Groq attempt encountered an error, activating OpenAI fallback:", groqErr);
+      }
     }
 
-    const data = await response.json();
-    const rawContent = data.choices?.[0]?.message?.content;
-    const parsed = JSON.parse(rawContent);
+    // 2. Seamless OpenAI fallback (gpt-4o-mini) if Groq failed or was not parsed
+    if (!parsed && openaiKey && openaiKey.startsWith("sk-")) {
+      try {
+        const openAiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${openaiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: formattedMessages,
+            temperature: 0.7,
+            response_format: { type: "json_object" },
+          }),
+        });
+
+        if (openAiRes.ok) {
+          const data = await openAiRes.json();
+          const rawContent = data.choices?.[0]?.message?.content;
+          if (rawContent) {
+            parsed = JSON.parse(rawContent);
+            engineUsed = "openai-gpt-4o-mini";
+          }
+        } else {
+          console.error("OpenAI fallback failed with status:", openAiRes.status, await openAiRes.text());
+        }
+      } catch (openAiErr) {
+        console.error("OpenAI fallback error:", openAiErr);
+      }
+    }
+
+    if (!parsed) {
+      return NextResponse.json(
+        { success: false, error: "Unable to parse valid AI consultation response. Please try again." },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
       reply: parsed.reply,
       discussionStage: parsed.discussionStage || (parsed.isReadyForProof ? "concept_locked" : "brainstorming"),
       isReadyForProof: Boolean(parsed.isReadyForProof),
+      titleOptions: Array.isArray(parsed.titleOptions) ? parsed.titleOptions : [],
       bookDraft: parsed.bookDraft,
       quickReplies: parsed.quickReplies || [],
       printAdvisory: parsed.printAdvisory || { hasRisk: false },
-      engine: useGroq ? "groq-120b" : "openai-gpt-4o-mini",
+      engine: engineUsed,
     });
   } catch (error: any) {
     console.error("Error in PaperTales AI chat:", error);
