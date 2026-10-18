@@ -284,18 +284,49 @@ export default function BookViewer({
     pNum: number,
     isRightPage: boolean
   ) => {
-    const hasQuote = Boolean(page?.journalData?.quote && page.journalData.quote.trim() !== "");
+    const isBlackAndWhite = book.format?.interiorColor === "black_and_white";
+    const sections = page?.journalData?.sections;
+    const hasSections = Boolean(sections && sections.length > 0);
+    const layoutType =
+      page?.journalData?.layoutType ||
+      (hasSections ? "guided_sections" : (page?.journalData?.reflectionPrompt ? "classic_prompt" : "empty_lined"));
+    const isEmptyLined = layoutType === "empty_lined";
+    const hasQuote = !isEmptyLined && Boolean(page?.journalData?.quote && page.journalData.quote.trim() !== "");
+    const showMood = !isEmptyLined && Boolean(page?.journalData?.moodTracker);
+    const rawBorder = page?.journalData?.borderText;
+    const borderText =
+      rawBorder && typeof rawBorder === "string" && rawBorder.trim().length <= 30 && !rawBorder.includes(".")
+        ? rawBorder.trim()
+        : undefined;
+    const borderStyle = page?.journalData?.borderStyle || "none";
+    const cornerDecorations = page?.journalData?.cornerDecorations || "none";
+    const isRobotic = borderStyle === "robotic" || cornerDecorations === "tech_brackets";
+    const lineRuleSpacing = page?.journalData?.lineRuleSpacing || "college";
+
+    const headerTitle =
+      page?.journalData?.headerCategory ||
+      book.title ||
+      (hasSections ? "Daily Action & Retrospective" : "Daily Coding Log");
+
     const reflectionText =
       page?.journalData?.reflectionPrompt ||
       page?.storyText ||
       (isRightPage
         ? "What went well today, and what are you looking forward to tomorrow?"
         : "What small action or focus can you cultivate today toward your goal?");
-    const linesCount = hasQuote ? 14 : 19;
+
+    const linesCount = isEmptyLined
+      ? page?.journalData?.ruledLinesCount || (lineRuleSpacing === "wide" ? 15 : 19)
+      : hasQuote
+      ? 14
+      : 19;
+
+    // Repeating perimeter text string helper
+    const repeatBorder = (txt: string, count: number) => Array(count).fill(txt).join("  —  ");
 
     return (
       <div
-        className={`flex-1 p-5 sm:p-7 lg:p-8 flex flex-col justify-between relative bg-[#fffdfa] ${
+        className={`flex-1 p-4 sm:p-6 lg:p-7 flex flex-col justify-between relative bg-[#fffdfa] ${
           isRightPage
             ? mobilePageTab === "story"
               ? "hidden sm:flex"
@@ -312,38 +343,101 @@ export default function BookViewer({
           } w-5 spine-gradient pointer-events-none`}
         />
 
-        <div className="flex-1 flex flex-col justify-between space-y-2">
+        {/* Outer Perimeter Vertical Borders (Left & Right margins) */}
+        {borderText && (
+          <>
+            <div
+              className={`hidden sm:flex absolute left-1 top-8 bottom-8 items-center justify-center pointer-events-none select-none [writing-mode:vertical-rl] rotate-180 text-[8px] sm:text-[8.5px] uppercase font-bold text-slate-500/70 overflow-hidden whitespace-nowrap max-w-[14px] ${
+                isRobotic ? "font-mono tracking-widest" : "tracking-wider"
+              }`}
+            >
+              {repeatBorder(borderText, 4)}
+            </div>
+            <div
+              className={`hidden sm:flex absolute right-1 top-8 bottom-8 items-center justify-center pointer-events-none select-none [writing-mode:vertical-rl] text-[8px] sm:text-[8.5px] uppercase font-bold text-slate-500/70 overflow-hidden whitespace-nowrap max-w-[14px] ${
+                isRobotic ? "font-mono tracking-widest" : "tracking-wider"
+              }`}
+            >
+              {repeatBorder(borderText, 4)}
+            </div>
+          </>
+        )}
+
+        <div className="flex-1 flex flex-col justify-between space-y-2 z-10 px-1 sm:px-2">
+          {/* Top Perimeter Text Border Banner (if present) */}
+          {borderText && (
+            <div className="flex items-center justify-between border-b border-slate-300 pb-1 -mt-1 overflow-hidden select-none">
+              {cornerDecorations === "tech_brackets" ? (
+                <span className="font-mono text-[9px] font-black text-slate-800 bg-slate-100 border border-slate-400 px-1 py-0.2 rounded shrink-0">
+                  &lt;code_day_{pNum}&gt;
+                </span>
+              ) : (
+                <span className="text-[9px] text-slate-400 font-mono shrink-0">{"//"}</span>
+              )}
+              <div
+                className={`flex-1 text-center truncate px-2 text-[8.5px] uppercase font-bold text-slate-600/80 ${
+                  isRobotic ? "font-mono tracking-widest" : "tracking-wider"
+                }`}
+              >
+                {repeatBorder(borderText, 5)}
+              </div>
+              {cornerDecorations === "tech_brackets" ? (
+                <span className="font-mono text-[9px] font-black text-slate-800 bg-slate-100 border border-slate-400 px-1 py-0.2 rounded shrink-0">
+                  &lt;/code_day_{pNum}&gt;
+                </span>
+              ) : (
+                <span className="text-[9px] text-slate-400 font-mono shrink-0">{"//"}</span>
+              )}
+            </div>
+          )}
+
           {/* Header Row: Day & Date Placeholder */}
           <div className="flex items-center justify-between border-b border-slate-200 pb-2">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 tracking-wider">
+              <span
+                className={`text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md tracking-wider ${
+                  isBlackAndWhite
+                    ? "bg-slate-900 text-white font-mono"
+                    : "bg-amber-100 text-amber-900"
+                }`}
+              >
                 Day {pNum}
               </span>
-              <span className="text-xs font-semibold text-slate-600">
-                Daily Reflection &amp; Mindset
+              <span
+                className={`text-xs font-semibold text-slate-800 truncate max-w-[220px] ${
+                  isRobotic ? "font-mono font-bold" : ""
+                }`}
+              >
+                {headerTitle}
               </span>
             </div>
-            <div className="text-xs text-slate-400 font-mono">
+            <div
+              className={`text-xs text-slate-500 font-mono ${
+                isBlackAndWhite ? "font-bold" : ""
+              }`}
+            >
               {page?.journalData?.datePlaceholder || "Date: _______________"}
             </div>
           </div>
 
-          {/* Daily Mood Tracker */}
-          <div className="flex items-center justify-between bg-amber-50/60 border border-amber-200/50 rounded-xl px-3 py-1 text-xs">
-            <span className="font-bold text-amber-950 text-[11px] tracking-wide">
-              Today&apos;s Mood:
-            </span>
-            <div className="flex items-center gap-2 text-sm sm:text-base">
-              <span title="Radiant" className="cursor-pointer hover:scale-125 transition-transform">☀️</span>
-              <span title="Joyful" className="cursor-pointer hover:scale-125 transition-transform">😊</span>
-              <span title="Peaceful" className="cursor-pointer hover:scale-125 transition-transform">🌿</span>
-              <span title="Pensive" className="cursor-pointer hover:scale-125 transition-transform">💭</span>
-              <span title="Creative" className="cursor-pointer hover:scale-125 transition-transform">🎨</span>
+          {/* Daily Mood Tracker (Rendered only if requested) */}
+          {showMood && !isEmptyLined && (
+            <div className="flex items-center justify-between bg-amber-50/60 border border-amber-200/50 rounded-xl px-3 py-1 text-xs">
+              <span className="font-bold text-amber-950 text-[11px] tracking-wide">
+                Today&apos;s Mood:
+              </span>
+              <div className="flex items-center gap-2 text-sm sm:text-base">
+                <span title="Radiant" className="cursor-pointer hover:scale-125 transition-transform">☀️</span>
+                <span title="Joyful" className="cursor-pointer hover:scale-125 transition-transform">😊</span>
+                <span title="Peaceful" className="cursor-pointer hover:scale-125 transition-transform">🌿</span>
+                <span title="Pensive" className="cursor-pointer hover:scale-125 transition-transform">💭</span>
+                <span title="Creative" className="cursor-pointer hover:scale-125 transition-transform">🎨</span>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Daily Inspiration Quote Card (ONLY if present) */}
-          {hasQuote && (
+          {hasQuote && !isEmptyLined && (
             <div className="p-2.5 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50/30 border border-amber-200/70 shadow-xs relative">
               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 block mb-0.5">
                 Daily Inspiration
@@ -354,33 +448,162 @@ export default function BookViewer({
             </div>
           )}
 
-          {/* Guided Reflection Question */}
-          <div className="pt-0.5">
-            <p className="text-xs sm:text-sm font-bold text-slate-800 leading-snug">
-              {reflectionText}
-            </p>
+          {/* Main Writing Area (Empty Lined, Sections, or Single Prompt) */}
+          <div className="flex-1 flex flex-col justify-between relative min-h-[260px]">
+            {/* 1. EMPTY LINED LAYOUT (Pure clean ruled lines across the whole page) */}
+            {isEmptyLined ? (
+              <div className="flex-1 flex flex-col justify-between py-1 min-h-[260px]">
+                {Array.from({ length: linesCount }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="w-full border-b border-slate-300/80 h-5 sm:h-5.5 flex items-end"
+                  >
+                    {i === 0 && (
+                      <span className="text-[10px] text-slate-400 font-mono italic select-none pl-1">
+                        {isRobotic
+                          ? "// log goals, milestones, snippets & progress here..."
+                          : "write your thoughts, plans and progress here..."}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : hasSections ? (
+              /* 2. DYNAMIC MULTI-SECTION LAYOUT (e.g. Upper "I will do" / Lower "What I did") */
+              <div className="flex-1 flex flex-col justify-between py-1 space-y-3 min-h-[260px]">
+                {sections!.map((section, sIdx) => {
+                  const secLines = section.linesCount || 7;
+                  const isFirst = sIdx === 0;
+                  return (
+                    <div key={sIdx} className="flex-1 flex flex-col justify-between">
+                      {/* Section Header */}
+                      <div className="flex items-center justify-between pb-1">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-md tracking-wider ${
+                              isBlackAndWhite
+                                ? "bg-slate-100 text-slate-900 border border-slate-800 font-mono"
+                                : isFirst
+                                ? "bg-sky-100 text-sky-950 border border-sky-300"
+                                : "bg-emerald-100 text-emerald-950 border border-emerald-300"
+                            }`}
+                          >
+                            {section.title}
+                          </span>
+                          {section.prompt && (
+                            <span className="text-[11px] font-medium text-slate-600 truncate max-w-[220px]">
+                              {section.prompt}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Ruled lines for this section */}
+                      <div className="flex-1 flex flex-col justify-between">
+                        {Array.from({ length: secLines }).map((_, lIdx) => (
+                          <div
+                            key={lIdx}
+                            className="w-full border-b border-slate-300/80 h-5 sm:h-5.5 flex items-end"
+                          >
+                            {lIdx === 0 && (
+                              <span className="text-[10px] text-slate-400 font-serif italic select-none pl-1">
+                                {section.placeholder || `write your thoughts for ${section.title.toLowerCase()}...`}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* 3. CLASSIC SINGLE-PROMPT FULL SPREAD */
+              <>
+                <div className="pt-0.5">
+                  <p className="text-xs sm:text-sm font-bold text-slate-800 leading-snug">
+                    {reflectionText}
+                  </p>
+                </div>
+
+                {/* Full College-Ruled Writing Lines (18-19 lines) */}
+                <div className="flex-1 flex flex-col justify-between py-1 min-h-[220px]">
+                  {Array.from({ length: linesCount }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="w-full border-b border-slate-300/80 h-5 sm:h-6 flex items-end"
+                    >
+                      {i === 0 && (
+                        <span className="text-[10px] text-slate-400 font-serif italic select-none pl-1">
+                          write your thoughts here...
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* Daily Themed Spot Illustration (Bottom-Right Outer Corner) */}
+            {page?.imageUrl && (
+              <div className="absolute right-1 bottom-1 z-20 flex flex-col items-center select-none pointer-events-auto">
+                <div className="group relative w-20 h-20 sm:w-24 sm:h-24 rounded-xl border border-slate-300/80 bg-white/95 shadow-xs p-1.5 flex items-center justify-center transition-all hover:scale-105 hover:shadow-md">
+                  <img
+                    src={page.imageUrl}
+                    alt={page.imagePrompt || `Day ${pNum} illustration`}
+                    className="w-full h-full object-contain filter contrast-125"
+                  />
+                  {/* Quick button to tweak art */}
+                  {!isRightPage && (
+                    <button
+                      type="button"
+                      onClick={() => setArtModalOpen(true)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-2 -right-2 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-slate-900 text-sky-300 border border-sky-400/50 shadow flex items-center gap-1 cursor-pointer"
+                      title="Tweak this day's illustration (2 🪙)"
+                    >
+                      <Palette className="w-2.5 h-2.5 text-sky-400" />
+                      <span>Tweak</span>
+                    </button>
+                  )}
+                </div>
+                <span className="text-[8.5px] font-mono text-slate-500 font-semibold mt-0.5 tracking-tight">
+                  Day {pNum} Motif
+                </span>
+              </div>
+            )}
           </div>
 
-          {/* Full College-Ruled Writing Lines (18-19 lines) */}
-          <div className="flex-1 flex flex-col justify-between py-1 min-h-[220px]">
-            {Array.from({ length: linesCount }).map((_, i) => (
+          {/* Bottom Perimeter Text Border Banner (if present) */}
+          {borderText && (
+            <div className="flex items-center justify-between border-t border-slate-300 pt-1 -mb-1 overflow-hidden select-none">
+              {cornerDecorations === "tech_brackets" ? (
+                <span className="font-mono text-[9px] font-black text-slate-800 bg-slate-100 border border-slate-400 px-1 py-0.2 rounded shrink-0">
+                  [0x{pNum.toString(16).padStart(2, "0")}]
+                </span>
+              ) : (
+                <span className="text-[9px] text-slate-400 font-mono shrink-0">{"//"}</span>
+              )}
               <div
-                key={i}
-                className="w-full border-b border-slate-300/80 h-5 sm:h-6 flex items-end"
+                className={`flex-1 text-center truncate px-2 text-[8.5px] uppercase font-bold text-slate-600/80 ${
+                  isRobotic ? "font-mono tracking-widest" : "tracking-wider"
+                }`}
               >
-                {i === 0 && (
-                  <span className="text-[10px] text-slate-400 font-serif italic select-none pl-1">
-                    write your thoughts here...
-                  </span>
-                )}
+                {repeatBorder(borderText, 5)}
               </div>
-            ))}
-          </div>
+              {cornerDecorations === "tech_brackets" ? (
+                <span className="font-mono text-[9px] font-black text-slate-800 bg-slate-100 border border-slate-400 px-1 py-0.2 rounded shrink-0">
+                  _EOF
+                </span>
+              ) : (
+                <span className="text-[9px] text-slate-400 font-mono shrink-0">{"//"}</span>
+              )}
+            </div>
+          )}
 
           {/* Page Footer */}
           <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-200/70 pt-2">
             <span className="truncate max-w-[160px] font-medium">{book.title}</span>
-            <span className="font-mono">Page {pNum}</span>
+            <span className="font-mono font-bold">Page {pNum}</span>
           </div>
         </div>
       </div>
@@ -509,7 +732,18 @@ export default function BookViewer({
               <>
                 {renderJournalPage(activePage, activePage?.pageNumber || 1, false)}
                 {renderJournalPage(
-                  book.pages[currentPageIndex] || null,
+                  book.pages[currentPageIndex] || (activePage ? {
+                    ...activePage,
+                    pageNumber: (activePage.pageNumber || 1) + 1,
+                    title: `Day ${(activePage.pageNumber || 1) + 1}`,
+                    imageUrl: activePage.imageUrl
+                      ? activePage.imageUrl.replace(/seed=\d+/, `seed=${100000 + ((activePage.pageNumber || 1) + 1) * 1337}`)
+                      : undefined,
+                    journalData: activePage.journalData ? {
+                      ...activePage.journalData,
+                      dayNumber: (activePage.journalData.dayNumber || 1) + 1,
+                    } : undefined,
+                  } : null),
                   (activePage?.pageNumber || 1) + 1,
                   true
                 )}

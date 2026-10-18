@@ -9,9 +9,8 @@ import {
   ModuleRegistry,
   AllCommunityModule,
   ICellRendererParams,
+  themeQuartz,
 } from "ag-grid-community";
-import "ag-grid-community/styles/ag-grid.css";
-import "ag-grid-community/styles/ag-theme-quartz.css";
 import { PublishOrder } from "@/types/order";
 import { getClientOrders } from "@/lib/order-store";
 import {
@@ -31,6 +30,16 @@ import {
 
 // Register AG Grid Community modules
 ModuleRegistry.registerModules([AllCommunityModule]);
+
+// Glacier Dark Quartz Theme
+const glacierGridTheme = themeQuartz.withParams({
+  backgroundColor: "#091122",
+  foregroundColor: "#e0e8f0",
+  borderColor: "rgba(56, 189, 248, 0.2)",
+  accentColor: "#38bdf8",
+  headerBackgroundColor: "#0c1a32",
+  rowHoverColor: "rgba(56, 189, 248, 0.08)",
+});
 
 interface OrderTrackingGridProps {
   isOpen: boolean;
@@ -302,9 +311,10 @@ export default function OrderTrackingGrid({
         </div>
 
         {/* AG Grid Component */}
-        <div className="ag-theme-quartz-dark w-full h-[400px] sm:h-[460px] rounded-2xl overflow-hidden border border-sky-400/25 shadow-inner">
+        <div className="w-full h-[400px] sm:h-[460px] rounded-2xl overflow-hidden border border-sky-400/25 shadow-inner">
           <AgGridReact<PublishOrder>
             ref={gridRef}
+            theme={glacierGridTheme}
             rowData={orders}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
@@ -313,7 +323,6 @@ export default function OrderTrackingGrid({
             paginationPageSize={10}
             paginationPageSizeSelector={[10, 20, 50]}
             onGridReady={onGridReady}
-            animateRows={true}
             rowHeight={48}
             headerHeight={44}
           />

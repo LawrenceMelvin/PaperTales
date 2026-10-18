@@ -5,15 +5,37 @@ export interface CharacterAnchor {
   colorPalette?: string;
 }
 
+export interface JournalSection {
+  title: string; // e.g. "I will do", "What I did", "Morning Focus"
+  prompt?: string; // e.g. "What key tasks or coding goals will you tackle?"
+  linesCount?: number; // e.g. 7 or 8 lines
+  placeholder?: string; // e.g. "write what you plan to accomplish..."
+}
+
+export type JournalLayoutType = "empty_lined" | "guided_sections" | "classic_prompt";
+export type JournalBorderStyle = "robotic" | "modern" | "playful" | "none";
+export type JournalCornerDecorations = "tech_brackets" | "gears" | "minimal" | "none";
+export type JournalLineSpacing = "wide" | "college";
+
 export interface JournalPageData {
   dayNumber: number;
   datePlaceholder?: string;
+  headerCategory?: string; // e.g. "Daily Action & Retrospective", "Coding Sprint Log"
   moodTracker?: boolean;
   quote?: string;
   reflectionPrompt?: string;
   gratitudePrompts?: string[];
   doodlePrompt?: string;
   ruledLinesCount?: number;
+  sections?: JournalSection[]; // Dynamic multiple sections (e.g. Upper "I will do" / Lower "What I did")
+  layoutType?: JournalLayoutType;
+  borderText?: string; // e.g. "coding----coding"
+  borderStyle?: JournalBorderStyle; // e.g. "robotic"
+  cornerDecorations?: JournalCornerDecorations; // e.g. "tech_brackets"
+  lineRuleSpacing?: JournalLineSpacing; // e.g. "college"
+  hasIllustration?: boolean;
+  illustrationPrompt?: string;
+  illustrationPlacement?: "bottom_right" | "top_right";
 }
 
 export interface BookPage {

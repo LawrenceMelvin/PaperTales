@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { BookPage, BookProject, CharacterAnchor } from "@/types/book";
+import { BookPage, BookProject, CharacterAnchor, JournalSection } from "@/types/book";
 
 interface ChapterTemplate {
   title: string;
@@ -138,6 +138,56 @@ const GENRE_CHAPTER_TEMPLATES: Record<string, ChapterTemplate[]> = {
   ],
 };
 
+function parseSectionHeuristics(promptText: string, pageStructureText?: string): JournalSection[] | null {
+  const combined = `${promptText} ${pageStructureText || ""}`.toLowerCase();
+  // Check for upper/lower section patterns like "I will do" and "what I did"
+  const willDoMatch = /i\s*will\s*do/i.test(combined);
+  const whatDidMatch = /what\s*i\s*did/i.test(combined);
+
+  if (willDoMatch && whatDidMatch) {
+    return [
+      {
+        title: "I will do",
+        prompt: "What key tasks or coding goals will you focus on today?",
+        linesCount: 8,
+        placeholder: "write what you plan to accomplish...",
+      },
+      {
+        title: "What I did",
+        prompt: "What did you accomplish, learn, or resolve today?",
+        linesCount: 8,
+        placeholder: "write your evening reflection and accomplishments...",
+      },
+    ];
+  }
+
+  // Check for generic upper/lower or two sections
+  if (/(two|2)\s*sections|upper\s*section.*lower\s*section/i.test(combined)) {
+    const upperTitleMatch = combined.match(/upper\s*(?:section)?\s*(?:with\s*title)?\s*[:'"]?\s*([^,'"\n]+)/i);
+    const lowerTitleMatch = combined.match(/lower\s*(?:section)?\s*(?:with\s*title)?\s*[:'"]?\s*([^,'"\n]+)/i);
+
+    const upperTitle = upperTitleMatch?.[1]?.trim() || "Morning Intentions";
+    const lowerTitle = lowerTitleMatch?.[1]?.trim() || "Evening Retrospective";
+
+    return [
+      {
+        title: upperTitle,
+        prompt: `Key focus for ${upperTitle}`,
+        linesCount: 8,
+        placeholder: "write your thoughts here...",
+      },
+      {
+        title: lowerTitle,
+        prompt: `Review and notes for ${lowerTitle}`,
+        linesCount: 8,
+        placeholder: "write your reflections here...",
+      },
+    ];
+  }
+
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -145,6 +195,13 @@ export async function POST(req: NextRequest) {
       title,
       subtitle,
       prompt,
+      pageStructure,
+      layoutType: reqLayoutType,
+      borderText: reqBorderText,
+      borderStyle: reqBorderStyle,
+      cornerDecorations: reqCornerDecorations,
+      interiorColor: reqInteriorColor,
+      lineRuleSpacing: reqLineRuleSpacing,
       authorName = "Little Author",
       targetAge = "4-8",
       genre = "coloring_book",
@@ -154,7 +211,18 @@ export async function POST(req: NextRequest) {
       characterTraits = ["Wearing a cozy red scarf", "Floppy ears", "Curious tail wag"],
       referenceImageUrl,
       pageCount = 5,
+      messages: incomingMessages,
     } = body;
+
+    const conversationMessages = Array.isArray(incomingMessages) && incomingMessages.length > 0
+      ? incomingMessages
+          .filter((m: any) => m && (m.role === "user" || m.role === "assistant"))
+          .map((m: any) => ({
+            role: m.role as "user" | "assistant",
+            content: typeof m.content === "string" ? m.content : ""
+          }))
+          .filter((m: any) => m.content.trim().length > 0)
+      : [];
 
     const character: CharacterAnchor = {
       name: characterName,
@@ -167,27 +235,123 @@ export async function POST(req: NextRequest) {
     const isJournalMode =
       genre === "memory_book" ||
       trimSize === "6x9" ||
-      /\b(journal|diary|planner|notes|reflection|inspiration|gratitude)\b/i.test(prompt || "") ||
-      /\b(journal|diary|planner|inspiration)\b/i.test(title || "");
+      /\b(journal|diary|planner|notes|reflection|inspiration|gratitude|log)\b/i.test(prompt || "") ||
+      /\b(journal|diary|planner|inspiration|log)\b/i.test(title || "") ||
+      conversationMessages.some(m => /\b(journal|diary|planner|log|lined pages)\b/i.test(m.content));
 
-    const effectiveTrimSize = trimSize || (isJournalMode ? "6x9" : "8.5x8.5");
+    const effectiveTrimSize = trimSize || (isJournalMode ? (genre === "coloring_book" ? "8.5x8.5" : "6x9") : "8.5x8.5");
 
-    const groqKey = process.env.GROQ_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
-    const useGroq = Boolean(groqKey && groqKey.startsWith("gsk_"));
-    const apiKey = useGroq ? groqKey : openaiKey;
+    const groqKey = process.env.GROQ_API_KEY;
+    const hasOpenAI = Boolean(openaiKey && openaiKey.startsWith("sk-"));
+    const hasGroq = Boolean(groqKey && groqKey.startsWith("gsk_"));
 
+    const userMessages = conversationMessages.filter(m => m.role === "user");
+    const userTextOnly = `${prompt || ""} ${pageStructure || ""} ${userMessages.map(m => m.content).join(" ")}`;
+    const fullConversationText = `${prompt || ""} ${pageStructure || ""} ${conversationMessages.map(m => m.content).join(" ")}`;
+
+    // Check if illustrations were requested
+    const wantsIllustrations =
+      /\b(illustration|illustrations|small drawing|drawings|icon|icons|clipart|spot art|tools?|camera|mic|microphone|notebook)\b/i.test(fullConversationText);
+
+    // Heuristically detect sections or empty lined pages
+    const detectedSections = parseSectionHeuristics(prompt || "", pageStructure);
+
+    // Check if user specifically requested empty lined pages or free writing
+    const isFreeWriting =
+      reqLayoutType === "empty_lined" ||
+      /\b(empty\s*lined|blank\s*lines|no\s*prompts|open\s*space|plain\s*lines|unlined|empty\s*pages|free\s*writing)\b/i.test(userTextOnly);
+
+    const effectiveLayoutType: "empty_lined" | "guided_sections" | "classic_prompt" =
+      isFreeWriting
+        ? "empty_lined"
+        : reqLayoutType ||
+          (detectedSections
+            ? "guided_sections"
+            : "classic_prompt");
+
+    // Strictly suppress quotes and mood trackers when user asks for empty lined / free writing
     const wantsQuotes =
-      /\b(quote|quotes|inspirational|motivational|inspiration)\b/i.test(prompt || "") ||
-      /\b(quote|quotes|inspiration)\b/i.test(title || "");
+      !isFreeWriting &&
+      (/\b(add\s+quotes?|with\s+quotes?|inspirational\s+quote|include\s+quotes?)\b/i.test(userTextOnly) ||
+       /\b(quote|quotes)\b/i.test(title || ""));
 
-    // Try AI LLM generation first (Groq LPU or OpenAI GPT-4o-mini)
-    if (apiKey) {
+    const wantsMood =
+      !isFreeWriting &&
+      /\b(track\s+mood|with\s+mood|mood\s+tracker|track\s+my\s+mood)\b/i.test(userTextOnly);
+
+    // Border text must ONLY be set if explicitly provided and concise (<= 30 chars), or matching a strict repeating token pattern
+    let effectiveBorderText: string | undefined = undefined;
+    if (reqBorderText && typeof reqBorderText === "string" && reqBorderText.trim().length <= 30 && !reqBorderText.includes(".")) {
+      effectiveBorderText = reqBorderText.trim();
+    } else {
+      // Only match explicit short repetitive border tokens like "coding----coding" or "sprint----sprint"
+      const tokenMatch = userTextOnly.match(/\b([a-zA-Z0-9]+----+[a-zA-Z0-9]+)\b/);
+      if (tokenMatch && tokenMatch[1].length <= 25) {
+        effectiveBorderText = tokenMatch[1];
+      }
+    }
+
+    const effectiveBorderStyle: "robotic" | "modern" | "playful" | "none" =
+      effectiveBorderText
+        ? (reqBorderStyle || (/\brobotic|tech|monospace|code\b/i.test(userTextOnly) ? "robotic" : "modern"))
+        : "none";
+
+    const effectiveCornerDecorations: "tech_brackets" | "gears" | "minimal" | "none" =
+      effectiveBorderStyle === "robotic"
+        ? "tech_brackets"
+        : (reqCornerDecorations && reqCornerDecorations !== "none" ? reqCornerDecorations : "none");
+
+    const effectiveLineRuleSpacing: "wide" | "college" =
+      reqLineRuleSpacing || (/\bwide\b/i.test(userTextOnly) ? "wide" : "college");
+
+    const effectiveInteriorColor: "black_and_white" | "standard_color" =
+      reqInteriorColor || "black_and_white";
+
+    // Call high-capability LLM (OpenAI primary, Groq fallback)
+    if (hasOpenAI || hasGroq) {
       try {
-        const apiUrl = useGroq
-          ? "https://api.groq.com/openai/v1/chat/completions"
-          : "https://api.openai.com/v1/chat/completions";
-        const model = useGroq ? "openai/gpt-oss-120b" : "gpt-4o-mini";
+        const schemaExampleJournalData =
+          effectiveLayoutType === "empty_lined"
+            ? `{
+        "dayNumber": 1,
+        "headerCategory": "${title || "My Progress Log"}",
+        "layoutType": "empty_lined",
+        "borderText": ${effectiveBorderText ? `"${effectiveBorderText}"` : "null"},
+        "borderStyle": "${effectiveBorderStyle}",
+        "cornerDecorations": "${effectiveCornerDecorations}",
+        "moodTracker": false,
+        "quote": null,
+        "reflectionPrompt": null,
+        "ruledLinesCount": ${effectiveLineRuleSpacing === "wide" ? 15 : 19},
+        "sections": null,
+        "hasIllustration": ${wantsIllustrations ? "true" : "false"},
+        "illustrationPrompt": ${wantsIllustrations ? '"Minimalist black and white line-art spot illustration of a vintage podcast microphone with sound waves, crisp outlines, pure white background, no shading"' : "null"},
+        "illustrationPlacement": "bottom_right"
+      }`
+            : `{
+        "dayNumber": 1,
+        "headerCategory": "${title || "Daily Action & Retrospective"}",
+        "layoutType": "${effectiveLayoutType}",
+        "borderText": ${effectiveBorderText ? `"${effectiveBorderText}"` : "null"},
+        "borderStyle": "${effectiveBorderStyle}",
+        "cornerDecorations": "${effectiveCornerDecorations}",
+        "moodTracker": ${wantsMood ? "true" : "false"},
+        "quote": ${wantsQuotes ? '"Inspirational quote here"' : "null"},
+        "reflectionPrompt": ${detectedSections ? "null" : '"What is one intention you want to set for today?"'},
+        "ruledLinesCount": ${detectedSections ? "null" : "18"},
+        "sections": ${
+          detectedSections
+            ? JSON.stringify(detectedSections)
+            : `[
+          { "title": "I will do", "prompt": "What key tasks or coding goals will you focus on today?", "linesCount": 8, "placeholder": "write what you plan to accomplish..." },
+          { "title": "What I did", "prompt": "What did you accomplish, learn, or resolve today?", "linesCount": 8, "placeholder": "write your evening reflection and accomplishments..." }
+        ]`
+        },
+        "hasIllustration": ${wantsIllustrations ? "true" : "false"},
+        "illustrationPrompt": ${wantsIllustrations ? '"Minimalist black and white line-art spot illustration of a vintage microphone, clean outlines, no shading"' : "null"},
+        "illustrationPlacement": "bottom_right"
+      }`;
 
         const systemPrompt = isJournalMode
           ? `You are PaperTales' Professional Guided Journal & Planner Engine.
@@ -196,18 +360,37 @@ You generate personalized, physical printed journals formatted for Lulu POD (${e
 CREATOR'S JOURNAL SPECIFICATIONS:
 - Journal Title: ${title || "Personal Reflection Journal"}
 - Creator's Theme & Prompt: "${prompt || "A daily personal reflection journal"}"
+- Page Structure Requested: "${pageStructure || (effectiveLayoutType === "empty_lined" ? "Empty lined pages" : "Organized according to prompt")}"
+- Layout Type: ${effectiveLayoutType.toUpperCase()}
+- Border Text: ${effectiveBorderText ? `"${effectiveBorderText}"` : "None"}
+- Border Style: ${effectiveBorderStyle}
+- Corner Accents: ${effectiveCornerDecorations}
 - Total Days / Pages: ${count} day(s)
-- Include Quotes: ${wantsQuotes ? "YES (include inspirational quotes)" : "NO (do NOT include quotes; user wants clean reflection and maximum straight writing lines)"}
+- Include Quotes: ${wantsQuotes ? "YES" : "NO"}
+- Include Mood Tracker: ${wantsMood ? "YES" : "NO"}
+- Include Daily Spot Illustrations: ${wantsIllustrations ? "YES (unique motif for each day)" : "NO"}
 
 CRITICAL INSTRUCTIONS FOR GUIDED JOURNAL FORMAT:
-1. STRUCTURED DAILY SPREAD:
-   - For every page, assign a Day Title (e.g. "Day 1: Setting the Intent", "Day 2: Finding Clarity").
-   - "quote": ${wantsQuotes ? "An uplifting, thought-provoking quote fitting the day's theme (max 110 characters)." : "null"}
-   - "reflectionPrompt": A warm, specific guided journaling prompt (STRICT LIMIT: max 120 characters) or daily focus.
-   - "gratitudePrompts": Optional array of 3 short prompts or empty array.
-   - "ruledLinesCount": 18
-2. CONCISE BREVITY: Keep text concise so it leaves ample space for 18-20 college-ruled writing lines.
-3. imagePrompt: Describe a subtle decorative border frame matching the creator's theme (e.g. botanical leaves, geometric lines, or cat outlines) framing the outer edges of the page, clean line-art, zero dark fills, pure white background.
+${
+  effectiveLayoutType === "empty_lined"
+    ? `1. EMPTY LINED PAGES: The creator requested EMPTY LINED PAGES for free writing without unwanted reflection questions or split sections.
+   - For every page: set "journalData.layoutType": "empty_lined", "journalData.sections": null, "journalData.reflectionPrompt": null.
+   - Set "journalData.ruledLinesCount": ${effectiveLineRuleSpacing === "wide" ? 15 : 19}.
+   - Set "journalData.headerCategory": "${title || "My Journal"}".`
+    : `1. CUSTOM PAGE SECTIONS:
+   - If specific page sections were requested, output them in "journalData.sections" for every page.
+   - "headerCategory": A concise category title for the top header.
+   - If NO specific sections were requested, provide a single "reflectionPrompt" with "ruledLinesCount": 18.`
+}
+2. CONCISE BREVITY: Keep text concise so it leaves ample space for writing lines.
+3. DAILY SPOT ILLUSTRATIONS (imagePrompt):
+${
+  wantsIllustrations
+    ? `   - The creator requested a unique small illustration for each day (e.g. content creation tools, tech icons, botanical elements, or character motifs).
+   - For each page, provide a specific, descriptive "imagePrompt" describing that day's unique spot illustration (e.g. Day 1: "Minimalist black and white line art of a vintage podcast microphone with sound waves, crisp outlines, zero shading, pure white background", Day 2: "Minimalist black and white line art of a modern DSLR creator camera with lens ring, clean outlines, zero shading, pure white background", Day 3: "Minimalist line art of a creator notebook and fountain pen").
+   - Set "journalData.hasIllustration": true, "journalData.illustrationPrompt": "...same as imagePrompt...", "journalData.illustrationPlacement": "bottom_right".`
+    : `   - If no illustrations were requested, set "imagePrompt": null and "journalData.hasIllustration": false.`
+}
 
 OUTPUT SCHEMA (valid JSON only):
 {
@@ -216,15 +399,10 @@ OUTPUT SCHEMA (valid JSON only):
   "pages": [
     {
       "pageNumber": 1,
-      "title": "Day 1: Setting the Intent",
-      "storyText": "Today is the beginning of your journey.",
-      "journalData": {
-        "dayNumber": 1,
-        "quote": ${wantsQuotes ? '"Inspirational quote here"' : 'null'},
-        "reflectionPrompt": "What is one intention you want to set for today?",
-        "ruledLinesCount": 18
-      },
-      "imagePrompt": "Subtle, elegant decorative line-art border framing the outer edges of the page"
+      "title": "Day 1",
+      "storyText": "Daily journal entry and action log",
+      "journalData": ${schemaExampleJournalData},
+      "imagePrompt": ${wantsIllustrations ? '"Minimalist black and white line art of a vintage podcast microphone, pure white background, crisp outlines, no shading"' : "null"}
     }
   ]
 }`
@@ -259,40 +437,73 @@ OUTPUT SCHEMA (valid JSON only):
   ]
 }`;
 
-        let aiData: any = null;
-        const aiRes = await fetch(apiUrl, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model,
-            messages: [{ role: "system", content: systemPrompt }],
-            temperature: 0.7,
-            response_format: { type: "json_object" },
-          }),
-        });
+        // Build messages payload for OpenAI / Groq with Direct Conversation Continuity
+        const openAiMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+          { role: "system", content: systemPrompt }
+        ];
 
-        if (aiRes.ok) {
-          aiData = await aiRes.json();
-        } else if (useGroq && openaiKey && openaiKey.startsWith("sk-")) {
-          // Fall back to OpenAI if Groq fails
-          const openAiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${openaiKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "gpt-4o-mini",
-              messages: [{ role: "system", content: systemPrompt }],
-              temperature: 0.7,
-              response_format: { type: "json_object" },
-            }),
+        if (conversationMessages.length > 0) {
+          openAiMessages.push(...conversationMessages);
+          openAiMessages.push({
+            role: "user",
+            content: `The creator consultation is locked and finalized. Now, using 100% of the decisions and design agreements from our full conversation above, generate the physical book interior pages (page count: ${count}).
+
+DIRECT CONTINUITY CHECKLIST:
+1. Exact Page Layout: Honor the exact interior page structure discussed (e.g. empty lined pages with no unsolicited prompts, multi-section splits, or classic reflection prompts).
+2. Daily Spot Illustrations: If we agreed on illustrations (e.g. unique daily tools like microphones, cameras, notebooks, or character scenes), describe each day's unique spot illustration in "imagePrompt" with specific subject, monochrome line-art style, zero shading, pure white background.
+3. Borders & Accents: If borders (e.g. robotic repeating text) or corner decorations were agreed upon, include them.
+4. Output valid JSON matching the schema.`
           });
-          if (openAiRes.ok) {
-            aiData = await openAiRes.json();
+        }
+
+        let aiData: any = null;
+
+        // 1. Primary: OpenAI (gpt-4.1)
+        if (hasOpenAI) {
+          const model = process.env.OPENAI_CHAT_MODEL || "gpt-4.1";
+          try {
+            const openAiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${openaiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model,
+                messages: openAiMessages,
+                temperature: 0.7,
+                response_format: { type: "json_object" },
+              }),
+            });
+            if (openAiRes.ok) {
+              aiData = await openAiRes.json();
+            }
+          } catch (openAiErr) {
+            console.warn("OpenAI story generation failed, falling back to Groq:", openAiErr);
+          }
+        }
+
+        // 2. Fallback: Groq
+        if (!aiData && hasGroq) {
+          try {
+            const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${groqKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: "openai/gpt-oss-120b",
+                messages: openAiMessages,
+                temperature: 0.7,
+                response_format: { type: "json_object" },
+              }),
+            });
+            if (groqRes.ok) {
+              aiData = await groqRes.json();
+            }
+          } catch (groqErr) {
+            console.warn("Groq story fallback failed:", groqErr);
           }
         }
 
@@ -306,17 +517,36 @@ OUTPUT SCHEMA (valid JSON only):
               const pageTitle = p.title || (isJournalMode ? `Day ${pNum}` : `Chapter ${pNum}`);
               const pageStoryText = p.storyText || "";
 
-              // For journals: generate a decorative animal coloring border framing a clean white center
-              // For storybooks: generate the full scene vector line-art
+              const hasIllustration = Boolean(
+                p.journalData?.hasIllustration ||
+                (p.imagePrompt &&
+                  p.imagePrompt.trim().length > 5 &&
+                  !p.imagePrompt.toLowerCase().includes("subtle, elegant decorative line-art border"))
+              );
+
               const promptForImage = isJournalMode
-                ? `Children's coloring page decorative border with cute cartoon animal outlines (kittens, puppies, bunnies) framing a large clean empty white rectangular center space, thick continuous black outlines, zero shading, pure white background, no solid dark fills, strict monochrome vector line art, ready for coloring.`
+                ? hasIllustration
+                  ? `Minimalist black and white line art vector spot illustration, crisp continuous thin black outlines, pure white background, zero shading, no solid dark fills, clean monochrome icon style: ${p.imagePrompt}`
+                  : null
                 : `Children's coloring book page outline, thick continuous bold black outlines, zero shading, pure white background, no gradients, ${
                     p.imagePrompt || `${pageTitle} starring ${character.name} the ${character.type}`
                   }. Strict monochrome black and white vector line art, ready for coloring.`;
 
-              const pageIllustrationUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
-                promptForImage
-              )}?width=1024&height=1024&nologo=true&seed=${100000 + pNum * 1337}`;
+              const pageIllustrationUrl = promptForImage
+                ? `https://image.pollinations.ai/prompt/${encodeURIComponent(
+                    promptForImage
+                  )}?width=1024&height=1024&nologo=true&seed=${100000 + pNum * 1337}`
+                : undefined;
+
+              // Ensure sections requested by the creator are present (unless empty_lined layout is requested)
+              let sectionsToUse: JournalSection[] | undefined = undefined;
+              if (effectiveLayoutType !== "empty_lined") {
+                if (p.journalData?.sections && Array.isArray(p.journalData.sections) && p.journalData.sections.length > 0) {
+                  sectionsToUse = p.journalData.sections;
+                } else if (detectedSections) {
+                  sectionsToUse = detectedSections;
+                }
+              }
 
               return {
                 pageNumber: pNum,
@@ -324,20 +554,44 @@ OUTPUT SCHEMA (valid JSON only):
                 storyText: pageStoryText,
                 imagePrompt: p.imagePrompt || `Clean layout for ${pageTitle}`,
                 imageUrl: pageIllustrationUrl,
-                journalData: p.journalData || (isJournalMode ? {
-                  dayNumber: pNum,
-                  datePlaceholder: "Date: _______________",
-                  quote: "Every day holds a new spark of wonder.",
-                  reflectionPrompt: "What made you smile or think today?",
-                  gratitudePrompts: ["One thing I enjoyed", "Someone who made a difference", "A hope for tomorrow"],
-                  ruledLinesCount: 6,
-                } : undefined),
+                journalData: isJournalMode
+                  ? {
+                      dayNumber: p.journalData?.dayNumber || pNum,
+                      datePlaceholder: p.journalData?.datePlaceholder || "Date: _______________",
+                      headerCategory:
+                        p.journalData?.headerCategory ||
+                        title ||
+                        (sectionsToUse ? "Daily Action & Retrospective" : "Daily Reflection & Mindset"),
+                      moodTracker: effectiveLayoutType === "empty_lined" ? false : Boolean(p.journalData?.moodTracker),
+                      quote: effectiveLayoutType === "empty_lined" ? undefined : (p.journalData?.quote || undefined),
+                      reflectionPrompt:
+                        effectiveLayoutType === "empty_lined"
+                          ? undefined
+                          : p.journalData?.reflectionPrompt || (sectionsToUse ? undefined : "What is one intention you want to cultivate today?"),
+                      gratitudePrompts: effectiveLayoutType === "empty_lined" ? undefined : (p.journalData?.gratitudePrompts || undefined),
+                      ruledLinesCount:
+                        effectiveLayoutType === "empty_lined"
+                          ? effectiveLineRuleSpacing === "wide"
+                            ? 15
+                            : 19
+                          : p.journalData?.ruledLinesCount || (sectionsToUse ? undefined : 18),
+                      sections: sectionsToUse,
+                      layoutType: effectiveLayoutType,
+                      borderText: effectiveBorderText,
+                      borderStyle: effectiveBorderStyle,
+                      cornerDecorations: effectiveCornerDecorations,
+                      lineRuleSpacing: effectiveLineRuleSpacing,
+                      hasIllustration: Boolean(pageIllustrationUrl),
+                      illustrationPrompt: p.imagePrompt || p.journalData?.illustrationPrompt,
+                      illustrationPlacement: p.journalData?.illustrationPlacement || "bottom_right",
+                    }
+                  : undefined,
               };
             });
 
             const finalBookProject: BookProject = {
               id: `book_${Date.now().toString(36)}`,
-              title: parsed.title || title || (isJournalMode ? "Daily Inspiration Journal" : `${character.name}'s Custom Book`),
+              title: parsed.title || title || (isJournalMode ? "Daily Action Journal" : `${character.name}'s Custom Book`),
               subtitle: parsed.subtitle || subtitle || (isJournalMode ? "A 6\" x 9\" Personalized Reflection Journal" : "A Personalized AI-Designed Book"),
               authorName: authorName,
               genre: genre,
@@ -349,7 +603,7 @@ OUTPUT SCHEMA (valid JSON only):
               format: {
                 trimSize: effectiveTrimSize as any,
                 binding: "saddle_stitch",
-                interiorColor: "black_and_white",
+                interiorColor: effectiveInteriorColor,
               },
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -359,36 +613,78 @@ OUTPUT SCHEMA (valid JSON only):
           }
         }
       } catch (aiErr) {
-        console.warn("AI generation failed, falling back to dynamic template generator:", aiErr);
+        console.warn("AI generation encountered error, falling back to dynamic template generator:", aiErr);
       }
     }
 
-    // Dynamic Fallback Generator (Preserves creator's exact title, character and prompt)
+    // Dynamic Fallback Generator (Preserves creator's exact title, sections and prompt)
     const templates = GENRE_CHAPTER_TEMPLATES[genre] || GENRE_CHAPTER_TEMPLATES.coloring_book;
     const pages: BookPage[] = [];
 
     for (let i = 0; i < count; i++) {
       const pNum = i + 1;
       const template = templates[i % templates.length];
-      const pageTitle = template.title;
-      const storyText = template.story(character.name, character.type);
+      const pageTitle = isJournalMode ? `Day ${pNum}` : template.title;
+      const storyText = isJournalMode ? "Daily journal entry and action log." : template.story(character.name, character.type);
+
+      const fallbackIllustrationPrompt = isJournalMode
+        ? wantsIllustrations
+          ? `Minimalist black and white line art spot illustration of content creation tool, microphone, camera, or notebook, clean outlines, no shading, pure white background`
+          : undefined
+        : `Children's coloring book page outline, thick continuous bold black outlines, zero shading, pure white background, no gradients, ${template.scene(
+            character.name,
+            character.type
+          )}. Strict monochrome vector line art, ready for coloring.`;
+
+      const fallbackImageUrl = fallbackIllustrationPrompt
+        ? `https://image.pollinations.ai/prompt/${encodeURIComponent(
+            fallbackIllustrationPrompt
+          )}?width=1024&height=1024&nologo=true&seed=${200000 + pNum * 777}`
+        : undefined;
 
       pages.push({
         pageNumber: pNum,
         title: pageTitle,
         storyText: storyText,
-        imagePrompt: `Clean vector line-art outline for ${character.name} - Page ${pNum}`,
-        imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(
-          `Children's coloring book page outline, thick continuous bold black outlines, zero shading, pure white background, no gradients, ${template.scene(
-            character.name,
-            character.type
-          )}. Strict monochrome vector line art, ready for coloring.`
-        )}?width=1024&height=1024&nologo=true&seed=${200000 + pNum * 777}`,
+        imagePrompt: fallbackIllustrationPrompt || `Page ${pNum} outline`,
+        imageUrl: fallbackImageUrl,
+        journalData: isJournalMode
+          ? {
+              dayNumber: pNum,
+              datePlaceholder: "Date: _______________",
+              headerCategory:
+                title || (detectedSections ? "Daily Action & Retrospective" : "Daily Reflection & Mindset"),
+              moodTracker: wantsMood,
+              sections: effectiveLayoutType === "empty_lined" ? undefined : (detectedSections || undefined),
+              reflectionPrompt:
+                effectiveLayoutType === "empty_lined"
+                  ? undefined
+                  : detectedSections
+                  ? undefined
+                  : "What is one intention you want to cultivate today?",
+              ruledLinesCount:
+                effectiveLayoutType === "empty_lined"
+                  ? effectiveLineRuleSpacing === "wide"
+                    ? 15
+                    : 19
+                  : detectedSections
+                  ? undefined
+                  : 18,
+              layoutType: effectiveLayoutType,
+              borderText: effectiveBorderText,
+              borderStyle: effectiveBorderStyle,
+              cornerDecorations: effectiveCornerDecorations,
+              lineRuleSpacing: effectiveLineRuleSpacing,
+              hasIllustration: wantsIllustrations,
+              illustrationPrompt: fallbackIllustrationPrompt,
+              illustrationPlacement: "bottom_right",
+            }
+          : undefined,
       });
     }
 
-    const fallbackTitle = title || `${character.name}'s Big Adventure`;
-    const fallbackSubtitle = subtitle || `A Personalized AI Storybook`;
+    const fallbackTitle = title || (isJournalMode ? "Daily Action & Reflection Journal" : `${character.name}'s Big Adventure`);
+    const fallbackSubtitle = subtitle || (isJournalMode ? "A 6\" x 9\" Personalized Reflection Journal" : "A Personalized AI Storybook");
 
     const bookProject: BookProject = {
       id: `book_${Date.now().toString(36)}`,
@@ -402,9 +698,9 @@ OUTPUT SCHEMA (valid JSON only):
       pages: pages,
       pageCount: pages.length,
       format: {
-        trimSize: "8.5x8.5",
+        trimSize: effectiveTrimSize as any,
         binding: "saddle_stitch",
-        interiorColor: "black_and_white",
+        interiorColor: effectiveInteriorColor,
       },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

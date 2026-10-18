@@ -1,96 +1,111 @@
-# Natural Chat Flow & Universal Book Designer Implementation Plan
+# Dynamic Book & Journal Layout Engine Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
-**Goal:** Transform the PaperTales AI Copilot into a fluid, ChatGPT-grade book design consultant that supports all book types (personal journals, adult books, gifts, workbooks, children's stories), eliminates repetitive welcomes, fixes broken quick replies, and seamlessly transitions to the Master Proof when a title is chosen.
-
-**Architecture:** 
-1. Redesign the conversational prompt and state transitions in `/api/ai/chat/route.ts` to support universal audiences, single-greeting rules, natural pronoun resolution ("I like it"), and immediate concept locking upon title selection.
-2. Refactor `StudioPage` in `src/app/studio/page.tsx` to prevent redundant quick replies, eliminate conversational dead-ends, and provide an instant, accessible progression path to the Master Proof.
-3. Validate end-to-end multi-turn conversations via an automated test script and verify production build.
-
-**Tech Stack:** Next.js 15 (App Router), React 19, TypeScript, Groq LPU / OpenAI GPT-4o-mini, Tailwind CSS.
+> **Goal:** Support dynamic, creator-specified interior page layouts (such as upper section "I will do" and lower section "what I did", custom headers, and multi-prompt spreads) across the entire PaperTales pipeline: AI Chat Copilot -> Story Generator -> 3D Book Viewer -> Lulu POD PDF Compiler.
 
 ---
 
-## Global Constraints
-- Strictly preserve existing PayPal SDK checkout, Lulu POD integration, AG Grid tracking, and Channel3 companion features.
-- Maintain full type safety and zero TypeScript build errors (`npm run build`).
-- Do not write, edit, delete, or commit code without explicit user confirmation.
+## 1. Root Cause Summary
+
+| Component | Current Limitation | Required Fix |
+|---|---|---|
+| **Data Contract (`types/book.ts`)** | `JournalPageData` only supports a single `reflectionPrompt` and `ruledLinesCount`. | Add `sections?: JournalSection[]` (`title`, `prompt`, `linesCount`, `placeholder`) and dynamic `headerCategory`. |
+| **Story Engine (`api/ai/story/route.ts`)** | Defaults to Groq `gpt-oss-120b`; rigid schema only generates a single prompt + 18 lines; ignores user section requests. | Prioritize OpenAI `gpt-4.1` (Groq fallback); extract sections from `prompt` and `pageStructure`; return dynamic `sections` in `journalData`. |
+| **Chat Route (`api/ai/chat/route.ts`)** | `designBrief` extracts `pageStructure`, but `bookDraft` does not expose it as a dedicated field for the story engine. | Expose `pageStructure` in `bookDraft` and ensure `bookDraft.prompt` summarizes section structure clearly. |
+| **Studio Page (`studio/page.tsx`)** | Calls `/api/ai/story` with `prompt` only, without passing structured `pageStructure` or tracking section updates. | Store and forward `pageStructure` from chat to `/api/ai/story` during Master Proof generation & full spread expansion. |
+| **Book Viewer (`BookViewer.tsx`)** | Hardcodes `"Daily Reflection & Mindset"`, `"Today's Mood"`, and a single 18-line block with `"write your thoughts here..."`. | Dynamically render `sections`: Section 1 header + lines, clean divider, Section 2 header + lines; dynamic header category; conditional mood tracker. |
+| **PDF Compiler (`lib/pdf-builder.ts`)** | Draws only a single reflection title and fills lines to the bottom margin. | Draw each section with its title, calculate vertical line spacing per section, and render divider so printed copy matches viewer. |
 
 ---
 
-### Task 1: Conversational System Prompt & State Machine Overhaul in Chat Route
+## 2. Step-by-Step Execution Plan
 
-**Files:**
-- Modify: `src/app/api/ai/chat/route.ts:25-115`
-- Test: `test-chat-flow.mjs` (scratch script)
+### Task 1: Data Contract Upgrades (`src/types/book.ts`)
+- Define `JournalSection`:
+  ```ts
+  export interface JournalSection {
+    title: string;          // e.g. "I will do", "What I did"
+    prompt?: string;        // e.g. "List today's priorities and commitments"
+    linesCount?: number;    // e.g. 7 or 8 lines
+    placeholder?: string;   // e.g. "write what you will do today..."
+  }
+  ```
+- Extend `JournalPageData`:
+  ```ts
+  export interface JournalPageData {
+    dayNumber: number;
+    datePlaceholder?: string;
+    headerCategory?: string;  // e.g. "Action & Retrospective"
+    moodTracker?: boolean;    // false if task-oriented unless requested
+    quote?: string;
+    reflectionPrompt?: string;
+    gratitudePrompts?: string[];
+    doodlePrompt?: string;
+    ruledLinesCount?: number;
+    sections?: JournalSection[]; // dynamic sections
+  }
+  ```
 
-**Interfaces:**
-- Consumes: `{ messages: ChatMessage[], currentBook: BookProject, referenceImageUrl?: string }`
-- Produces: `{ reply: string, discussionStage: "discovery" | "brainstorming" | "concept_locked", isReadyForProof: boolean, titleOptions: string[], bookDraft: BookDraftData, quickReplies: string[], printAdvisory: PrintAdvisoryData }`
+### Task 2: Story Generator Engine Overhaul (`src/app/api/ai/story/route.ts`)
+- **Model Selection:**
+  - Prioritize OpenAI `gpt-4.1` (or `gpt-4o`) via `OPENAI_API_KEY`, using Groq as fallback.
+- **Request Body & Prompt Engineering:**
+  - Accept `pageStructure?: string` in POST body.
+  - In `systemPrompt` for journals:
+    - Instruct the model to inspect `prompt` and `pageStructure` for requested sections (e.g. upper "I will do", lower "what I did", morning/evening, habit/gratitude).
+    - If sections are detected, output:
+      ```json
+      "sections": [
+        { "title": "I will do", "prompt": "Key focus & commitments for today", "linesCount": 8, "placeholder": "commitments for today..." },
+        { "title": "What I did", "prompt": "Evening retrospective & achievements", "linesCount": 8, "placeholder": "what was accomplished..." }
+      ]
+      ```
+    - Set `headerCategory` matching the theme.
+    - Set `moodTracker: false` for task/action journals unless creator requested mood.
+- **Story Output Parsing:**
+  - Map `journalData.sections` and `journalData.headerCategory` directly into each resolved page.
+- **Smart Fallback:**
+  - If AI call fails or returns empty, inspect `prompt`: if keywords like `"I will do"` and `"what I did"` (or upper/lower sections) are present, construct the 2 sections dynamically in the fallback generator.
 
-- [x] **Step 1: Write test script to verify current failures (duplicate greeting, child bias, stuck title lock)**
-Create `scratch/test-chat-diagnostics.mjs` that simulates the 3-turn user conversation from the screenshots and verifies:
-1. Turn 1: "hey papertales, what can you do"
-2. Turn 2: "I want to create a 15 day journal with cat borders"
-3. Turn 3: "I pick the title: 'Purr-fect 15-Day Adventure Journal'"
+### Task 3: Chat Route & Studio Page State Sync
+- In `src/app/api/ai/chat/route.ts`:
+  - Add `pageStructure?: string` to `bookDraft` in schema and output.
+- In `src/app/studio/page.tsx`:
+  - Add `pageStructure` state (defaulting to undefined).
+  - When `data.bookDraft.pageStructure` arrives from chat, save it to state.
+  - In `handleDesignHeroPage` and `handleExpandFullSpread`, pass `pageStructure` into the fetch body for `/api/ai/story`.
 
-- [x] **Step 2: Run test script to observe the failures**
-Run: `node scratch/test-chat-diagnostics.mjs`
-Expected: Turn 2 returns duplicate "Welcome to PaperTales" and references "child", Turn 3 returns `isReadyForProof: false` (stuck loop).
+### Task 4: Dynamic Book Viewer (`src/components/BookViewer.tsx`)
+- In `renderJournalPage`:
+  - Check for `page?.journalData?.sections && page.journalData.sections.length > 0`:
+    - **Header:** Render `page.journalData.headerCategory || book.subtitle || "Daily Reflection"`.
+    - **Mood Tracker:** Render only if `page.journalData.moodTracker === true`.
+    - **Sections Loop:**
+      - For each section, render:
+        - Section Title badge/pill (e.g. Amber/Sky badge with title `"I WILL DO"`).
+        - Optional section prompt/subtitle.
+        - Ruled lines allocated for that section (`linesCount || 7`), with `placeholder` on the first line.
+      - Render subtle horizontal divider between sections.
+  - If no sections exist, preserve the classic single prompt + 19 ruled lines layout for full backward compatibility.
 
-- [x] **Step 3: Update System Prompt in `src/app/api/ai/chat/route.ts`**
-Implement the following prompt upgrades:
-1. Single Greeting Rule
-2. Universal Audience & Genre Support
-3. Conversational Intent & Pronoun Resolution
-4. Immediate Concept Locking (`isReadyForProof: true`)
-5. Actionable First-Person Quick Replies
+### Task 5: PDF Compiler Multi-Section Layout (`src/lib/pdf-builder.ts`)
+- In `src/lib/pdf-builder.ts`:
+  - In `drawJournalPage`:
+    - Check if `page.journalData?.sections` has items.
+    - If yes:
+      - Draw dynamic `headerCategory`.
+      - Loop through sections, drawing:
+        1. Section title in bold (`timesBold`, size 10).
+        2. Optional section prompt in italic.
+        3. Ruled lines for the section with standard 20pt spacing.
+        4. Advance `currentY` with margin before the next section.
+    - If no: draw classic single prompt + bottom-limit ruled lines.
 
-- [x] **Step 4: Re-run test script to verify all 4 criteria pass**
-Run: `node scratch/test-chat-diagnostics.mjs`
-Expected: Turn 2 has no duplicate welcome and no child assumption; Turn 3 returns `isReadyForProof: true` with locked concept.
-
----
-
-### Task 2: Studio UI & Chat Interaction Refinement
-
-**Files:**
-- Modify: `src/app/studio/page.tsx:780-865`
-
-**Interfaces:**
-- Consumes: Chat API responses (`titleOptions`, `quickReplies`, `isReadyForProof`)
-- Produces: Smooth user selection, visual confirmation, and clear progression to Master Proof.
-
-- [x] **Step 1: Sanitize and Filter Redundant Quick Replies**
-Filter out any quick replies that say "Pick a title" or repeat already-rendered interactive title buttons.
-
-- [x] **Step 2: Instant Title Selection & State Advancement**
-When the user clicks a title card (`titleOpt`):
-1. Immediately update `book.title` and `isConfirmed = false`.
-2. Send natural conversational confirmation: `"I choose the title: "${titleOpt}". Let's finalize the concept."`
-3. If `titleOpt` matches, visually show `Selected ✓` and highlight the card.
-
-- [x] **Step 3: Add Always-Visible Manual Advancement Escape Hatch**
-In `src/app/studio/page.tsx`, if concept is locked or title matches, render:
-`[Review Book Specs & Master Proof →]` so the user is never trapped in an endless loop.
-
-- [x] **Step 4: Smart Defaults for Adult & Journal Projects**
-Ensure `targetAge` and `authorName` default gracefully:
-- If journal mode or adult creator: `targetAge = "All Ages"` and `authorName = "You"`.
-
----
-
-### Task 3: Full End-to-End Build & Visual Verification
-
-**Files:**
-- Test: Local verification via browser subagent or dev server
-
-- [x] **Step 1: Run TypeScript compiler check**
-Run: `npx tsc --noEmit`
-Expected: Zero type errors (Exited with code 0).
-
-- [x] **Step 2: Verify End-to-End Test Suite**
-Run: `node scratch/test-chat-diagnostics.mjs` and `node scratch/test-like-it.mjs`
-Expected: Passed all turns.creen.
+### Task 6: Comprehensive Verification & Automated Tests
+1. **API & End-to-End Test (`scratch/test-section-generation.mjs`):**
+   - Query `/api/ai/story` with prompt: `"15-day coding journal, upper section 'I will do', lower section 'What I did'"`.
+   - Verify response has `journalData.sections` with the 2 exact titles.
+   - Test PDF compile with the generated book data to ensure valid PDF binary is emitted.
+2. **TypeScript Compilation:**
+   - Run `npx tsc --noEmit` and ensure 0 errors.
+3. **Visual Verification:**
+   - Inspect `/studio` in dev server to verify both left and right spreads render the upper and lower sections cleanly.

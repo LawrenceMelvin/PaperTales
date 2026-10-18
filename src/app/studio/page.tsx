@@ -171,19 +171,39 @@ interface BookDraftData {
   characterName?: string;
   characterType?: string;
   characterTraits?: string[];
-  prompt?: string;
   pageCount?: number;
+  trimSize?: "6x9" | "8.5x8.5" | "8.5x11";
+  pageStructure?: string;
+  layoutType?: "empty_lined" | "guided_sections" | "classic_prompt";
+  borderText?: string | null;
+  borderStyle?: "robotic" | "modern" | "playful" | "none";
+  cornerDecorations?: "tech_brackets" | "gears" | "minimal" | "none";
+  interiorColor?: "black_and_white" | "standard_color";
+  lineRuleSpacing?: "wide" | "college";
   channel3Query?: string;
   recommendedAction?: "design_hero_page" | "expand_full_spread";
   designerNote?: string;
 }
 
+type DiscussionStage = "discovery" | "designing" | "brief_review" | "concept_locked" | "revising";
+
+interface DraftChange {
+  field: string;
+  from?: string | null;
+  to: string;
+}
+
+const TRIM_SIZES = ["6x9", "8.5x8.5", "8.5x11"] as const;
+const TITLE_PICK_PATTERN = /I (?:pick|choose) the (?:print-safe )?title:\s*["“](.+?)["”]/i;
+
 interface ChatMessageItem {
   id: string;
   role: "user" | "assistant";
   content: string;
-  discussionStage?: "discovery" | "brainstorming" | "concept_locked";
+  discussionStage?: DiscussionStage;
   isReadyForProof?: boolean;
+  requiresNewProof?: boolean;
+  changes?: DraftChange[];
   titleOptions?: string[];
   quickReplies?: string[];
   printAdvisory?: PrintAdvisoryData;
@@ -247,6 +267,12 @@ export default function StudioPage() {
   const [book, setBook] = useState<BookProject>(INITIAL_BOOK);
   const [character, setCharacter] = useState<CharacterAnchor>(GENRE_LANES[0].defaultCharacter);
   const [prompt, setPrompt] = useState<string>(GENRE_LANES[0].defaultPrompt);
+  const [pageStructure, setPageStructure] = useState<string>("");
+  const [layoutType, setLayoutType] = useState<"empty_lined" | "guided_sections" | "classic_prompt">("classic_prompt");
+  const [borderText, setBorderText] = useState<string | null>(null);
+  const [borderStyle, setBorderStyle] = useState<"robotic" | "modern" | "playful" | "none">("none");
+  const [cornerDecorations, setCornerDecorations] = useState<"tech_brackets" | "gears" | "minimal" | "none">("none");
+  const [lineRuleSpacing, setLineRuleSpacing] = useState<"wide" | "college">("college");
   const [authorName, setAuthorName] = useState<string>("");
   const [targetAge, setTargetAge] = useState<string>("4-8");
   const [pageCount, setPageCount] = useState<number>(5);
@@ -261,6 +287,11 @@ export default function StudioPage() {
   const [isChatting, setIsChatting] = useState<boolean>(false);
   const [isDiscussionDone, setIsDiscussionDone] = useState<boolean>(false);
   const [isEditingCharacterName, setIsEditingCharacterName] = useState<boolean>(false);
+
+  // Proof lifecycle: whether a Master Page 1 proof exists and whether later edits made it outdated
+  const [hasProof, setHasProof] = useState<boolean>(false);
+  const [isProofStale, setIsProofStale] = useState<boolean>(false);
+  const [lockedTitle, setLockedTitle] = useState<string | null>(null);
 
   // Live Channel3 companion products
   const [companionProducts, setCompanionProducts] = useState<CompanionProduct[]>([]);
@@ -320,6 +351,7 @@ export default function StudioPage() {
   }, [selectedGenre]);
 
   const handleSelectGenre = (genreId: BookGenre) => {
+    if (hasProof && genreId !== selectedGenre) setIsProofStale(true);
     setSelectedGenre(genreId);
     const cfg = GENRE_LANES.find((g) => g.id === genreId) || GENRE_LANES[0];
     setPrompt(cfg.defaultPrompt);
@@ -369,6 +401,10 @@ export default function StudioPage() {
       content: trimmed,
     };
 
+    const pickedTitle = trimmed.match(TITLE_PICK_PATTERN)?.[1]?.trim() || null;
+    const effectiveLockedTitle = pickedTitle || lockedTitle;
+    if (pickedTitle) setLockedTitle(pickedTitle);
+
     const newThread = [...messages, userMsg];
     setMessages(newThread);
     setInputMessage("");
@@ -380,10 +416,22 @@ export default function StudioPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: newThread.map((m) => ({ role: m.role, content: m.content })),
-          currentBook: book,
-          referenceImageUrl: referenceImageUrl || undefined,
-        }),
-      });
+            projectState: {
+              title: book.title !== INITIAL_BOOK.title ? book.title : undefined,
+              subtitle: book.subtitle,
+              genre: selectedGenre,
+              pageCount,
+              trimSize: book.format.trimSize,
+              characterName: character.name,
+              characterType: character.type,
+              characterTraits: character.traits,
+              pageStructure: pageStructure || undefined,
+              prompt: hasProof || effectiveLockedTitle ? prompt : undefined,
+            },
+            hasProof,
+            lockedTitle: effectiveLockedTitle,
+          }),
+        });
 
       const data = await res.json();
       if (data.success) {
@@ -396,16 +444,44 @@ export default function StudioPage() {
           if (data.bookDraft.genre) {
             setSelectedGenre(data.bookDraft.genre);
           }
-          if (data.bookDraft.title) {
+          const draftTrim = TRIM_SIZES.includes(data.bookDraft.trimSize) ? data.bookDraft.trimSize : null;
+          if (data.bookDraft.title || draftTrim) {
             setBook((prev) => ({
               ...prev,
-              title: data.bookDraft.title,
+              title: data.bookDraft.title || prev.title,
               subtitle: data.bookDraft.subtitle || prev.subtitle,
               genre: data.bookDraft.genre || prev.genre,
+              format: draftTrim ? { ...prev.format, trimSize: draftTrim } : prev.format,
             }));
           }
           if (data.bookDraft.prompt) {
             setPrompt(data.bookDraft.prompt);
+          }
+          if (data.bookDraft.pageStructure) {
+            setPageStructure(data.bookDraft.pageStructure);
+          } else if (data.designBrief?.pageStructure) {
+            setPageStructure(data.designBrief.pageStructure);
+          }
+          if (data.bookDraft.layoutType) {
+            setLayoutType(data.bookDraft.layoutType);
+          }
+          if (data.bookDraft.borderText !== undefined) {
+            setBorderText(data.bookDraft.borderText);
+          }
+          if (data.bookDraft.borderStyle) {
+            setBorderStyle(data.bookDraft.borderStyle);
+          }
+          if (data.bookDraft.cornerDecorations) {
+            setCornerDecorations(data.bookDraft.cornerDecorations);
+          }
+          if (data.bookDraft.lineRuleSpacing) {
+            setLineRuleSpacing(data.bookDraft.lineRuleSpacing);
+          }
+          if (data.bookDraft.interiorColor) {
+            setBook((prev) => ({
+              ...prev,
+              format: { ...prev.format, interiorColor: data.bookDraft.interiorColor! },
+            }));
           }
           if (data.bookDraft.characterName || data.bookDraft.characterType) {
             setCharacter({
@@ -434,12 +510,17 @@ export default function StudioPage() {
           }
         }
 
+        if (data.lockedTitle) setLockedTitle(data.lockedTitle);
+        if (hasProof && data.requiresNewProof) setIsProofStale(true);
+
         const assistantMsg: ChatMessageItem = {
           id: `msg_${Date.now() + 1}`,
           role: "assistant",
           content: data.reply,
-          discussionStage: data.discussionStage || (data.isReadyForProof ? "concept_locked" : "brainstorming"),
+          discussionStage: data.discussionStage || "designing",
           isReadyForProof: Boolean(data.isReadyForProof),
+          requiresNewProof: Boolean(data.requiresNewProof),
+          changes: Array.isArray(data.changes) ? data.changes : [],
           titleOptions: data.titleOptions || [],
           quickReplies: data.quickReplies || [],
           printAdvisory: data.printAdvisory,
@@ -470,6 +551,13 @@ export default function StudioPage() {
           title: book.title,
           subtitle: book.subtitle,
           prompt,
+          pageStructure: pageStructure || undefined,
+          layoutType,
+          borderText: borderText || undefined,
+          borderStyle,
+          cornerDecorations,
+          interiorColor: book.format.interiorColor,
+          lineRuleSpacing,
           authorName,
           targetAge,
           genre: selectedGenre,
@@ -479,6 +567,7 @@ export default function StudioPage() {
           referenceImageUrl: referenceImageUrl || undefined,
           pageCount: 1, // Single Hero Master Page
           trimSize: book.format.trimSize,
+          messages: messages.map((m) => ({ role: m.role, content: m.content })),
         }),
       });
 
@@ -490,6 +579,8 @@ export default function StudioPage() {
           pageCount: 1,
         });
         setIsConfirmed(false); // Hero proof ready for inspection
+        setHasProof(true);
+        setIsProofStale(false);
 
         // Smooth scroll to the Book Display below
         const displayEl = document.getElementById("book-display-section");
@@ -523,6 +614,13 @@ export default function StudioPage() {
           title: book.title,
           subtitle: book.subtitle,
           prompt,
+          pageStructure: pageStructure || undefined,
+          layoutType,
+          borderText: borderText || undefined,
+          borderStyle,
+          cornerDecorations,
+          interiorColor: book.format.interiorColor,
+          lineRuleSpacing,
           authorName,
           targetAge,
           genre: selectedGenre,
@@ -532,6 +630,7 @@ export default function StudioPage() {
           referenceImageUrl: referenceImageUrl || undefined,
           pageCount, // Full requested page count
           trimSize: book.format.trimSize,
+          messages: messages.map((m) => ({ role: m.role, content: m.content })),
         }),
       });
 
@@ -542,6 +641,8 @@ export default function StudioPage() {
           deductClientTokens(quote.tokensRequired);
         }
         setIsConfirmed(true);
+        setHasProof(true);
+        setIsProofStale(false);
 
         // Smooth scroll to the Book Display below
         const displayEl = document.getElementById("book-display-section");
@@ -777,8 +878,31 @@ export default function StudioPage() {
                               </div>
                             )}
 
-                            {/* Interactive Title Options Suggested by Copilot */}
-                            {!isUser && msg.titleOptions && msg.titleOptions.length > 0 && (
+                            {/* Applied edits (revision turns) */}
+                            {!isUser && msg.changes && msg.changes.length > 0 && (
+                              <div className="pt-2.5 border-t border-emerald-400/20 space-y-1.5">
+                                <span className="text-[10px] uppercase font-bold text-emerald-300 tracking-wider flex items-center gap-1.5">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                  Changes Applied
+                                </span>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {msg.changes.map((c, cIdx) => (
+                                    <span
+                                      key={cIdx}
+                                      className="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-400/30 text-emerald-100"
+                                    >
+                                      <strong className="capitalize">{c.field}:</strong>{" "}
+                                      {c.from ? <span className="line-through text-slate-400">{c.from}</span> : null}
+                                      {c.from ? " → " : ""}
+                                      {c.to}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Interactive Title Options Suggested by Copilot (latest reply only, until a title is locked) */}
+                            {isLatestAssistant && msg.titleOptions && msg.titleOptions.length > 0 && (
                               <div className="pt-2.5 border-t border-sky-400/20 space-y-2">
                                 <div className="flex items-center justify-between">
                                   <span className="text-[11px] font-bold text-sky-300 flex items-center gap-1.5 uppercase tracking-wider">
@@ -849,18 +973,35 @@ export default function StudioPage() {
                               );
                             })()}
 
-                            {/* Transition Prompt to Confirmation Card on Latest Turn: when concept is locked or title is picked */}
-                            {isLatestAssistant && (msg.isReadyForProof || msg.discussionStage === "concept_locked" || (book.title && book.title === msg.bookDraft?.title && book.title !== INITIAL_BOOK.title)) && (
+                            {/* Transition Prompt to Confirmation Card on Latest Turn: only once the designer has locked the brief */}
+                            {isLatestAssistant && (msg.isReadyForProof || msg.requiresNewProof) && (
                               <div className="pt-2.5 border-t border-sky-400/20 flex flex-wrap items-center justify-between gap-2 animate-in fade-in">
                                 <span className="text-[11px] text-sky-300 font-medium">
-                                  ✨ Concept ready! Review your book specs and design your free master proof.
+                                  {msg.requiresNewProof || isProofStale
+                                    ? "✏️ Edits applied! Redesign your Master Page 1 proof to see them."
+                                    : "✨ Concept ready! Design your free Master Page 1 proof now with OpenAI."}
                                 </span>
                                 <button
                                   type="button"
-                                  onClick={() => setIsDiscussionDone(true)}
-                                  className="px-3.5 py-1.5 rounded-xl bg-sky-400 text-slate-950 font-bold text-xs hover:bg-sky-300 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow"
+                                  onClick={() => {
+                                    setIsDiscussionDone(true);
+                                    handleDesignHeroPage();
+                                  }}
+                                  disabled={isGenerating}
+                                  className="px-3.5 py-1.5 rounded-xl bg-sky-400 text-slate-950 font-bold text-xs hover:bg-sky-300 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow disabled:opacity-50"
                                 >
-                                  <span>Review Book Specs &amp; Master Proof &rarr;</span>
+                                  {isGenerating ? (
+                                    <>
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                      <span>Designing Master Proof...</span>
+                                    </>
+                                  ) : (
+                                    <span>
+                                      {msg.requiresNewProof || isProofStale
+                                        ? "🎨 Redesign Master Proof with Edits →"
+                                        : "🎨 Design Master Page 1 Proof Now (Free) →"}
+                                    </span>
+                                  )}
                                 </button>
                               </div>
                             )}
@@ -1136,12 +1277,13 @@ export default function StudioPage() {
                       <button
                         key={dim.id}
                         type="button"
-                        onClick={() =>
+                        onClick={() => {
+                          if (hasProof && (book.format?.trimSize || "8.5x8.5") !== dim.id) setIsProofStale(true);
                           setBook((prev) => ({
                             ...prev,
                             format: { ...prev.format, trimSize: dim.id as any },
-                          }))
-                        }
+                          }));
+                        }}
                         className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
                           isSel
                             ? "bg-[#0c2842] border-[#38bdf8] text-white shadow-sm ring-1 ring-[#38bdf8]/40"
@@ -1227,8 +1369,19 @@ export default function StudioPage() {
                 </p>
               </div>
 
+              {/* Stale proof warning: edits from the discussion aren't in the current proof yet */}
+              {hasProof && isProofStale && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-400/40 flex items-start gap-2.5 text-xs animate-in fade-in">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <p className="leading-relaxed text-amber-100">
+                    <strong className="text-amber-200">Your recent edits aren&apos;t in this proof yet.</strong> Redesign
+                    Master Page 1 to apply them before expanding the full book.
+                  </p>
+                </div>
+              )}
+
               {/* Stage 1 Master Page CTA Button */}
-              {book.pages.length === 1 ? (
+              {book.pages.length === 1 && !isProofStale ? (
                 <div className="space-y-2 pt-1">
                   <button
                     type="button"
@@ -1274,7 +1427,11 @@ export default function StudioPage() {
                   ) : (
                     <>
                       <Palette className="w-4 h-4 text-[#001f2e]" />
-                      <span>🎨 Design Master Page 1 First (Instant Free Preview)</span>
+                      <span>
+                        {isProofStale
+                          ? "🎨 Redesign Master Page 1 with Your Edits (Free)"
+                          : "🎨 Design Master Page 1 First (Instant Free Preview)"}
+                      </span>
                     </>
                   )}
                 </button>

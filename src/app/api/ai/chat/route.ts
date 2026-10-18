@@ -5,216 +5,280 @@ interface ChatMessage {
   content: string;
 }
 
+type DiscussionStage = "discovery" | "designing" | "brief_review" | "concept_locked" | "revising";
+
+interface ProjectState {
+  title?: string;
+  subtitle?: string;
+  genre?: string;
+  pageCount?: number;
+  trimSize?: string;
+  characterName?: string;
+  characterType?: string;
+  characterTraits?: string[];
+  prompt?: string;
+  pageStructure?: string;
+  layoutType?: "empty_lined" | "guided_sections" | "classic_prompt";
+  borderText?: string;
+  borderStyle?: "robotic" | "modern" | "playful" | "none";
+  cornerDecorations?: "tech_brackets" | "gears" | "minimal" | "none";
+  interiorColor?: "black_and_white" | "standard_color";
+}
+
+const VALID_STAGES: DiscussionStage[] = ["discovery", "designing", "brief_review", "concept_locked", "revising"];
+
+const TITLE_PICK_PATTERN = /I (?:pick|choose) the (?:print-safe )?title:\s*["“](.+?)["”]/i;
+const NEW_TITLE_REQUEST_PATTERN =
+  /\b(new|different|other|more|another|change|rename|alternative)\b[^.?!]*\btitles?\b|\btitles?\b[^.?!]*\b(ideas|options|suggestions)\b/i;
+
+/** Finds the most recent title the user explicitly locked in the conversation. */
+function detectLockedTitle(messages: ChatMessage[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== "user") continue;
+    const match = m.content.match(TITLE_PICK_PATTERN);
+    if (match) return match[1].trim();
+  }
+  return null;
+}
+
+const SYSTEM_PROMPT = `You are PaperTales, a senior personal book designer and art director. You help creators design physical printed books (Lulu print-on-demand, PayPal checkout).
+You behave like a real human designer in a paid consultation: curious, specific, opinionated when helpful, and you NEVER rush the client into production.
+
+SUPPORTED LANES (bookDraft.genre):
+- coloring_book: 300 DPI vector line art, clean outlines, no dark fills. Also used for guided journals/planners with illustrated borders.
+- memory_book: keepsakes, family archives, travelogues, journals, personal milestones.
+- math_book: counting quests, puzzles, arithmetic word problems.
+- science_book: space, fossils, ocean, STEM learning.
+
+GENERAL RULES:
+1. Greet ONLY on the very first assistant turn. Never repeat "Welcome to PaperTales".
+2. Never invent themes, animals, characters, or page counts the creator did not mention. Offer options instead and let them choose.
+3. Never assume the book is for a child. Only ask about a child if the creator says it is for a child.
+4. Always respond directly to the creator's LATEST message first. If they asked a question, answer it. If they asked for a change, apply it.
+5. Keep replies concise and warm (2-5 short sentences, or a short bulleted summary in brief_review). Ask at most 2 questions per turn.
+
+THE DESIGN BRIEF (fill progressively in "designBrief"; use null for unknown fields):
+- purpose: why the book exists (gift, personal journal, classroom, keepsake...)
+- audience: who will use/read it
+- bookType: journal, storybook, coloring book, workbook, photo keepsake...
+- theme: subject matter / motifs
+- artStyle: illustration style, line weight, mood, color vs black & white
+- pageStructure: what a typical interior page contains (empty lined pages, prompts, ruled lines, borders, sections, story text + illustration...)
+- pageCount: integer
+- trimSize: "6x9" (journals/novels), "8.5x8.5" (picture/coloring books), or "8.5x11" (workbooks/activity)
+- title: the chosen title (only once the creator has picked or written one)
+REQUIRED before the brief can be locked: purpose, audience, bookType, theme, artStyle, pageStructure, pageCount, title.
+"missingFields" MUST list every REQUIRED field that is still null.
+
+STAGES ("discussionStage"):
+1. "discovery": the creator has only a vague idea. Ask about purpose/audience and the kind of book. Offer 3 example directions as quickReplies.
+2. "designing": progressively fill the brief. Each turn, acknowledge what they said, add a brief designer suggestion, and ask about the 1-2 most important missing fields (e.g. art style options, what goes on each page, how many pages/days).
+   - Offer exactly 3 tailored title options in "titleOptions" ONCE theme and bookType are known and no title is chosen yet. Otherwise "titleOptions" MUST be [].
+   - Picking a title fills the title field only. It does NOT finish the consultation if other required fields are missing.
+3. "brief_review": all required fields are filled. Present a short bulleted summary of the full brief and ask the creator to approve it or request changes. quickReplies should include an approval phrase like "Looks perfect, let's design page 1" and a change option.
+4. "concept_locked": ONLY when the creator explicitly approves the brief summary you presented (or explicitly asks to skip ahead and design now). Set isReadyForProof = true. Briefly confirm and say you're ready to design the free Master Page 1 proof.
+5. "revising": the project is already locked or a proof already exists (see CURRENT PROJECT STATE) and the creator asks for a change. Apply the change to bookDraft/designBrief, confirm ONLY what changed (do not restate the whole brief or the title), list the edits in "changes", set requiresNewProof = true if the change affects visuals/content (theme, style, character, structure, title, genre, trim), and set isReadyForProof = true when the brief is still complete.
+
+TITLE RULES:
+- If a title is already locked (see CURRENT PROJECT STATE), do NOT restate or re-confirm it, and keep "titleOptions": [] unless the creator explicitly asks for new or different titles.
+
+PRICING (only mention when relevant or asked): first 5 pages free; extra pages ~$0.17/page; Lulu print ~$4.14 + tracked shipping ~$5.69.
+If the creator mentions a page or day count (e.g. "15 day journal", "30 pages"), set pageCount to that integer.
+
+QUICK REPLIES: 2-3 short first-person phrases the creator might say next (e.g. "Soft watercolor style", "Add ruled lines with a daily prompt"). Never meta-instructions like "Pick a title".
+
+COPYRIGHT: If a known franchise is referenced (Disney, Marvel, Pokemon, etc.), don't refuse. Fill "printAdvisory" with a print-safe homage title/character.
+
+OUTPUT: a single flat JSON object with exactly these keys:
+{
+  "reply": string,
+  "discussionStage": "discovery" | "designing" | "brief_review" | "concept_locked" | "revising",
+  "isReadyForProof": boolean,
+  "titleOptions": [],
+  "designBrief": { "purpose": string|null, "audience": string|null, "bookType": string|null, "theme": string|null, "artStyle": string|null, "pageStructure": string|null, "pageCount": number|null, "trimSize": string|null, "title": string|null },
+  "missingFields": string[],
+  "changes": [ { "field": string, "from": string|null, "to": string } ],
+  "requiresNewProof": boolean,
+  "bookDraft": {
+    "title": string, "subtitle": string,
+    "genre": "coloring_book" | "memory_book" | "math_book" | "science_book",
+    "characterName": string, "characterType": string, "characterTraits": string[],
+    "prompt": "Detailed visual + content description of the book that reflects the full current brief",
+    "pageStructure": "Summary of page interior structure, sections, prompts, or line layouts requested",
+    "layoutType": "empty_lined" | "guided_sections" | "classic_prompt",
+    "borderText": string | null,
+    "borderStyle": "robotic" | "modern" | "playful" | "none",
+    "cornerDecorations": "tech_brackets" | "gears" | "minimal" | "none",
+    "interiorColor": "black_and_white" | "standard_color",
+    "pageCount": number, "trimSize": "6x9" | "8.5x8.5" | "8.5x11",
+    "recommendedAction": "design_hero_page",
+    "designerNote": string,
+    "channel3Query": "search query for companion supplies"
+  },
+  "quickReplies": string[],
+  "printAdvisory": { "hasRisk": boolean, "franchiseName": string|null, "safeTitle": string|null, "safeCharacter": string|null, "explanation": string|null }
+}
+"changes" is [] unless discussionStage is "revising". Output valid JSON only, no markdown.`;
+
+function buildStateMessage(state: ProjectState | undefined, lockedTitle: string | null, hasProof: boolean): string {
+  const lines = [
+    "CURRENT PROJECT STATE (source of truth for the studio; apply the creator's edits on top of this):",
+    `- Locked title: ${lockedTitle ? `"${lockedTitle}"` : "none yet"}`,
+    `- Page 1 proof already generated: ${hasProof ? "YES (any visual/content change requires a new proof)" : "no"}`,
+  ];
+  if (state) {
+    if (state.genre) lines.push(`- Lane/genre: ${state.genre}`);
+    if (state.pageCount) lines.push(`- Page count: ${state.pageCount}`);
+    if (state.trimSize) lines.push(`- Trim size: ${state.trimSize}`);
+    if (state.characterName || state.characterType)
+      lines.push(`- Character/protagonist: ${state.characterName || "?"} (${state.characterType || "?"})`);
+    if (state.pageStructure) lines.push(`- Requested page interior structure & sections: ${state.pageStructure}`);
+    if (state.layoutType) lines.push(`- Interior page layout type: ${state.layoutType}`);
+    if (state.borderText) lines.push(`- Perimeter border text: "${state.borderText}"`);
+    if (state.borderStyle) lines.push(`- Border font/style: ${state.borderStyle}`);
+    if (state.cornerDecorations) lines.push(`- Corner decorations: ${state.cornerDecorations}`);
+    if (state.interiorColor) lines.push(`- Interior print color: ${state.interiorColor}`);
+    if (state.prompt) lines.push(`- Current book description: ${state.prompt}`);
+  }
+  return lines.join("\n");
+}
+
+async function callModel(
+  url: string,
+  key: string,
+  model: string,
+  messages: Array<{ role: string; content: string }>
+): Promise<any | null> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model, messages, temperature: 0.6, response_format: { type: "json_object" } }),
+  });
+
+  if (res.ok) {
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content;
+    return raw ? JSON.parse(raw) : null;
+  }
+
+  // Groq sometimes returns 400 with a nearly-valid "failed_generation"; attempt a light repair.
+  const errText = await res.text();
+  try {
+    const rawGen = JSON.parse(errText)?.error?.failed_generation;
+    if (typeof rawGen === "string") return JSON.parse(rawGen.replace(/\},\s*\{/g, "},"));
+  } catch {
+    // fall through
+  }
+  console.error(`Model ${model} failed with status ${res.status}:`, errText.slice(0, 500));
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { messages = [], currentBook, referenceImageUrl } = body;
-    const groqKey = process.env.GROQ_API_KEY;
+    const messages: ChatMessage[] = Array.isArray(body.messages) ? body.messages : [];
+    const projectState: ProjectState | undefined = body.projectState;
+    const hasProof = Boolean(body.hasProof);
+
     const openaiKey = process.env.OPENAI_API_KEY;
+    const groqKey = process.env.GROQ_API_KEY;
+    const hasOpenAI = Boolean(openaiKey && openaiKey.startsWith("sk-"));
+    const hasGroq = Boolean(groqKey && groqKey.startsWith("gsk_"));
 
-    const useGroq = Boolean(groqKey && groqKey.startsWith("gsk_"));
-    const apiKey = useGroq ? groqKey : openaiKey;
-
-    if (!apiKey) {
+    if (!hasOpenAI && !hasGroq) {
       return NextResponse.json(
-        { success: false, error: "Neither GROQ_API_KEY nor OPENAI_API_KEY is configured" },
+        { success: false, error: "Neither OPENAI_API_KEY nor GROQ_API_KEY is configured" },
         { status: 500 }
       );
     }
 
-    const systemPrompt = `You are PaperTales, an empathetic, highly intuitive AI Personal Book Designer and publishing copilot.
-Your mission is to help creators, writers, teachers, parents, and dreamers build personalized, physical printed books with Lulu print-on-demand and PayPal checkout.
-
-We support diverse creative book formats:
-1. Guided Journals & Planners: Daily reflection, mindfulness, gratitude prompts, ruled pages, custom borders.
-2. coloring_book: 300 DPI high-contrast vector line art, clean outlines, zero dark fills, ready for coloring.
-3. memory_book: Personal milestones, family archives, travelogues, warm sentimental keepsakes.
-4. math_book: Interactive counting quests, geometric shape riddles, arithmetic word puzzles.
-5. science_book: Space astronomy voyages, fossil digs, ocean marine biology, STEM learning.
-
-STRICT CONVERSATIONAL CONTINUITY & PURITY RULES:
-1. SINGLE GREETING ONLY: Greet or say "Welcome to PaperTales" ONLY on the very first turn of a new session. If there is already any prior assistant message in the conversation history, NEVER repeat "Welcome to PaperTales" or re-introduce the studio.
-2. CLEAN SLATE (NO PRECONCEIVED MOTIFS): Never invent or inject themes, animals, or page counts that the creator has not mentioned! Do not suggest random specific themes unless the user requested ideas.
-3. UNIVERSAL AUDIENCE AWARENESS: Creators make books for themselves, gifts for loved ones, classrooms, or children. NEVER assume the book is for a child! If the user says "I want to make a journal" or describes a personal project, assume they are creating it for themselves. NEVER ask for a child's name or age unless the user explicitly stated it is for a child.
-4. PRONOUN & SELECTION RESOLUTION: If the user says "I like it", "the first one", "looks great", "that one", "let's do it", or selects a title (e.g. 'I pick the title: "..."'), immediately lock that title!
-
-3-STAGE PROFESSIONAL CONSULTATION WORKFLOW:
-
-1. Stage 1: "discovery" (isReadyForProof = false)
-- TRIGGER: The creator gives a broad or open-ended starter without a specific purpose, theme, or aesthetic (e.g. "hey", "what can you do?", "I want to make a journal", "I want a storybook").
-- DESIGNER BEHAVIOR: Act like an experienced book art director and editor exploring a fresh project:
-  - Do NOT jump straight to titles yet! Keep "titleOptions": [].
-  - Ask 1-2 thoughtful discovery questions to understand their vision:
-    * For journals: Ask what the journal will focus on (e.g. daily gratitude & mindfulness, habit/goal tracking, travel memories, or creative writing) and what kind of page vibe or borders they envision.
-    * For storybooks/coloring: Ask who the protagonist is and what world or adventure they want to explore.
-  - Suggest 3 natural first-person quick replies matching common project directions (e.g. for journals: ["Daily Gratitude & Mindfulness", "Goal & Habit Tracking", "Travel & Adventure Diary"]).
-  - Set "discussionStage": "discovery" and "isReadyForProof": false.
-
-2. Stage 2: "brainstorming" (isReadyForProof = false)
-- TRIGGER: The creator has shared their specific focus, theme, or story idea, but the title has not yet been selected.
-- DESIGNER BEHAVIOR: Enthusiastically celebrate their specific concept!
-  - NOW present 3 catchy, distinct TITLE OPTIONS in "titleOptions" tailored directly to what the creator just described.
-  - Ask which title resonates most, or invite them to share their own custom title.
-  - Set "discussionStage": "brainstorming" and "isReadyForProof": false.
-
-3. Stage 3: "concept_locked" (isReadyForProof = true)
-- TRIGGER: The creator picks or approves a title (e.g. 'I pick the title: "..."', "I like it", "the first one", "let's use title 2"), OR provides complete specifications (title + theme + pages).
-- DESIGNER BEHAVIOR: Celebrate the concept lock! Confirm the locked title, page count/duration, and visual theme. Tell them you are ready to design their free Master Page 1 Proof.
-- CRITICAL RULE: Set "discussionStage": "concept_locked" and "isReadyForProof": true. DO NOT gate this behind a child's name!
-
-Pricing & Page Count Rules:
-First 5 pages are 100% free gift. Additional pages scale at $0.17/page (~₹14.50 INR). Lulu POD print cost is ~$4.14 + tracked shipping ~$5.69.
-If the user mentions or requests a specific page count or days (e.g. "15 day journal", "15 pages", "30 days"), you MUST set "pageCount" in "bookDraft" to that exact integer. If unspecified, default to 5.
-
-First-Person Quick Replies Rules:
-"quickReplies" MUST ALWAYS be 2-3 short, first-person phrases that the user can say next.
-NEVER output meta-instructions or commands to the user like "Pick a title", "Choose a title", or "Provide child's name"!
-
-Copyright & Lulu Print Safety Guidelines:
-If the user references a known franchise (Spider-Man, Elsa/Frozen, Pokemon, Batman, Disney), DO NOT refuse or block them!
-Populate the "printAdvisory" object so the user can choose whether to adopt a print-safe homage title for guaranteed factory printing.
-
-Your response MUST be valid JSON adhering strictly to this schema:
-{
-  "reply": "Your natural, attentive conversational response written from an expert personal book designer perspective.",
-  "discussionStage": "discovery" | "brainstorming" | "concept_locked",
-  "isReadyForProof": boolean,
-  "titleOptions": [
-    "Catchy Title Option 1",
-    "Catchy Title Option 2",
-    "Catchy Title Option 3"
-  ],
-  "bookDraft": {
-    "title": "Currently selected or recommended title",
-    "subtitle": "A short, descriptive subtitle",
-    "genre": "coloring_book" | "memory_book" | "math_book" | "science_book",
-    "characterName": "Protagonist or author name (e.g. 'You', 'Alex', or theme archetype)",
-    "characterType": "Theme or archetype (e.g. 'Daily Journaler', 'Explorer')",
-    "characterTraits": ["Trait 1", "Trait 2"],
-    "prompt": "Detailed description of the book's visual and narrative arc",
-    "pageCount": 5,
-    "recommendedAction": "design_hero_page",
-    "designerNote": "A brief note on why starting with the Master Proof gives 100% creative control",
-    "channel3Query": "Specific search query for companion supplies matching this project"
-  },
-  "quickReplies": ["2-3 natural user responses"],
-  "printAdvisory": {
-    "hasRisk": boolean,
-    "franchiseName": "Name of detected franchise or null",
-    "safeTitle": "Suggested print-safe title or null",
-    "safeCharacter": "Suggested print-safe character archetype or null",
-    "explanation": "Friendly note explaining why the print-safe version guarantees factory approval, or null"
-  }
-}
-
-CRITICAL JSON STRUCTURE REQUIREMENTS:
-- The entire response MUST be a single, flat JSON object.
-- All 7 keys ("reply", "discussionStage", "isReadyForProof", "titleOptions", "bookDraft", "quickReplies", "printAdvisory") MUST be top-level properties within the single outer object.
-- Output strictly valid JSON with no markdown wrapping.`;
+    const lockedTitle: string | null = detectLockedTitle(messages) || body.lockedTitle || null;
+    const latestUser = [...messages].reverse().find((m) => m.role === "user")?.content || "";
+    const userWantsNewTitles = NEW_TITLE_REQUEST_PATTERN.test(latestUser);
 
     const formattedMessages = [
-      { role: "system", content: systemPrompt },
-      ...messages.map((m: ChatMessage) => ({
-        role: m.role,
-        content: m.content,
-      })),
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: buildStateMessage(projectState, lockedTitle, hasProof) },
+      ...messages.map((m) => ({ role: m.role, content: m.content })),
     ];
 
     let parsed: any = null;
     let engineUsed = "unknown";
 
-    // 1. Try Groq LPU if configured
-    if (useGroq) {
+    // 1. OpenAI is the primary designer model.
+    if (hasOpenAI) {
+      const model = process.env.OPENAI_CHAT_MODEL || "gpt-4.1";
       try {
-        const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${groqKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "openai/gpt-oss-120b",
-            messages: formattedMessages,
-            temperature: 0.7,
-            response_format: { type: "json_object" },
-          }),
-        });
-
-        if (groqRes.ok) {
-          const data = await groqRes.json();
-          const rawContent = data.choices?.[0]?.message?.content;
-          if (rawContent) {
-            parsed = JSON.parse(rawContent);
-            engineUsed = "groq-120b";
-          }
-        } else {
-          // If Groq returns 400 with failed_generation, attempt syntax repair
-          const errText = await groqRes.text();
-          try {
-            const errJson = JSON.parse(errText);
-            const rawGen = errJson?.error?.failed_generation;
-            if (rawGen && typeof rawGen === "string") {
-              // Repair common LLM grammar typo: closing bookDraft with }, { instead of },
-              const repaired = rawGen.replace(/\},\s*\{/g, "},");
-              parsed = JSON.parse(repaired);
-              engineUsed = "groq-120b-repaired";
-            }
-          } catch {
-            // Repair failed, will proceed to OpenAI fallback
-          }
-        }
-      } catch (groqErr) {
-        console.warn("Groq attempt encountered an error, activating OpenAI fallback:", groqErr);
+        parsed = await callModel("https://api.openai.com/v1/chat/completions", openaiKey!, model, formattedMessages);
+        if (parsed) engineUsed = `openai-${model}`;
+      } catch (err) {
+        console.warn("OpenAI attempt failed, falling back to Groq:", err);
       }
     }
 
-    // 2. Seamless OpenAI fallback (gpt-4o-mini) if Groq failed or was not parsed
-    if (!parsed && openaiKey && openaiKey.startsWith("sk-")) {
+    // 2. Groq fallback.
+    if (!parsed && hasGroq) {
       try {
-        const openAiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${openaiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "gpt-4o-mini",
-            messages: formattedMessages,
-            temperature: 0.7,
-            response_format: { type: "json_object" },
-          }),
-        });
-
-        if (openAiRes.ok) {
-          const data = await openAiRes.json();
-          const rawContent = data.choices?.[0]?.message?.content;
-          if (rawContent) {
-            parsed = JSON.parse(rawContent);
-            engineUsed = "openai-gpt-4o-mini";
-          }
-        } else {
-          console.error("OpenAI fallback failed with status:", openAiRes.status, await openAiRes.text());
-        }
-      } catch (openAiErr) {
-        console.error("OpenAI fallback error:", openAiErr);
+        parsed = await callModel(
+          "https://api.groq.com/openai/v1/chat/completions",
+          groqKey!,
+          "openai/gpt-oss-120b",
+          formattedMessages
+        );
+        if (parsed) engineUsed = "groq-gpt-oss-120b";
+      } catch (err) {
+        console.error("Groq fallback failed:", err);
       }
     }
 
     if (!parsed) {
       return NextResponse.json(
-        { success: false, error: "Unable to parse valid AI consultation response. Please try again." },
+        { success: false, error: "Unable to get a valid design consultation response. Please try again." },
         { status: 500 }
       );
     }
 
+    // ---- Server-side guards ----
+    let stage: DiscussionStage = VALID_STAGES.includes(parsed.discussionStage) ? parsed.discussionStage : "designing";
+    const missingFields: string[] = Array.isArray(parsed.missingFields) ? parsed.missingFields : [];
+    let isReadyForProof = Boolean(parsed.isReadyForProof);
+
+    // Never lock while required brief fields are still missing (unless already revising a proofed book).
+    if (stage === "concept_locked" && missingFields.length > 0 && !hasProof) {
+      stage = "brief_review";
+      isReadyForProof = false;
+    }
+    if (stage === "discovery" || stage === "designing" || stage === "brief_review") {
+      isReadyForProof = false;
+    }
+    if (stage === "concept_locked") isReadyForProof = true;
+
+    // Title guard: no repeated title suggestions once a title is locked.
+    let titleOptions: string[] = Array.isArray(parsed.titleOptions) ? parsed.titleOptions.slice(0, 3) : [];
+    if (lockedTitle && !userWantsNewTitles) titleOptions = [];
+
+    const bookDraft = parsed.bookDraft ? { ...parsed.bookDraft } : undefined;
+    if (bookDraft && lockedTitle && !userWantsNewTitles && !bookDraft.title) {
+      bookDraft.title = lockedTitle;
+    }
+
+    const changes = Array.isArray(parsed.changes) ? parsed.changes : [];
+    const requiresNewProof = hasProof && (Boolean(parsed.requiresNewProof) || changes.length > 0);
+
     return NextResponse.json({
       success: true,
       reply: parsed.reply,
-      discussionStage: parsed.discussionStage || (parsed.isReadyForProof ? "concept_locked" : "brainstorming"),
-      isReadyForProof: Boolean(parsed.isReadyForProof),
-      titleOptions: Array.isArray(parsed.titleOptions) ? parsed.titleOptions : [],
-      bookDraft: parsed.bookDraft,
-      quickReplies: parsed.quickReplies || [],
+      discussionStage: stage,
+      isReadyForProof,
+      titleOptions,
+      designBrief: parsed.designBrief || null,
+      missingFields,
+      changes,
+      requiresNewProof,
+      lockedTitle,
+      bookDraft,
+      quickReplies: Array.isArray(parsed.quickReplies) ? parsed.quickReplies : [],
       printAdvisory: parsed.printAdvisory || { hasRisk: false },
       engine: engineUsed,
     });

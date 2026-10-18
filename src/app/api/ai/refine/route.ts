@@ -19,13 +19,14 @@ export async function POST(req: NextRequest) {
 
     const groqKey = process.env.GROQ_API_KEY;
     const openAiKey = process.env.OPENAI_API_KEY;
+    const hasOpenAI = Boolean(openAiKey && openAiKey.startsWith("sk-"));
+    const hasGroq = Boolean(groqKey && groqKey.startsWith("gsk_"));
 
-    const useGroq = Boolean(groqKey && groqKey.startsWith("gsk_"));
-    const apiKey = useGroq ? groqKey : openAiKey;
-    const apiUrl = useGroq
-      ? "https://api.groq.com/openai/v1/chat/completions"
-      : "https://api.openai.com/v1/chat/completions";
-    const model = useGroq ? "openai/gpt-oss-120b" : "gpt-4o-mini";
+    const apiKey = hasOpenAI ? openAiKey : (hasGroq ? groqKey : null);
+    const apiUrl = hasOpenAI
+      ? "https://api.openai.com/v1/chat/completions"
+      : "https://api.groq.com/openai/v1/chat/completions";
+    const model = hasOpenAI ? (process.env.OPENAI_CHAT_MODEL || "gpt-4.1") : "openai/gpt-oss-120b";
 
     if (apiKey) {
       try {
@@ -82,7 +83,7 @@ User's Change Instruction:
               refinedText: parsed.refinedText,
               explanation: parsed.explanation || "Text refined by PaperTales AI",
               tokensUsed: 1,
-              engine: useGroq ? "groq-120b" : "openai-gpt-4o-mini",
+              engine: hasOpenAI ? `openai-${model}` : "groq-120b",
             });
           }
         }
