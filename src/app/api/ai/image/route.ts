@@ -18,46 +18,53 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.OPENAI_API_KEY;
     const enhancedPrompt = getCleanColoringPrompt(prompt, characterTraits);
 
-    // 1. Try OpenAI DALL-E 3 first if a valid key is provided
+    // 1. Try OpenAI GPT-Image-2.5 (Sunburst) / GPT-Image-2 first
     if (apiKey && apiKey.startsWith("sk-")) {
-      try {
-        const openAiRes = await fetch("https://api.openai.com/v1/images/generations", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: "dall-e-3",
-            prompt: enhancedPrompt,
-            n: 1,
-            size: "1024x1024",
-            quality: "standard",
-            response_format: "url",
-          }),
-        });
+      const preferredModels = [
+        process.env.OPENAI_IMAGE_MODEL || "gpt-image-2.5-sunburst-2026-09-08",
+        "gpt-image-2",
+      ];
 
-        if (openAiRes.ok) {
-          const data = await openAiRes.json();
-          const item = data.data?.[0];
-          const imageUrl = item?.url;
+      for (const model of preferredModels) {
+        try {
+          const openAiRes = await fetch("https://api.openai.com/v1/images/generations", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model,
+              prompt: enhancedPrompt,
+              n: 1,
+              size: "1024x1024",
+            }),
+          });
 
-          if (imageUrl) {
-            return NextResponse.json({
-              success: true,
-              model: "dall-e-3",
-              imageUrl,
-              usage: data.usage,
-              costEstimateUsd: 0.04,
-              message: "Real coloring page line-art generated with DALL-E 3",
-            });
+          if (openAiRes.ok) {
+            const data = await openAiRes.json();
+            const item = data.data?.[0];
+            const imageUrl = item?.b64_json
+              ? `data:image/png;base64,${item.b64_json}`
+              : item?.url;
+
+            if (imageUrl) {
+              return NextResponse.json({
+                success: true,
+                model,
+                imageUrl,
+                usage: data.usage,
+                costEstimateUsd: 0.024,
+                message: `Real coloring page line-art generated with OpenAI ${model}`,
+              });
+            }
+          } else {
+            const errBody = await openAiRes.text();
+            console.warn(`OpenAI ${model} request error:`, openAiRes.status, errBody);
           }
-        } else {
-          const errBody = await openAiRes.text();
-          console.warn("OpenAI DALL-E 3 request error:", openAiRes.status, errBody);
+        } catch (apiErr) {
+          console.warn(`OpenAI ${model} call error:`, apiErr);
         }
-      } catch (apiErr) {
-        console.warn("OpenAI DALL-E 3 call error, switching to high-res engine:", apiErr);
       }
     }
 

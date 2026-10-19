@@ -16,6 +16,8 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 
+import { PRICING_CONFIG } from "@/lib/pricing-calculator";
+
 interface PricingCalculatorProps {
   className?: string;
 }
@@ -29,10 +31,13 @@ export default function PricingCalculator({ className = "" }: PricingCalculatorP
   const [selectedEdition, setSelectedEdition] = useState<"digital" | "physical" | "bundle">("physical");
 
   // Free Introductory Pages
-  const billablePages = Math.max(0, pageCount - 5);
+  const billablePages = Math.max(0, pageCount - PRICING_CONFIG.FREE_PAGES_TIER);
 
-  // Dynamic Compute Rate per Page: $0.02 for Words vs $0.05 for Illustrated
-  const aiRatePerPage = bookType === "words" ? 0.02 : 0.05;
+  // Dynamic Compute Rate per Page: $0.03 for Words vs $0.09 for Illustrated (62% margin)
+  const aiRatePerPage =
+    bookType === "words"
+      ? PRICING_CONFIG.PRICE_PER_WORDS_PAGE_USD
+      : PRICING_CONFIG.PRICE_PER_ILLUSTRATED_PAGE_USD;
   const digitalBasePrice = 0;
 
   let bindingCost = 0;
@@ -104,7 +109,7 @@ export default function PricingCalculator({ className = "" }: PricingCalculatorP
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-bold text-white">Words &amp; Story Book</p>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-400/15 text-emerald-300 border border-emerald-400/30">
-                      $0.02/pg
+                      ${PRICING_CONFIG.PRICE_PER_WORDS_PAGE_USD.toFixed(2)}/pg
                     </span>
                   </div>
                   <p className="text-xs text-[#a0b4c4] mt-1">
@@ -129,7 +134,7 @@ export default function PricingCalculator({ className = "" }: PricingCalculatorP
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-bold text-white">Illustrated &amp; Coloring Book</p>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-400/15 text-purple-300 border border-purple-400/30">
-                      $0.05/pg
+                      ${PRICING_CONFIG.PRICE_PER_ILLUSTRATED_PAGE_USD.toFixed(2)}/pg
                     </span>
                   </div>
                   <p className="text-xs text-[#a0b4c4] mt-1">
@@ -284,7 +289,9 @@ export default function PricingCalculator({ className = "" }: PricingCalculatorP
             <div className="flex justify-between text-[#a0b4c4]">
               <span>Book Content Model</span>
               <span className="text-white font-semibold capitalize">
-                {bookType === "words" ? "Words & Story ($0.02/pg)" : "Vector & Images ($0.05/pg)"}
+                {bookType === "words"
+                  ? `Words & Story ($${PRICING_CONFIG.PRICE_PER_WORDS_PAGE_USD.toFixed(2)}/pg)`
+                  : `Vector & Images ($${PRICING_CONFIG.PRICE_PER_ILLUSTRATED_PAGE_USD.toFixed(2)}/pg)`}
               </span>
             </div>
             <div className="flex justify-between text-[#a0b4c4]">
@@ -293,7 +300,7 @@ export default function PricingCalculator({ className = "" }: PricingCalculatorP
             </div>
             <div className="flex justify-between text-sky-300 font-semibold">
               <span>Introductory Free Gift</span>
-              <span>-5 pgs ($0.00)</span>
+              <span>-{PRICING_CONFIG.FREE_PAGES_TIER} pgs ($0.00)</span>
             </div>
             <div className="flex justify-between text-[#a0b4c4]">
               <span>Net Billable Pages</span>
@@ -307,7 +314,9 @@ export default function PricingCalculator({ className = "" }: PricingCalculatorP
               <span className="text-white font-medium">${bindingCost.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-[#a0b4c4]">
-              <span>AI Compute ({bookType === "words" ? "$0.02" : "$0.05"}/pg)</span>
+              <span>
+                AI Compute ({bookType === "words" ? `$${PRICING_CONFIG.PRICE_PER_WORDS_PAGE_USD.toFixed(2)}` : `$${PRICING_CONFIG.PRICE_PER_ILLUSTRATED_PAGE_USD.toFixed(2)}`}/pg)
+              </span>
               <span className="text-white font-medium">${aiCost.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-[#a0b4c4]">

@@ -12,6 +12,7 @@ interface OrderSummaryModalProps {
   onClose: () => void;
   book: BookProject;
   onOrderCompleted?: (order: PaperTalesOrder) => void;
+  onDownloadPdf?: () => void;
 }
 
 export default function OrderSummaryModal({
@@ -19,6 +20,7 @@ export default function OrderSummaryModal({
   onClose,
   book,
   onOrderCompleted,
+  onDownloadPdf,
 }: OrderSummaryModalProps) {
   const [fulfillmentType, setFulfillmentType] = useState<"physical_print" | "digital_pdf">("physical_print");
   const [luluQuote, setLuluQuote] = useState<LuluQuoteResponse | null>(null);
@@ -68,7 +70,7 @@ export default function OrderSummaryModal({
   const creationFee = 3.5; // Platform & AI generation fee
   const printCost = fulfillmentType === "physical_print" ? luluQuote?.unitPrintCost || 4.5 : 0;
   const shippingCost = fulfillmentType === "physical_print" ? luluQuote?.shippingCost || 3.99 : 0;
-  const companionCost = (fulfillmentType === "physical_print" && selectedCompanion) ? selectedCompanion.price : 0;
+  const companionCost = selectedCompanion ? selectedCompanion.price : 0;
   const grandTotal = creationFee + printCost + shippingCost + companionCost;
 
   const handleOrderSuccess = (order: PaperTalesOrder) => {
@@ -150,19 +152,28 @@ export default function OrderSummaryModal({
                 </div>
               )}
 
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={onClose}
-                  className="px-5 py-2.5 text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white border border-white/10 rounded-xl transition-colors"
-                >
-                  Return to Studio
-                </button>
+              <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
+                {onDownloadPdf && (
+                  <button
+                    onClick={onDownloadPdf}
+                    className="px-5 py-2.5 text-xs font-black bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 rounded-xl shadow-lg transition-all flex items-center gap-2 cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Download Full 300 DPI PDF</span>
+                  </button>
+                )}
                 <a
                   href="/dashboard"
                   className="glacier-btn px-5 py-2.5 text-xs font-bold text-[#001f2e] rounded-xl transition-all"
                 >
                   View in AG Grid Dashboard &rarr;
                 </a>
+                <button
+                  onClick={onClose}
+                  className="px-5 py-2.5 text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white border border-white/10 rounded-xl transition-colors cursor-pointer"
+                >
+                  Return to Studio
+                </button>
               </div>
             </div>
           ) : (
@@ -218,7 +229,7 @@ export default function OrderSummaryModal({
               </div>
 
               {/* Channel3 Agentic Commerce Companion Bundling */}
-              {fulfillmentType === "physical_print" && companionProducts.length > 0 && (
+              {companionProducts.length > 0 && (
                 <div className="glacier-glass-subtle border border-sky-400/25 rounded-xl p-3.5">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
@@ -276,7 +287,7 @@ export default function OrderSummaryModal({
               {/* Itemized Order Breakdown */}
               <div className="glacier-glass-subtle rounded-xl p-4 border border-sky-400/20 text-xs space-y-2">
                 <div className="flex justify-between text-[#a0b4c4]">
-                  <span>Custom AI Generation &amp; License:</span>
+                  <span>Custom AI Generation &amp; 300 DPI PDF License:</span>
                   <span className="font-mono font-medium text-white">${creationFee.toFixed(2)}</span>
                 </div>
 
@@ -290,13 +301,14 @@ export default function OrderSummaryModal({
                       <span>Tracked Standard Shipping:</span>
                       <span className="font-mono font-medium text-white">${shippingCost.toFixed(2)}</span>
                     </div>
-                    {selectedCompanion && (
-                      <div className="flex justify-between text-sky-300 font-semibold">
-                        <span>Companion: {selectedCompanion.title}</span>
-                        <span className="font-mono">+${selectedCompanion.price.toFixed(2)}</span>
-                      </div>
-                    )}
                   </>
+                )}
+
+                {selectedCompanion && (
+                  <div className="flex justify-between text-sky-300 font-semibold">
+                    <span>Companion: {selectedCompanion.title}</span>
+                    <span className="font-mono">+${selectedCompanion.price.toFixed(2)}</span>
+                  </div>
                 )}
 
                 <div className="flex justify-between text-sm font-extrabold text-white pt-2 border-t border-white/10">

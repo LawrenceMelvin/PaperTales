@@ -299,6 +299,22 @@ export default function StudioPage() {
 
   // Confirmation state
   const [isConfirmed, setIsConfirmed] = useState<boolean>(true);
+  const [isBookUnlocked, setIsBookUnlocked] = useState<boolean>(false);
+
+  // Sync unlock status if previously purchased
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("papertales_orders");
+      if (stored) {
+        const orders = JSON.parse(stored);
+        if (orders.some((o: any) => o.bookId === book.id || o.bookTitle === book.title)) {
+          setIsBookUnlocked(true);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [book.id, book.title]);
 
   // Reference photo / sketch upload
   const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
@@ -695,6 +711,11 @@ export default function StudioPage() {
   };
 
   const handleDownloadFullPdf = async () => {
+    if (!isBookUnlocked) {
+      setOrderModalOpen(true);
+      return;
+    }
+
     setIsDownloadingPdf(true);
     try {
       const res = await fetch("/api/pdf/compile", {
@@ -1476,6 +1497,7 @@ export default function StudioPage() {
               onOpenTokenModal={() => setTokenModalOpen(true)}
               isDownloading={isDownloadingPdf || isPrintingPageOne}
               isConfirmed={isConfirmed}
+              isBookUnlocked={isBookUnlocked}
             />
 
             {/* =========================================================================
@@ -1561,6 +1583,15 @@ export default function StudioPage() {
           isOpen={orderModalOpen}
           onClose={() => setOrderModalOpen(false)}
           book={book}
+          onOrderCompleted={() => {
+            setIsBookUnlocked(true);
+          }}
+          onDownloadPdf={() => {
+            setIsBookUnlocked(true);
+            setTimeout(() => {
+              handleDownloadFullPdf();
+            }, 100);
+          }}
         />
 
         <OrderTrackingGrid

@@ -507,36 +507,101 @@ DIRECT CONTINUITY CHECKLIST:
           }
         }
 
+async function generateOpenAiIllustration(
+  prompt: string,
+  apiKey?: string
+): Promise<string | null> {
+  if (!apiKey || !apiKey.startsWith("sk-")) return null;
+  const preferredModels = [
+    process.env.OPENAI_IMAGE_MODEL || "gpt-image-2.5-sunburst-2026-09-08",
+    "gpt-image-2",
+  ];
+
+  for (const model of preferredModels) {
+    try {
+      const res = await fetch("https://api.openai.com/v1/images/generations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          prompt,
+          n: 1,
+          size: "1024x1024",
+        }),
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const item = data.data?.[0];
+        if (item?.b64_json) {
+          return `data:image/png;base64,${item.b64_json}`;
+        }
+        if (item?.url) {
+          return item.url;
+        }
+      } else {
+        const errText = await res.text();
+        console.warn(`OpenAI image generation ${model} error:`, res.status, errText);
+      }
+    } catch (err) {
+      console.warn(`OpenAI image generation ${model} failed:`, err);
+    }
+  }
+  return null;
+}
+
         if (aiData) {
           const rawContent = aiData.choices?.[0]?.message?.content;
           const parsed = JSON.parse(rawContent);
 
           if (parsed.pages && Array.isArray(parsed.pages) && parsed.pages.length > 0) {
-            const resolvedPages: BookPage[] = parsed.pages.map((p: any, idx: number) => {
-              const pNum = idx + 1;
-              const pageTitle = p.title || (isJournalMode ? `Day ${pNum}` : `Chapter ${pNum}`);
-              const pageStoryText = p.storyText || "";
+            const pawPrintBorder = /\b(paw\s*prints?|paws?)\b/i.test(fullConversationText);
+            const borderInstruction = pawPrintBorder
+              ? "Decorative continuous playful paw-print border framing the outer edges of the page."
+              : effectiveBorderText
+              ? `Framed with a clean border (${effectiveBorderText}).`
+              : "";
 
-              const hasIllustration = Boolean(
-                p.journalData?.hasIllustration ||
-                (p.imagePrompt &&
-                  p.imagePrompt.trim().length > 5 &&
-                  !p.imagePrompt.toLowerCase().includes("subtle, elegant decorative line-art border"))
-              );
+            const resolvedPages: BookPage[] = await Promise.all(
+              parsed.pages.map(async (p: any, idx: number) => {
+                const pNum = idx + 1;
+                const pageTitle = p.title || (isJournalMode ? `Day ${pNum}` : `Chapter ${pNum}`);
+                const pageStoryText = p.storyText || "";
 
-              const promptForImage = isJournalMode
-                ? hasIllustration
-                  ? `Minimalist black and white line art vector spot illustration, crisp continuous thin black outlines, pure white background, zero shading, no solid dark fills, clean monochrome icon style: ${p.imagePrompt}`
-                  : null
-                : `Children's coloring book page outline, thick continuous bold black outlines, zero shading, pure white background, no gradients, ${
-                    p.imagePrompt || `${pageTitle} starring ${character.name} the ${character.type}`
-                  }. Strict monochrome black and white vector line art, ready for coloring.`;
+                const hasIllustration = Boolean(
+                  p.journalData?.hasIllustration ||
+                  (p.imagePrompt &&
+                    p.imagePrompt.trim().length > 5 &&
+                    !p.imagePrompt.toLowerCase().includes("subtle, elegant decorative line-art border"))
+                );
 
-              const pageIllustrationUrl = promptForImage
-                ? `https://image.pollinations.ai/prompt/${encodeURIComponent(
-                    promptForImage
-                  )}?width=1024&height=1024&nologo=true&seed=${100000 + pNum * 1337}`
-                : undefined;
+                const promptForImage = isJournalMode
+                  ? hasIllustration
+                    ? `Minimalist black and white line art vector spot illustration, crisp continuous thin black outlines, pure white background, zero shading, no solid dark fills, clean monochrome icon style: ${p.imagePrompt}`
+                    : null
+                  : `Children's coloring book page outline, thick continuous bold black outlines, zero shading, pure white background, no gradients, uncolored, strictly black and white line art ready for coloring with crayons. ${
+                      p.imagePrompt || `${pageTitle} starring ${character.name} the ${character.type}`
+                    }.${borderInstruction ? ` ${borderInstruction}` : ""}`;
+
+                let pageIllustrationUrl: string | undefined = undefined;
+
+                if (promptForImage) {
+                  // Primary: OpenAI gpt-image-2.5-sunburst / gpt-image-2
+                  if (hasOpenAI && openaiKey) {
+                    pageIllustrationUrl = (await generateOpenAiIllustration(promptForImage, openaiKey)) || undefined;
+                  }
+
+                  // Resilient fallback: Pollinations line-art
+                  if (!pageIllustrationUrl) {
+                    pageIllustrationUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
+                      promptForImage
+                    )}?width=1024&height=1024&nologo=true&seed=${100000 + pNum * 1337}`;
+                  }
+                }
 
               // Ensure sections requested by the creator are present (unless empty_lined layout is requested)
               let sectionsToUse: JournalSection[] | undefined = undefined;
@@ -587,7 +652,8 @@ DIRECT CONTINUITY CHECKLIST:
                     }
                   : undefined,
               };
-            });
+            })
+          );
 
             const finalBookProject: BookProject = {
               id: `book_${Date.now().toString(36)}`,
@@ -621,6 +687,13 @@ DIRECT CONTINUITY CHECKLIST:
     const templates = GENRE_CHAPTER_TEMPLATES[genre] || GENRE_CHAPTER_TEMPLATES.coloring_book;
     const pages: BookPage[] = [];
 
+    const pawPrintBorder = /\b(paw\s*prints?|paws?)\b/i.test(fullConversationText);
+    const borderInstruction = pawPrintBorder
+      ? "Decorative continuous playful paw-print border framing the outer edges of the page."
+      : effectiveBorderText
+      ? `Framed with a clean border (${effectiveBorderText}).`
+      : "";
+
     for (let i = 0; i < count; i++) {
       const pNum = i + 1;
       const template = templates[i % templates.length];
@@ -631,16 +704,23 @@ DIRECT CONTINUITY CHECKLIST:
         ? wantsIllustrations
           ? `Minimalist black and white line art spot illustration of content creation tool, microphone, camera, or notebook, clean outlines, no shading, pure white background`
           : undefined
-        : `Children's coloring book page outline, thick continuous bold black outlines, zero shading, pure white background, no gradients, ${template.scene(
+        : `Children's coloring book page outline, thick continuous bold black outlines, zero shading, pure white background, no gradients, uncolored, strictly black and white line art ready for coloring with crayons. ${template.scene(
             character.name,
             character.type
-          )}. Strict monochrome vector line art, ready for coloring.`;
+          )}.${borderInstruction ? ` ${borderInstruction}` : ""}`;
 
-      const fallbackImageUrl = fallbackIllustrationPrompt
-        ? `https://image.pollinations.ai/prompt/${encodeURIComponent(
+      let fallbackImageUrl: string | undefined = undefined;
+
+      if (fallbackIllustrationPrompt) {
+        if (hasOpenAI && openaiKey && i === 0) {
+          fallbackImageUrl = (await generateOpenAiIllustration(fallbackIllustrationPrompt, openaiKey)) || undefined;
+        }
+        if (!fallbackImageUrl) {
+          fallbackImageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
             fallbackIllustrationPrompt
-          )}?width=1024&height=1024&nologo=true&seed=${200000 + pNum * 777}`
-        : undefined;
+          )}?width=1024&height=1024&nologo=true&seed=${200000 + pNum * 777}`;
+        }
+      }
 
       pages.push({
         pageNumber: pNum,

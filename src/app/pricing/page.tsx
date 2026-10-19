@@ -83,7 +83,7 @@ export default function PricingPage() {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-white">Words &amp; Story Books</h3>
-                  <p className="text-xs font-mono text-emerald-300 mt-0.5">$0.02 / page compute</p>
+                  <p className="text-xs font-mono text-emerald-300 mt-0.5">$0.03 / page compute (62% margin)</p>
                 </div>
                 <p className="text-xs text-[#a0b4c4] leading-relaxed">
                   Best for family recipes, personal journals, memory lane stories, and reading books. Uses standard language models with lightweight text layout, keeping your digital or print cost ultra-affordable.
@@ -111,7 +111,7 @@ export default function PricingPage() {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-white">Illustrated &amp; Coloring Books</h3>
-                  <p className="text-xs font-mono text-purple-300 mt-0.5">$0.05 / page compute</p>
+                  <p className="text-xs font-mono text-purple-300 mt-0.5">$0.09 / page compute (62% margin)</p>
                 </div>
                 <p className="text-xs text-[#a0b4c4] leading-relaxed">
                   Best for children&apos;s coloring books, dad&apos;s fishing guides, and math puzzle quests. Generates 300 DPI vector linework and enforces character consistency seeds across every page spread.

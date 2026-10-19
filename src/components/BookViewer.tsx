@@ -36,6 +36,7 @@ interface BookViewerProps {
   onOpenTokenModal?: () => void;
   isDownloading?: boolean;
   isConfirmed?: boolean;
+  isBookUnlocked?: boolean;
 }
 
 export default function BookViewer({
@@ -48,6 +49,7 @@ export default function BookViewer({
   onOpenTokenModal,
   isDownloading,
   isConfirmed = true,
+  isBookUnlocked = false,
 }: BookViewerProps) {
   const [currentPageIndex, setCurrentPageIndex] = useState<number>(0);
   const [editingStory, setEditingStory] = useState<boolean>(false);
@@ -1079,27 +1081,52 @@ export default function BookViewer({
         {/* Left: Book details button */}
         <button
           onClick={onOpenBookDetails}
-          className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 text-xs sm:text-sm font-bold rounded-xl glacier-glass-subtle hover:bg-slate-800 text-sky-200 border border-sky-400/30 shadow-md transition-all active:scale-95"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 text-xs sm:text-sm font-bold rounded-xl glacier-glass-subtle hover:bg-slate-800 text-sky-200 border border-sky-400/30 shadow-md transition-all active:scale-95 cursor-pointer"
         >
           <Info className="w-4 h-4 text-sky-400" />
           <span>Book Details</span>
         </button>
 
-        {/* Center / Secondary: Print First Page (Free Proof) */}
+        {/* Center-Left: Print First Page (Free Proof) */}
         {isConfirmed && onPrintFirstPage && (
           <button
             onClick={onPrintFirstPage}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl bg-slate-900/80 hover:bg-slate-800 text-emerald-300 border border-emerald-500/40 shadow-sm transition-all active:scale-95"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl bg-slate-900/80 hover:bg-slate-800 text-emerald-300 border border-emerald-500/40 shadow-sm transition-all active:scale-95 cursor-pointer"
           >
             <Printer className="w-4 h-4 text-emerald-400" />
             <span>Print First Page (Free Proof)</span>
           </button>
         )}
 
+        {/* Center-Right: Download Full PDF */}
+        {isConfirmed && onDownloadPdf && (
+          <button
+            onClick={onDownloadPdf}
+            disabled={isDownloading}
+            className={`w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 text-xs sm:text-sm font-bold rounded-xl shadow-md transition-all active:scale-95 cursor-pointer ${
+              isBookUnlocked
+                ? "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/40"
+                : "bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-400/40"
+            }`}
+          >
+            {isDownloading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Preparing PDF...</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4 text-current" />
+                <span>{isBookUnlocked ? "Download Full PDF" : "Unlock & Download Full PDF"}</span>
+              </>
+            )}
+          </button>
+        )}
+
         {/* Right: Order Physical Print */}
         <button
           onClick={onOrderPhysical}
-          className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 text-xs sm:text-sm font-extrabold glacier-btn text-[#001f2e] rounded-xl shadow-xl transition-all active:scale-95"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 text-xs sm:text-sm font-extrabold glacier-btn text-[#001f2e] rounded-xl shadow-xl transition-all active:scale-95 cursor-pointer"
         >
           <Printer className="w-4 h-4 text-[#001f2e]" />
           <span>Order Physical Print</span>

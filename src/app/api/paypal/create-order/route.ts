@@ -60,23 +60,25 @@ export async function POST(req: NextRequest) {
           quantity: 1,
           category: "PHYSICAL_GOODS",
         });
-
-        if (companionItem) {
-          items.push({
-            name: `${companionItem.brand} - ${companionItem.title}`,
-            description: "Curated companion art supplies via Channel3 Agentic Commerce",
-            unitAmount: companionItem.price,
-            quantity: 1,
-            category: "PHYSICAL_GOODS",
-          });
-        }
       }
+
+      if (companionItem) {
+        items.push({
+          name: `${companionItem.brand} - ${companionItem.title}`,
+          description: "Curated companion supplies via Channel3 Agentic Commerce",
+          unitAmount: companionItem.price,
+          quantity: 1,
+          category: "PHYSICAL_GOODS",
+        });
+      }
+
+      const hasPhysicalGoods = fulfillmentType === "physical_print" || Boolean(companionItem);
 
       const order = await createPayPalOrder({
         items,
         shippingAmount: fulfillmentType === "physical_print" ? shippingCost : 0,
         customId: `book_${Date.now()}`,
-        requireShippingAddress: fulfillmentType === "physical_print",
+        requireShippingAddress: hasPhysicalGoods,
       });
 
       return NextResponse.json({ success: true, orderId: order.id, mock: order.mock });
