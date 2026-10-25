@@ -58,6 +58,8 @@ export interface BookProject {
   targetAge: string;
   character: CharacterAnchor;
   referenceImageUrl?: string;
+  artStyle?: string;
+  pageStructure?: string;
   pages: BookPage[];
   pageCount: number;
   format: {

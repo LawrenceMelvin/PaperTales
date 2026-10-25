@@ -3,9 +3,9 @@ import { calculateLuluQuote } from "@/lib/lulu-client";
 
 export async function POST(req: NextRequest) {
   try {
-    const { pageCount = 12, quantity = 1, address } = await req.json();
+    const { pageCount = 12, quantity = 1, address, trimSize, interiorColor } = await req.json();
 
-    const quote = await calculateLuluQuote(pageCount, quantity, address);
+    const quote = await calculateLuluQuote(pageCount, quantity, address, { trimSize, interiorColor });
 
     return NextResponse.json({
       success: true,

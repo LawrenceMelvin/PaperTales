@@ -136,17 +136,30 @@ export default function TokenModal({ isOpen, onClose, onSuccess }: TokenModalPro
                     style={{ layout: "horizontal", height: 42, label: "pay" }}
                     createOrder={async () => {
                       setIsProcessing(true);
-                      const res = await fetch("/api/paypal/create-order", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          type: "token_pack",
-                          tokenPackId: selectedPack.id,
-                        }),
-                      });
-                      const data = await res.json();
-                      setIsProcessing(false);
-                      return data.orderId;
+                      try {
+                        const res = await fetch("/api/paypal/create-order", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            type: "token_pack",
+                            tokenPackId: selectedPack.id,
+                          }),
+                        });
+                        const data = await res.json();
+                        setIsProcessing(false);
+                        if (!res.ok || !data.orderId) {
+                          throw new Error(data.error || "Failed to create token order");
+                        }
+                        if (data.mock || data.orderId.startsWith("SANDBOX-")) {
+                          handleCaptureSuccess(selectedPack);
+                          return "";
+                        }
+                        return data.orderId;
+                      } catch (err: any) {
+                        setIsProcessing(false);
+                        console.error("Token order error:", err);
+                        throw err;
+                      }
                     }}
                     onApprove={async (data) => {
                       setIsProcessing(true);
@@ -164,9 +177,7 @@ export default function TokenModal({ isOpen, onClose, onSuccess }: TokenModalPro
                       }
                     }}
                     onError={(err) => {
-                      console.error("PayPal button error:", err);
-                      // In sandbox test environments without active network keys, allow testing fallback
-                      handleCaptureSuccess(selectedPack);
+                      console.warn("PayPal token button notice:", err);
                     }}
                   />
                 </div>

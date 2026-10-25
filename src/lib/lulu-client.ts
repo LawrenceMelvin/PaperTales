@@ -1,19 +1,39 @@
 import { LuluQuoteResponse, PaperTalesOrder, ShippingAddress } from "@/types/order";
 
 export const LULU_PACKAGES = {
-  SQUARE_SOFTCOVER: "0850X0850.BW.STD.PB.060UW444.GXX", // 8.5" x 8.5" Square Softcover, B&W Standard, 60# Uncoated White, Gloss
-  LETTER_SOFTCOVER: "0850X1100.BW.STD.PB.060UW444.GXX", // 8.5" x 11" Letter Softcover, B&W Standard, 60# Uncoated White, Gloss
+  SQUARE_SOFTCOVER_BW: "0850X0850.BW.STD.PB.060UW444.GXX", // 8.5" x 8.5" Square Softcover, B&W Standard, 60# Uncoated White, Gloss
+  SQUARE_SOFTCOVER_COLOR: "0850X0850.FC.STD.PB.060UW444.GXX", // 8.5" x 8.5" Square Softcover, Full Color Standard, 60# Uncoated White, Gloss
+  LETTER_SOFTCOVER_BW: "0850X1100.BW.STD.PB.060UW444.GXX", // 8.5" x 11" Letter Softcover, B&W Standard, 60# Uncoated White, Gloss
+  LETTER_SOFTCOVER_COLOR: "0850X1100.FC.STD.PB.060UW444.GXX", // 8.5" x 11" Letter Softcover, Full Color Standard, 60# Uncoated White, Gloss
+  DIGEST_SOFTCOVER_BW: "0600X0900.BW.STD.PB.060UW444.GXX", // 6" x 9" Digest Softcover, B&W Standard, 60# Uncoated White, Gloss
+  DIGEST_SOFTCOVER_COLOR: "0600X0900.FC.STD.PB.060UW444.GXX", // 6" x 9" Digest Softcover, Full Color Standard, 60# Uncoated White, Gloss
+  // Backward compatibility aliases
+  SQUARE_SOFTCOVER: "0850X0850.BW.STD.PB.060UW444.GXX",
+  LETTER_SOFTCOVER: "0850X1100.BW.STD.PB.060UW444.GXX",
 };
+
+export function getLuluPackageId(trimSize?: string, interiorColor?: string): string {
+  const isColor = interiorColor === "standard_color";
+  if (trimSize === "8.5x11") {
+    return isColor ? LULU_PACKAGES.LETTER_SOFTCOVER_COLOR : LULU_PACKAGES.LETTER_SOFTCOVER_BW;
+  }
+  if (trimSize === "6x9") {
+    return isColor ? LULU_PACKAGES.DIGEST_SOFTCOVER_COLOR : LULU_PACKAGES.DIGEST_SOFTCOVER_BW;
+  }
+  return isColor ? LULU_PACKAGES.SQUARE_SOFTCOVER_COLOR : LULU_PACKAGES.SQUARE_SOFTCOVER_BW;
+}
 
 export async function calculateLuluQuote(
   pageCount: number,
   quantity: number = 1,
-  address?: Partial<ShippingAddress>
+  address?: Partial<ShippingAddress>,
+  options?: { trimSize?: string; interiorColor?: string }
 ): Promise<LuluQuoteResponse> {
   const luluKey = process.env.LULU_CLIENT_KEY;
   const luluSecret = process.env.LULU_CLIENT_SECRET;
   const env = process.env.LULU_ENVIRONMENT || "production";
   const isMock = !luluKey || luluKey.startsWith("sb-") || luluKey === "test_lulu_client_key";
+  const chosenPackage = getLuluPackageId(options?.trimSize, options?.interiorColor);
 
   // If real credentials exist, call the live Lulu API
   if (!isMock && luluKey && luluSecret) {
@@ -49,7 +69,7 @@ export async function calculateLuluQuote(
             body: JSON.stringify({
               line_items: [
                 {
-                  pod_package_id: LULU_PACKAGES.SQUARE_SOFTCOVER,
+                  pod_package_id: chosenPackage,
                   page_count: Math.max(pageCount, 12),
                   quantity: quantity,
                 },
@@ -77,7 +97,7 @@ export async function calculateLuluQuote(
             const total = parseFloat(quoteData.total_cost_excl_tax || "9.83");
 
             return {
-              podPackageId: LULU_PACKAGES.SQUARE_SOFTCOVER,
+              podPackageId: chosenPackage,
               unitPrintCost: Number((unitPrint + fulfillment).toFixed(2)),
               shippingCost: Number(shipping.toFixed(2)),
               carrierLevel: "Lulu Standard Mail (Tracked)",
@@ -93,10 +113,11 @@ export async function calculateLuluQuote(
     }
   }
 
-  // Realistic fallback formula modeling Lulu rates
+  // Realistic fallback formula modeling Lulu rates (slight color premium)
+  const isColor = options?.interiorColor === "standard_color";
   const basePages = 12;
-  const baseManufacturingPrice = 3.39;
-  const pricePerPage = 0.035;
+  const baseManufacturingPrice = isColor ? 4.19 : 3.39;
+  const pricePerPage = isColor ? 0.045 : 0.035;
   const fulfillmentFee = 0.75;
   const extraPages = Math.max(0, pageCount - basePages);
   const unitPrint = Number((baseManufacturingPrice + fulfillmentFee + extraPages * pricePerPage).toFixed(2));
@@ -104,7 +125,7 @@ export async function calculateLuluQuote(
   const total = Number((unitPrint * quantity + shipping).toFixed(2));
 
   return {
-    podPackageId: LULU_PACKAGES.SQUARE_SOFTCOVER,
+    podPackageId: chosenPackage,
     unitPrintCost: unitPrint,
     shippingCost: shipping,
     carrierLevel: "Standard Ground (Tracked)",

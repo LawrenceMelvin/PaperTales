@@ -40,7 +40,12 @@ export default function OrderSummaryModal({
         const quoteRes = await fetch("/api/lulu/quote", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pageCount: book.pageCount, quantity: 1 }),
+          body: JSON.stringify({
+            pageCount: book.pageCount,
+            quantity: 1,
+            trimSize: book.format?.trimSize,
+            interiorColor: book.format?.interiorColor,
+          }),
         });
         const quoteData = await quoteRes.json();
         if (quoteData.success) {
@@ -62,7 +67,7 @@ export default function OrderSummaryModal({
     }
 
     fetchData();
-  }, [isOpen, book.pageCount, book.genre]);
+  }, [isOpen, book.pageCount, book.genre, book.format?.trimSize, book.format?.interiorColor]);
 
   if (!isOpen) return null;
 
@@ -323,23 +328,79 @@ export default function OrderSummaryModal({
                   <PayPalButtons
                     style={{ layout: "horizontal", height: 42, label: "checkout" }}
                     createOrder={async () => {
-                      const res = await fetch("/api/paypal/create-order", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          type: "book_order",
-                          bookCheckout: {
+                      try {
+                        const res = await fetch("/api/paypal/create-order", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            type: "book_order",
+                            bookCheckout: {
+                              bookTitle: book.title,
+                              fulfillmentType,
+                              creationFee,
+                              printCost,
+                              shippingCost,
+                              companionItem: selectedCompanion,
+                            },
+                          }),
+                        });
+
+                        if (!res.ok) {
+                          const errData = await res.json().catch(() => ({}));
+                          throw new Error(errData.error || `HTTP error ${res.status}`);
+                        }
+
+                        const data = await res.json();
+                        if (!data.orderId) {
+                          throw new Error("Missing orderId from PayPal create-order response");
+                        }
+
+                        // If offline / mock simulation
+                        if (data.mock || data.orderId.startsWith("SANDBOX-")) {
+                          const mockOrder: PaperTalesOrder = {
+                            id: `ORD-SANDBOX-${Date.now().toString(36).toUpperCase()}`,
+                            bookId: book.id,
                             bookTitle: book.title,
+                            authorName: book.authorName,
                             fulfillmentType,
+                            status: fulfillmentType === "physical_print" ? "in_production" : "paid",
+                            pageCount: book.pageCount,
+                            quantity: 1,
                             creationFee,
                             printCost,
                             shippingCost,
-                            companionItem: selectedCompanion,
-                          },
-                        }),
-                      });
-                      const data = await res.json();
-                      return data.orderId;
+                            companionItem: selectedCompanion || undefined,
+                            totalAmount: grandTotal,
+                            currency: "USD",
+                            paypalOrderId: data.orderId,
+                            paypalCaptureId: `CAP-MOCK-${Date.now()}`,
+                            shippingAddress: {
+                              recipientName: "Demo Parent",
+                              street1: "742 Evergreen Terrace",
+                              city: "Springfield",
+                              stateOrProvince: "OR",
+                              postalCode: "97477",
+                              countryCode: "US",
+                            },
+                            luluJobId: `LULU-${Math.floor(100000 + Math.random() * 900000)}`,
+                            luluTrackingNumber: `1Z999AA101${Math.floor(10000000 + Math.random() * 90000000)}`,
+                            createdAt: new Date().toISOString(),
+                            updatedAt: new Date().toISOString(),
+                          };
+                          handleOrderSuccess(mockOrder);
+                          // Return empty or throw error to cancel SDK popup cleanly
+                          throw new Error("MOCK_SIMULATION_COMPLETED");
+                        }
+
+                        return data.orderId;
+                      } catch (err: any) {
+                        if (err.message === "MOCK_SIMULATION_COMPLETED") {
+                          // Silent bypass
+                          return "";
+                        }
+                        console.error("Error creating PayPal order:", err);
+                        throw err;
+                      }
                     }}
                     onApprove={async (data) => {
                       const res = await fetch("/api/paypal/capture-order", {
@@ -365,42 +426,12 @@ export default function OrderSummaryModal({
                       const captureData = await res.json();
                       if (captureData.success) {
                         handleOrderSuccess(captureData.order);
+                      } else {
+                        console.error("Capture failed:", captureData);
                       }
                     }}
                     onError={(err) => {
-                      console.error("PayPal checkout error, firing sandbox fallback:", err);
-                      // In local dev without live credentials, handle fallback gracefully
-                      const mockOrder: PaperTalesOrder = {
-                        id: `ORD-SANDBOX-${Date.now().toString(36).toUpperCase()}`,
-                        bookId: book.id,
-                        bookTitle: book.title,
-                        authorName: book.authorName,
-                        fulfillmentType,
-                        status: fulfillmentType === "physical_print" ? "in_production" : "paid",
-                        pageCount: book.pageCount,
-                        quantity: 1,
-                        creationFee,
-                        printCost,
-                        shippingCost,
-                        companionItem: selectedCompanion || undefined,
-                        totalAmount: grandTotal,
-                        currency: "USD",
-                        paypalOrderId: `PAYPAL-MOCK-${Date.now()}`,
-                        paypalCaptureId: `CAP-MOCK-${Date.now()}`,
-                        shippingAddress: {
-                          recipientName: "Demo Parent",
-                          street1: "742 Evergreen Terrace",
-                          city: "Springfield",
-                          stateOrProvince: "OR",
-                          postalCode: "97477",
-                          countryCode: "US",
-                        },
-                        luluJobId: `LULU-${Math.floor(100000 + Math.random() * 900000)}`,
-                        luluTrackingNumber: `1Z999AA101${Math.floor(10000000 + Math.random() * 90000000)}`,
-                        createdAt: new Date().toISOString(),
-                        updatedAt: new Date().toISOString(),
-                      };
-                      handleOrderSuccess(mockOrder);
+                      console.warn("PayPal checkout notice:", err);
                     }}
                   />
                 </div>

@@ -8,6 +8,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     clientId: process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID || "test",
     currency: "USD",
     intent: "capture",
+    components: "buttons",
+    "enable-funding": "venmo,paylater",
+    "data-sdk-integration-source": "react-paypal-js",
   };
 
   return (

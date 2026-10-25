@@ -208,8 +208,8 @@ export default function BookViewer({
     setIsGeneratingArt(true);
     try {
       const fullPrompt = customInstruction
-        ? `${activePage.imagePrompt || "coloring page illustration"}, modification: ${customInstruction}`
-        : `${activePage.imagePrompt || "coloring page illustration"}, fresh alternative composition`;
+        ? `${activePage.imagePrompt || (isColorBook ? "children's illustration" : "coloring page illustration")}, modification: ${customInstruction}`
+        : `${activePage.imagePrompt || (isColorBook ? "children's illustration" : "coloring page illustration")}, fresh alternative composition`;
 
       const res = await fetch("/api/ai/image", {
         method: "POST",
@@ -218,6 +218,8 @@ export default function BookViewer({
           prompt: fullPrompt,
           characterTraits: book.character?.traits?.join(", ") || "",
           pageNumber: activePage.pageNumber,
+          artStyle: book.artStyle,
+          interiorColor: book.format?.interiorColor,
         }),
       });
 
@@ -280,6 +282,15 @@ export default function BookViewer({
     book.genre === "memory_book" ||
     Boolean(activePage?.journalData) ||
     /\b(journal|diary|planner|reflection|gratitude|notes)\b/i.test(book.title || "");
+
+  const isColorBook =
+    book.format?.interiorColor === "standard_color" ||
+    Boolean(book.artStyle && /\b(color|colorful|vibrant|watercolor|pastel|painted|digital art)\b/i.test(book.artStyle));
+
+  const isActivityBook =
+    book.genre === "activity_book" ||
+    book.genre === "science_book" ||
+    /\b(activity|activities|fact|facts|puzzle|maze|quiz)\b/i.test(`${book.title} ${book.pageStructure || ""}`);
 
   const renderJournalPage = (
     page: BookPage | null | undefined,
@@ -670,7 +681,11 @@ export default function BookViewer({
 
             <div className="text-center pt-2 sm:pt-4">
               <span className="text-[10px] sm:text-xs uppercase tracking-widest font-extrabold text-sky-300">
-                {isJournal ? "Personalized Reflection Journal" : "Personalized Story & Coloring"}
+                {isJournal
+                  ? "Personalized Reflection Journal"
+                  : isActivityBook
+                  ? (isColorBook ? "Personalized Science & Activity Book" : "Science & Activity Book")
+                  : (isColorBook ? "Personalized Storybook" : "Personalized Story & Coloring")}
               </span>
               <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight mt-1 mb-1 font-serif">
                 {book.title}
@@ -762,7 +777,11 @@ export default function BookViewer({
                   <div className="hidden sm:block absolute top-0 bottom-0 right-0 w-5 spine-gradient pointer-events-none" />
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      Chapter {activePage?.pageNumber}
+                      {isActivityBook
+                        ? ((activePage?.pageNumber || 1) % 2 !== 0
+                            ? `Activity ${(activePage?.pageNumber || 1)}`
+                            : `Discovery ${(activePage?.pageNumber || 1)}`)
+                        : `Chapter ${activePage?.pageNumber}`}
                     </span>
                     <h3 className="text-lg sm:text-2xl font-black font-serif text-slate-900 mt-1 mb-4">
                       {activePage?.title}
@@ -828,7 +847,7 @@ export default function BookViewer({
                   </div>
                 </div>
 
-                {/* Right Page (Coloring Line-Art Illustration) */}
+                {/* Right Page (Coloring Line-Art or Full-Color Illustration) */}
                 <div
                   className={`flex-1 p-5 sm:p-8 lg:p-10 flex flex-col justify-between relative bg-white ${
                     mobilePageTab === "story" ? "hidden sm:flex" : "flex"
@@ -836,7 +855,13 @@ export default function BookViewer({
                 >
                   <div className="hidden sm:block absolute top-0 bottom-0 left-0 w-5 spine-gradient pointer-events-none" />
 
-                  <div className="w-full flex-1 border-2 border-slate-900 rounded-xl p-4 flex flex-col items-center justify-center relative overflow-hidden bg-white min-h-[260px] sm:min-h-[320px]">
+                  <div
+                    className={`w-full flex-1 rounded-xl p-4 flex flex-col items-center justify-center relative overflow-hidden min-h-[260px] sm:min-h-[320px] ${
+                      isColorBook
+                        ? "border border-slate-200/90 bg-slate-50/50 shadow-inner"
+                        : "border-2 border-slate-900 bg-white"
+                    }`}
+                  >
                   {/* Tweak art trigger button in top-right */}
                   <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
                   <button
@@ -1038,12 +1063,16 @@ export default function BookViewer({
                 )}
 
                 <div className="absolute bottom-2 text-center text-[10px] font-semibold text-slate-400">
-                  Crisp Vector Line-Art &bull; Print Ready (300 DPI) &bull; {book.genre.replace("_", " ").toUpperCase()}
+                  {isColorBook ? (
+                    <>Vibrant Full-Color &bull; Print Ready (300 DPI) &bull; {book.genre.replace("_", " ").toUpperCase()}</>
+                  ) : (
+                    <>Crisp Vector Line-Art &bull; Print Ready (300 DPI) &bull; {book.genre.replace("_", " ").toUpperCase()}</>
+                  )}
                 </div>
               </div>
 
               <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-200/60 pt-3 mt-4">
-                <span>Activity & Coloring Sheet</span>
+                <span>{isColorBook ? "Full-Page Illustrated Scene" : "Activity & Coloring Sheet"}</span>
                 <span>Page {activePage?.pageNumber} Illustration</span>
               </div>
             </div>

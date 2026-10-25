@@ -67,6 +67,21 @@ export async function compileBookPdf(book: BookProject): Promise<Uint8Array> {
     Boolean(book.pages.some((p) => p.journalData)) ||
     /\b(journal|diary|planner|reflection|gratitude|notes)\b/i.test(book.title || "");
 
+  const isColor =
+    book.format?.interiorColor === "standard_color" ||
+    Boolean(book.artStyle && /\b(color|colorful|vibrant|watercolor|pastel|painted|digital art)\b/i.test(book.artStyle));
+
+  const isActivityBook =
+    book.genre === "activity_book" ||
+    book.genre === "science_book" ||
+    /\b(activity|activities|fact|facts|puzzle|maze|quiz)\b/i.test(`${book.title} ${book.pageStructure || ""}`);
+
+  const coverCategory = isJournal
+    ? "PERSONAL REFLECTION JOURNAL"
+    : isActivityBook
+    ? (isColor ? "PERSONALIZED SCIENCE & ACTIVITY BOOK" : "SCIENCE ACTIVITY BOOK")
+    : (isColor ? "PERSONALIZED PICTURE STORYBOOK" : "PERSONALIZED COLORING & STORYBOOK");
+
   const safeMargin = 36; // 0.5 inches safe margin for Lulu POD
 
   // =========================================================================
@@ -95,16 +110,13 @@ export async function compileBookPdf(book: BookProject): Promise<Uint8Array> {
   });
 
   // Top Category Pill
-  coverPage.drawText(
-    isJournal ? "PERSONAL REFLECTION JOURNAL" : "PERSONALIZED COLORING & STORYBOOK",
-    {
-      x: safeMargin,
-      y: cHeight - 55,
-      size: 9,
-      font: helveticaBold,
-      color: rgb(0.35, 0.35, 0.35),
-    }
-  );
+  coverPage.drawText(coverCategory, {
+    x: safeMargin,
+    y: cHeight - 55,
+    size: 9,
+    font: helveticaBold,
+    color: rgb(0.35, 0.35, 0.35),
+  });
 
   // Book Title
   const titleFontSize = trimSize === "6x9" ? 22 : 26;
@@ -557,10 +569,10 @@ export async function compileBookPdf(book: BookProject): Promise<Uint8Array> {
           height: dims.height,
         });
       } else {
-        p.drawText(`[ Page ${page.pageNumber}: Vector Coloring Art ]`, {
-          x: width / 2 - 90,
+        p.drawText(`[ Page ${page.pageNumber}: ${isColor ? "Full-Color Illustration" : "Vector Coloring Art"} ]`, {
+          x: width / 2 - 95,
           y: artBoxY + artBoxHeight / 2,
-          size: 12,
+          size: 11,
           font: helvetica,
           color: rgb(0.45, 0.45, 0.45),
         });

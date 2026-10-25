@@ -7,6 +7,8 @@ import TokenModal from "@/components/TokenModal";
 import OrderSummaryModal from "@/components/OrderSummaryModal";
 import BookDetailsModal from "@/components/BookDetailsModal";
 import OrderTrackingGrid from "@/components/OrderTrackingGrid";
+import BookLibraryModal from "@/components/BookLibraryModal";
+
 import { BookProject, BookPage, CharacterAnchor } from "@/types/book";
 import { CompanionProduct } from "@/types/order";
 import { deductClientTokens, getClientTokenBalance } from "@/lib/token-store";
@@ -40,7 +42,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 
-type BookGenre = "coloring_book" | "memory_book" | "math_book" | "science_book";
+type BookGenre = "coloring_book" | "storybook" | "memory_book" | "activity_book" | "math_book" | "science_book";
 
 interface GenreConfig {
   id: BookGenre;
@@ -168,6 +170,7 @@ interface BookDraftData {
   title?: string;
   subtitle?: string;
   genre?: BookGenre;
+  artStyle?: string;
   characterName?: string;
   characterType?: string;
   characterTraits?: string[];
@@ -267,6 +270,7 @@ export default function StudioPage() {
   const [book, setBook] = useState<BookProject>(INITIAL_BOOK);
   const [character, setCharacter] = useState<CharacterAnchor>(GENRE_LANES[0].defaultCharacter);
   const [prompt, setPrompt] = useState<string>(GENRE_LANES[0].defaultPrompt);
+  const [artStyle, setArtStyle] = useState<string>("Playful, colorful illustrations");
   const [pageStructure, setPageStructure] = useState<string>("");
   const [layoutType, setLayoutType] = useState<"empty_lined" | "guided_sections" | "classic_prompt">("classic_prompt");
   const [borderText, setBorderText] = useState<string | null>(null);
@@ -324,6 +328,7 @@ export default function StudioPage() {
   const [orderModalOpen, setOrderModalOpen] = useState<boolean>(false);
   const [bookDetailsOpen, setBookDetailsOpen] = useState<boolean>(false);
   const [orderTrackingOpen, setOrderTrackingOpen] = useState<boolean>(false);
+  const [bookLibraryOpen, setBookLibraryOpen] = useState<boolean>(false);
 
   // Dedicated ref strictly for the internal chat scroll container
   const chatScrollContainerRef = useRef<HTMLDivElement>(null);
@@ -354,8 +359,11 @@ export default function StudioPage() {
     async function loadInitialSupplies() {
       try {
         const res = await fetch(`/api/channel3/suggest?genre=${selectedGenre}`);
+        if (!res.ok) return;
+        const contentType = res.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) return;
         const data = await res.json();
-        if (data.success && data.products) {
+        if (data && data.success && Array.isArray(data.products)) {
           setCompanionProducts(data.products);
           setSelectedCompanion(data.products[0] || null);
         }
@@ -499,6 +507,13 @@ export default function StudioPage() {
               format: { ...prev.format, interiorColor: data.bookDraft.interiorColor! },
             }));
           }
+          if (data.bookDraft.artStyle) {
+            setArtStyle(data.bookDraft.artStyle);
+            setBook((prev) => ({
+              ...prev,
+              artStyle: data.bookDraft.artStyle,
+            }));
+          }
           if (data.bookDraft.characterName || data.bookDraft.characterType) {
             setCharacter({
               name: data.bookDraft.characterName || character.name,
@@ -573,6 +588,7 @@ export default function StudioPage() {
           borderStyle,
           cornerDecorations,
           interiorColor: book.format.interiorColor,
+          artStyle,
           lineRuleSpacing,
           authorName,
           targetAge,
@@ -636,6 +652,7 @@ export default function StudioPage() {
           borderStyle,
           cornerDecorations,
           interiorColor: book.format.interiorColor,
+          artStyle,
           lineRuleSpacing,
           authorName,
           targetAge,
@@ -787,6 +804,14 @@ export default function StudioPage() {
                   </h2>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBookLibraryOpen(true)}
+                    className="text-[11px] font-bold px-3 py-1 rounded-full bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                  >
+                    <BookOpen className="w-3.5 h-3.5 text-purple-300" />
+                    <span>📚 Book Library</span>
+                  </button>
                   {messages.length > 0 && (
                     <button
                       type="button"
@@ -812,19 +837,95 @@ export default function StudioPage() {
                 </div>
               </div>
 
+
               {/* Chat Canvas & Conversation */}
               <div className="flex-1 flex flex-col justify-between">
                 {messages.length === 0 ? (
-                  /* Initial Clean Canvas: Matches wireframe sketch with starter bubble on the right */
-                  <div className="flex-1 flex flex-col justify-end items-end py-12 px-2 sm:px-6 space-y-4">
-                    <button
-                      type="button"
-                      onClick={() => handleSendMessage("hey papertales, what can you do")}
-                      disabled={isChatting}
-                      className="px-5 py-2.5 rounded-2xl border-2 border-sky-400/80 bg-[#0c1c38]/90 hover:bg-[#11274e] text-sky-200 text-xs sm:text-sm font-semibold shadow-md transition-all hover:scale-102 active:scale-95 cursor-pointer"
-                    >
-                      hey papertales, what can you do
-                    </button>
+                  /* Initial Clean Canvas: Consumer-grade inspiration starters */
+                  <div className="flex-1 flex flex-col justify-center items-center py-6 px-2 sm:px-6 space-y-4">
+                    <div className="text-center space-y-1">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-400/20 text-sky-300 text-[11px] font-medium">
+                        <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                        <span>AI Book Co-Creation Studio</span>
+                      </div>
+                      <p className="text-xs text-slate-400 max-w-sm pt-1">
+                        Pick an inspiration starter below or type any book idea into the chat:
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full max-w-lg">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleSendMessage(
+                            "Let's create Barnaby's Bakery Coloring Book: an 8.5x8.5 square coloring book about a cheerful little bear baking pastries"
+                          )
+                        }
+                        disabled={isChatting}
+                        className="p-3 rounded-xl border border-sky-400/25 bg-[#0c1c38]/70 hover:bg-[#11274e] hover:border-sky-400/60 text-left transition-all group cursor-pointer shadow-sm active:scale-98"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">🎨</span>
+                          <span className="text-xs font-semibold text-slate-200 group-hover:text-white">
+                            Barnaby&apos;s Bakery
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">8.5×8.5 Square Coloring Book</p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleSendMessage(
+                            "Create a Space Science Activity Book: full color 8.5x11 workbook exploring planets and fun space facts"
+                          )
+                        }
+                        disabled={isChatting}
+                        className="p-3 rounded-xl border border-sky-400/25 bg-[#0c1c38]/70 hover:bg-[#11274e] hover:border-sky-400/60 text-left transition-all group cursor-pointer shadow-sm active:scale-98"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">🚀</span>
+                          <span className="text-xs font-semibold text-slate-200 group-hover:text-white">
+                            Space Science Quest
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">8.5×11 Full Color Activity Book</p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleSendMessage(
+                            "Create a 15-Day Content Creation Journal: minimalist black & white 8.5x8.5 daily planner and prompt journal"
+                          )
+                        }
+                        disabled={isChatting}
+                        className="p-3 rounded-xl border border-sky-400/25 bg-[#0c1c38]/70 hover:bg-[#11274e] hover:border-sky-400/60 text-left transition-all group cursor-pointer shadow-sm active:scale-98"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">📔</span>
+                          <span className="text-xs font-semibold text-slate-200 group-hover:text-white">
+                            Content Creator Journal
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">8.5×8.5 Minimalist Prompt Journal</p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSendMessage("hey papertales, what can you do")}
+                        disabled={isChatting}
+                        className="p-3 rounded-xl border border-sky-400/25 bg-[#0c1c38]/70 hover:bg-[#11274e] hover:border-sky-400/60 text-left transition-all group cursor-pointer shadow-sm active:scale-98"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">✨</span>
+                          <span className="text-xs font-semibold text-slate-200 group-hover:text-white">
+                            Ask Anything
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">&quot;Hey PaperTales, what can you do?&quot;</p>
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   /* Conversation Thread with Messages (Internal scroll container) */
@@ -1128,6 +1229,14 @@ export default function StudioPage() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    onClick={() => setBookLibraryOpen(true)}
+                    className="text-[11px] font-bold px-3 py-1 rounded-full bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                  >
+                    <BookOpen className="w-3.5 h-3.5 text-purple-300" />
+                    <span>📚 Book Library</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setOrderTrackingOpen(true)}
                     className="text-[11px] font-bold px-3 py-1 rounded-full glacier-glass hover:bg-slate-800 text-sky-200 border border-sky-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
                   >
@@ -1401,27 +1510,45 @@ export default function StudioPage() {
                 </div>
               )}
 
-              {/* Stage 1 Master Page CTA Button */}
+              {/* Stage 1 Master Page CTA Buttons: Expand or Continue Chat */}
               {book.pages.length === 1 && !isProofStale ? (
-                <div className="space-y-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={handleExpandFullSpread}
-                    disabled={isGenerating}
-                    className="w-full py-3.5 px-5 rounded-2xl bg-[#7dd3fc] hover:bg-[#a0e3ff] text-[#001f2e] font-black text-sm sm:text-base shadow-xl flex items-center justify-center gap-2.5 transition-all hover:brightness-105 active:scale-98 disabled:opacity-50 cursor-pointer"
-                  >
-                    {isGenerating ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin text-[#001f2e]" />
-                        <span>Expanding to Full {pageCount}-Page Spread...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4 text-[#001f2e]" />
-                        <span>✨ Looks Great! Expand to Full {pageCount}-Page Spread</span>
-                      </>
-                    )}
-                  </button>
+                <div className="space-y-2.5 pt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsDiscussionDone(false);
+                        const chatInput = document.querySelector("textarea") as HTMLTextAreaElement | null;
+                        if (chatInput) {
+                          chatInput.focus();
+                        }
+                      }}
+                      className="py-3 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 border-2 border-sky-400/80 text-sky-200 font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <MessageSquare className="w-4 h-4 text-sky-400" />
+                      <span>💬 Continue in Chat to Make Changes</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleExpandFullSpread}
+                      disabled={isGenerating}
+                      className="py-3 px-4 rounded-2xl bg-[#7dd3fc] hover:bg-[#a0e3ff] text-[#001f2e] font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 transition-all hover:brightness-105 active:scale-95 disabled:opacity-50 cursor-pointer"
+                    >
+                      {isGenerating ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin text-[#001f2e]" />
+                          <span>Expanding Spread...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4 text-[#001f2e]" />
+                          <span>✨ Looks Great! Expand ({pageCount} Pgs)</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
                   <div className="text-center">
                     <button
                       type="button"
@@ -1496,9 +1623,10 @@ export default function StudioPage() {
               onOrderPhysical={() => setOrderModalOpen(true)}
               onOpenTokenModal={() => setTokenModalOpen(true)}
               isDownloading={isDownloadingPdf || isPrintingPageOne}
-              isConfirmed={isConfirmed}
-              isBookUnlocked={isBookUnlocked}
+              isConfirmed={hasProof}
+              isBookUnlocked={false}
             />
+
 
             {/* =========================================================================
                 CHANNEL3 AGENTIC COMMERCE COMPANION SUPPLIES (MATCHED BY AI HELPER)
@@ -1597,6 +1725,36 @@ export default function StudioPage() {
         <OrderTrackingGrid
           isOpen={orderTrackingOpen}
           onClose={() => setOrderTrackingOpen(false)}
+        />
+
+        <BookLibraryModal
+          isOpen={bookLibraryOpen}
+          onClose={() => setBookLibraryOpen(false)}
+          onOpenTokenModal={() => {
+            setBookLibraryOpen(false);
+            setTokenModalOpen(true);
+          }}
+          onSelectBookForRemix={(remixedBook, remixCost) => {
+            setBook(remixedBook);
+            setHasProof(true);
+            setIsProofStale(false);
+            setIsDiscussionDone(true);
+            setPageCount(remixedBook.pages.length);
+            // Append guidance message into the chat assistant
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `msg_remix_${Date.now()}`,
+                role: "assistant",
+                content: `✨ **Loaded "${remixedBook.title}" from the Book Library!** (${remixCost} Token applied).\n\nYou can now customize characters, adjust story scenes, or tweak any page layout. What would you like to personalize?`,
+                quickReplies: [
+                  "Change protagonist to my child",
+                  "Make a fun tweak to Page 1",
+                  "Keep the story and let's expand",
+                ],
+              },
+            ]);
+          }}
         />
       </div>
     </div>

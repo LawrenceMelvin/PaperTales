@@ -1,22 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export function getCleanColoringPrompt(rawPrompt: string, characterTraits?: string): string {
+function getCleanIllustrationPrompt(
+  rawPrompt: string,
+  characterTraits?: string,
+  artStyle?: string,
+  interiorColor?: "black_and_white" | "standard_color"
+): string {
   const base = rawPrompt || "a friendly child explorer on an adventure";
   const traits = characterTraits ? `, character details: ${characterTraits}` : "";
+  const isColor =
+    interiorColor === "standard_color" ||
+    Boolean(artStyle && /\b(color|colorful|vibrant|watercolor|pastel|painted|digital art|saturated)\b/i.test(artStyle));
+
+  if (isColor) {
+    const styleDesc = artStyle || "playful, colorful digital children's book illustration";
+    return `Children's book illustration, vibrant full color, ${styleDesc}, high detail, rich palette, delightful character expression, cinematic lighting, ${base}${traits}.`;
+  }
+
   return `Children's coloring book page outline, thick continuous bold black outlines, zero shading, pure white background, no gradients, ${base}${traits}. Strict monochrome black and white line art, ready for coloring with crayons.`;
 }
 
-export function getPollinationsImageUrl(prompt: string): string {
+// Keep backward compatibility
+const getCleanColoringPrompt = getCleanIllustrationPrompt;
+
+function getPollinationsImageUrl(prompt: string): string {
   const seed = Math.floor(Math.random() * 900000) + 100000;
   return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&seed=${seed}`;
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, characterTraits, pageNumber } = await req.json();
+    const { prompt, characterTraits, pageNumber, artStyle, interiorColor } = await req.json();
 
     const apiKey = process.env.OPENAI_API_KEY;
-    const enhancedPrompt = getCleanColoringPrompt(prompt, characterTraits);
+    const enhancedPrompt = getCleanIllustrationPrompt(prompt, characterTraits, artStyle, interiorColor);
+    const isColor =
+      interiorColor === "standard_color" ||
+      Boolean(artStyle && /\b(color|colorful|vibrant|watercolor|pastel|painted|digital art|saturated)\b/i.test(artStyle));
 
     // 1. Try OpenAI GPT-Image-2.5 (Sunburst) / GPT-Image-2 first
     if (apiKey && apiKey.startsWith("sk-")) {
@@ -55,7 +75,9 @@ export async function POST(req: NextRequest) {
                 imageUrl,
                 usage: data.usage,
                 costEstimateUsd: 0.024,
-                message: `Real coloring page line-art generated with OpenAI ${model}`,
+                message: isColor
+                  ? `Full-color illustration generated with OpenAI ${model}`
+                  : `Real coloring page line-art generated with OpenAI ${model}`,
               });
             }
           } else {
@@ -68,14 +90,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. High-speed, high-resolution AI line-art generator (Pollinations.ai)
+    // 2. High-speed, high-resolution AI illustration generator (Pollinations.ai)
     const pollinationsUrl = getPollinationsImageUrl(enhancedPrompt);
 
     return NextResponse.json({
       success: true,
-      model: "pollinations-lineart",
+      model: isColor ? "pollinations-color" : "pollinations-lineart",
       imageUrl: pollinationsUrl,
-      message: "High-contrast vector line-art generated successfully",
+      message: isColor
+        ? "Vibrant full-color illustration generated successfully"
+        : "High-contrast vector line-art generated successfully",
     });
   } catch (error: any) {
     console.error("Error in AI image route:", error);

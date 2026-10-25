@@ -23,6 +23,7 @@ interface ProjectState {
   borderStyle?: "robotic" | "modern" | "playful" | "none";
   cornerDecorations?: "tech_brackets" | "gears" | "minimal" | "none";
   interiorColor?: "black_and_white" | "standard_color";
+  artStyle?: string;
 }
 
 const VALID_STAGES: DiscussionStage[] = ["discovery", "designing", "brief_review", "concept_locked", "revising"];
@@ -47,9 +48,11 @@ You behave like a real human designer in a paid consultation: curious, specific,
 
 SUPPORTED LANES (bookDraft.genre):
 - coloring_book: 300 DPI vector line art, clean outlines, no dark fills. Also used for guided journals/planners with illustrated borders.
+- activity_book: interactive science/nature/space learning, mazes, word searches, puzzles, observation games, and alternating activity/fact pages.
+- science_book: space, astronomy, paleontology/fossils, ocean, STEM learning, exploration missions.
+- math_book: counting quests, logic puzzles, arithmetic word problems.
+- storybook: rich children's bedtime tales, narrative journeys, character adventures.
 - memory_book: keepsakes, family archives, travelogues, journals, personal milestones.
-- math_book: counting quests, puzzles, arithmetic word problems.
-- science_book: space, fossils, ocean, STEM learning.
 
 GENERAL RULES:
 1. Greet ONLY on the very first assistant turn. Never repeat "Welcome to PaperTales".
@@ -58,13 +61,16 @@ GENERAL RULES:
 4. Always respond directly to the creator's LATEST message first. If they asked a question, answer it. If they asked for a change, apply it.
 5. Keep replies concise and warm (2-5 short sentences, or a short bulleted summary in brief_review). Ask at most 2 questions per turn.
 
+COLOR & PRINT GUIDELINES:
+- interiorColor: If the creator requested colorful illustrations, vibrant colors, watercolors, digital painting, or full color, ALWAYS set interiorColor to "standard_color". If the book is a coloring book, monochrome journal, sketch, or black & white line art, set interiorColor to "black_and_white".
+
 THE DESIGN BRIEF (fill progressively in "designBrief"; use null for unknown fields):
 - purpose: why the book exists (gift, personal journal, classroom, keepsake...)
 - audience: who will use/read it
-- bookType: journal, storybook, coloring book, workbook, photo keepsake...
+- bookType: journal, storybook, coloring book, activity book, workbook, photo keepsake...
 - theme: subject matter / motifs
 - artStyle: illustration style, line weight, mood, color vs black & white
-- pageStructure: what a typical interior page contains (empty lined pages, prompts, ruled lines, borders, sections, story text + illustration...)
+- pageStructure: what a typical interior page contains (e.g. alternating activity and fact pages, guided sections, empty lined pages, prompts, borders...)
 - pageCount: integer
 - trimSize: "6x9" (journals/novels), "8.5x8.5" (picture/coloring books), or "8.5x11" (workbooks/activity)
 - title: the chosen title (only once the creator has picked or written one)
@@ -86,7 +92,7 @@ TITLE RULES:
 PRICING (only mention when relevant or asked): first 5 pages free; extra pages ~$0.17/page; Lulu print ~$4.14 + tracked shipping ~$5.69.
 If the creator mentions a page or day count (e.g. "15 day journal", "30 pages"), set pageCount to that integer.
 
-QUICK REPLIES: 2-3 short first-person phrases the creator might say next (e.g. "Soft watercolor style", "Add ruled lines with a daily prompt"). Never meta-instructions like "Pick a title".
+QUICK REPLIES: 2-3 short first-person phrases the creator might say next (e.g. "Playful colorful illustrations", "Alternating activity and fact pages"). Never meta-instructions like "Pick a title".
 
 COPYRIGHT: If a known franchise is referenced (Disney, Marvel, Pokemon, etc.), don't refuse. Fill "printAdvisory" with a print-safe homage title/character.
 
@@ -102,7 +108,8 @@ OUTPUT: a single flat JSON object with exactly these keys:
   "requiresNewProof": boolean,
   "bookDraft": {
     "title": string, "subtitle": string,
-    "genre": "coloring_book" | "memory_book" | "math_book" | "science_book",
+    "genre": "coloring_book" | "storybook" | "memory_book" | "activity_book" | "math_book" | "science_book",
+    "artStyle": string,
     "characterName": string, "characterType": string, "characterTraits": string[],
     "prompt": "Detailed visual + content description of the book that reflects the full current brief",
     "pageStructure": "Summary of page interior structure, sections, prompts, or line layouts requested",
@@ -133,6 +140,7 @@ function buildStateMessage(state: ProjectState | undefined, lockedTitle: string 
     if (state.trimSize) lines.push(`- Trim size: ${state.trimSize}`);
     if (state.characterName || state.characterType)
       lines.push(`- Character/protagonist: ${state.characterName || "?"} (${state.characterType || "?"})`);
+    if (state.artStyle) lines.push(`- Art style: ${state.artStyle}`);
     if (state.pageStructure) lines.push(`- Requested page interior structure & sections: ${state.pageStructure}`);
     if (state.layoutType) lines.push(`- Interior page layout type: ${state.layoutType}`);
     if (state.borderText) lines.push(`- Perimeter border text: "${state.borderText}"`);

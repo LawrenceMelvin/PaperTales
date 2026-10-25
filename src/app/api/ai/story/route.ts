@@ -188,6 +188,53 @@ function parseSectionHeuristics(promptText: string, pageStructureText?: string):
   return null;
 }
 
+async function generateOpenAiIllustration(
+  prompt: string,
+  apiKey?: string
+): Promise<string | null> {
+  if (!apiKey || !apiKey.startsWith("sk-")) return null;
+  const preferredModels = [
+    process.env.OPENAI_IMAGE_MODEL || "gpt-image-2.5-sunburst-2026-09-08",
+    "gpt-image-2",
+  ];
+
+  for (const model of preferredModels) {
+    try {
+      const res = await fetch("https://api.openai.com/v1/images/generations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          prompt,
+          n: 1,
+          size: "1024x1024",
+        }),
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const item = data.data?.[0];
+        if (item?.b64_json) {
+          return `data:image/png;base64,${item.b64_json}`;
+        }
+        if (item?.url) {
+          return item.url;
+        }
+      } else {
+        const errText = await res.text();
+        console.warn(`OpenAI image generation ${model} error:`, res.status, errText);
+      }
+    } catch (err) {
+      console.warn(`OpenAI image generation ${model} failed:`, err);
+    }
+  }
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -196,6 +243,7 @@ export async function POST(req: NextRequest) {
       subtitle,
       prompt,
       pageStructure,
+      artStyle,
       layoutType: reqLayoutType,
       borderText: reqBorderText,
       borderStyle: reqBorderStyle,
@@ -233,11 +281,12 @@ export async function POST(req: NextRequest) {
     const count = Math.min(Math.max(pageCount, 1), 60);
 
     const isJournalMode =
-      genre === "memory_book" ||
-      trimSize === "6x9" ||
-      /\b(journal|diary|planner|notes|reflection|inspiration|gratitude|log)\b/i.test(prompt || "") ||
-      /\b(journal|diary|planner|inspiration|log)\b/i.test(title || "") ||
-      conversationMessages.some(m => /\b(journal|diary|planner|log|lined pages)\b/i.test(m.content));
+      /\b(journal|diary|planner|daily log|habit tracker|guided journal|daily action|reflection log|lined pages)\b/i.test(
+        `${title || ""} ${prompt || ""} ${pageStructure || ""}`
+      ) ||
+      conversationMessages.some((m) =>
+        /\b(journal|diary|planner|daily log|habit tracker|lined pages)\b/i.test(m.content)
+      );
 
     const effectiveTrimSize = trimSize || (isJournalMode ? (genre === "coloring_book" ? "8.5x8.5" : "6x9") : "8.5x8.5");
 
@@ -305,8 +354,23 @@ export async function POST(req: NextRequest) {
     const effectiveLineRuleSpacing: "wide" | "college" =
       reqLineRuleSpacing || (/\bwide\b/i.test(userTextOnly) ? "wide" : "college");
 
+    const isExplicitlyMonochrome =
+      reqInteriorColor === "black_and_white" ||
+      Boolean(artStyle && /\b(black and white|monochrome|line art|grayscale|coloring|black & white)\b/i.test(artStyle));
+
+    const isColor =
+      !isExplicitlyMonochrome &&
+      (reqInteriorColor === "standard_color" ||
+        Boolean(artStyle && /\b(color|colorful|vibrant|watercolor|pastel|painted|digital art|saturated)\b/i.test(artStyle)) ||
+        userMessages.some((m) => /\b(full color|vibrant color|colorful|in color)\b/i.test(m.content)));
+
     const effectiveInteriorColor: "black_and_white" | "standard_color" =
-      reqInteriorColor || "black_and_white";
+      reqInteriorColor || (isColor ? "standard_color" : "black_and_white");
+
+    const isActivityBook =
+      genre === "activity_book" ||
+      genre === "science_book" ||
+      /\b(activity|activities|fact|facts|puzzle|maze|quiz|workbook|science activity)\b/i.test(`${prompt || ""} ${pageStructure || ""}`);
 
     // Call high-capability LLM (OpenAI primary, Groq fallback)
     if (hasOpenAI || hasGroq) {
@@ -406,22 +470,36 @@ OUTPUT SCHEMA (valid JSON only):
     }
   ]
 }`
-          : `You are PaperTales' Lead Publishing Engine for Storybooks & Coloring Adventures.
-You generate personalized, professionally formatted book pages ready for physical printing on Lulu POD (8.5" x 8.5" square book format).
+          : `You are PaperTales' Professional Book Publishing Engine.
+You generate personalized, professionally formatted book pages ready for physical printing on Lulu POD (${effectiveTrimSize} format).
 
 CREATOR'S SPECIFICATIONS:
 - Established Title: ${title || "Create an appropriate title based on prompt"}
-- Format / Lane: ${genre}
+- Genre / Lane: ${genre}
 - Creator's Concept & Detailed Prompt: "${prompt || "A personalized adventure"}"
+- Art Style: ${artStyle || (isColor ? "Playful, colorful illustrations" : "Black and white line art")}
+- Interior Print Color: ${isColor ? "Standard Color (Full Color)" : "Black and White"}
+- Page Structure Requested: "${pageStructure || "Follow creative story arc"}"
+- Trim Size: ${effectiveTrimSize}
 - Protagonist / Star: ${character.name} (${character.type}) with traits: ${character.traits.join(", ")}
 - Total Pages to Generate: ${count} page(s)
 
 CRITICAL INSTRUCTIONS:
-1. STRICT ADHERENCE TO CREATOR'S STORY THEME:
-   - Carefully craft each page to match the creator's exact narrative theme, age group, and style.
-   - Craft heartwarming, engaging page narratives following a cohesive plot arc starring ${character.name}.
-2. VISUAL LINE-ART DESCRIPTIONS (for imagePrompt):
-   - For every page, write a clear, descriptive visual prompt for 300 DPI high-contrast vector line art matching that exact page scene (pure white background, thick continuous black borders, zero shading, ready for coloring).
+1. STRICT ADHERENCE TO CREATOR'S THEME & PAGE STRUCTURE:
+${
+  isActivityBook
+    ? `   - The creator requested an engaging, interactive activity and knowledge book (such as alternating activity pages and fascinating fact pages).
+   - ODD PAGES (1, 3, 5...): Interactive learning activities, creative challenges, mission prep, or puzzles (e.g. "Mission 1: Design Your Spaceship", "Cosmic Maze", "Alien Word Code", "Planet Match Quiz"). Provide clear, exciting step-by-step instructions.
+   - EVEN PAGES (2, 4, 6...): Fascinating, mind-blowing facts, deep-dive scientific discoveries, or storytelling explorations with engaging educational text.`
+    : `   - Carefully craft each page to match the creator's exact narrative theme, age group, and style.
+   - Craft heartwarming, engaging page narratives following a cohesive plot arc starring ${character.name}.`
+}
+2. VISUAL ART DESCRIPTIONS (for imagePrompt):
+${
+  isColor
+    ? `   - For every page, write a vivid, descriptive visual prompt for a gorgeous, high-resolution children's book illustration in "${artStyle || "playful, colorful digital art"}". Describe the lighting, vibrant colors, composition, and key characters/objects without mentioning line art or coloring.`
+    : `   - For every page, write a clear, descriptive visual prompt for 300 DPI high-contrast vector line art matching that exact page scene (pure white background, thick continuous black borders, zero shading, ready for coloring).`
+}
 
 OUTPUT SCHEMA (valid JSON only):
 {
@@ -430,9 +508,9 @@ OUTPUT SCHEMA (valid JSON only):
   "pages": [
     {
       "pageNumber": 1,
-      "title": "Page or Chapter Title",
+      "title": "Page or Activity Title",
       "storyText": "Full text printed on this page",
-      "imagePrompt": "Detailed visual description of the line-art illustration or scene for this page"
+      "imagePrompt": "Detailed visual description of the illustration or activity visual for this page"
     }
   ]
 }`;
@@ -507,53 +585,6 @@ DIRECT CONTINUITY CHECKLIST:
           }
         }
 
-async function generateOpenAiIllustration(
-  prompt: string,
-  apiKey?: string
-): Promise<string | null> {
-  if (!apiKey || !apiKey.startsWith("sk-")) return null;
-  const preferredModels = [
-    process.env.OPENAI_IMAGE_MODEL || "gpt-image-2.5-sunburst-2026-09-08",
-    "gpt-image-2",
-  ];
-
-  for (const model of preferredModels) {
-    try {
-      const res = await fetch("https://api.openai.com/v1/images/generations", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model,
-          prompt,
-          n: 1,
-          size: "1024x1024",
-        }),
-        signal: AbortSignal.timeout(30000),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const item = data.data?.[0];
-        if (item?.b64_json) {
-          return `data:image/png;base64,${item.b64_json}`;
-        }
-        if (item?.url) {
-          return item.url;
-        }
-      } else {
-        const errText = await res.text();
-        console.warn(`OpenAI image generation ${model} error:`, res.status, errText);
-      }
-    } catch (err) {
-      console.warn(`OpenAI image generation ${model} failed:`, err);
-    }
-  }
-  return null;
-}
-
         if (aiData) {
           const rawContent = aiData.choices?.[0]?.message?.content;
           const parsed = JSON.parse(rawContent);
@@ -583,6 +614,10 @@ async function generateOpenAiIllustration(
                   ? hasIllustration
                     ? `Minimalist black and white line art vector spot illustration, crisp continuous thin black outlines, pure white background, zero shading, no solid dark fills, clean monochrome icon style: ${p.imagePrompt}`
                     : null
+                  : isColor
+                  ? `Children's book illustration, vibrant full color, ${artStyle || "playful colorful digital illustration"}, high detail, rich palette, delightful character expression, cinematic lighting: ${
+                      p.imagePrompt || `${pageTitle} starring ${character.name} the ${character.type}`
+                    }`
                   : `Children's coloring book page outline, thick continuous bold black outlines, zero shading, pure white background, no gradients, uncolored, strictly black and white line art ready for coloring with crayons. ${
                       p.imagePrompt || `${pageTitle} starring ${character.name} the ${character.type}`
                     }.${borderInstruction ? ` ${borderInstruction}` : ""}`;
@@ -664,6 +699,8 @@ async function generateOpenAiIllustration(
               targetAge: targetAge,
               character: character,
               referenceImageUrl: referenceImageUrl || undefined,
+              artStyle: artStyle || (isColor ? "Playful, colorful illustrations" : "Black and white line art"),
+              pageStructure: pageStructure || undefined,
               pages: resolvedPages,
               pageCount: resolvedPages.length,
               format: {
@@ -700,10 +737,22 @@ async function generateOpenAiIllustration(
       const pageTitle = isJournalMode ? `Day ${pNum}` : template.title;
       const storyText = isJournalMode ? "Daily journal entry and action log." : template.story(character.name, character.type);
 
+      const spotIllustrationTopic =
+        /\b(camera|mic|microphone|notebook|laptop|tools?)\b/i.test(fullConversationText)
+          ? "content creation tool, microphone, camera, or notebook"
+          : /\b(fitness|workout|gym)\b/i.test(fullConversationText)
+          ? "fitness and wellness icon"
+          : `${title || "journal"} reflection motif`;
+
       const fallbackIllustrationPrompt = isJournalMode
         ? wantsIllustrations
-          ? `Minimalist black and white line art spot illustration of content creation tool, microphone, camera, or notebook, clean outlines, no shading, pure white background`
+          ? `Minimalist black and white line art spot illustration of ${spotIllustrationTopic}, clean outlines, no shading, pure white background`
           : undefined
+        : isColor
+        ? `Children's book illustration, vibrant full color, ${artStyle || "playful colorful digital illustration"}, high detail, rich palette, delightful character expression, cinematic lighting: ${template.scene(
+            character.name,
+            character.type
+          )}`
         : `Children's coloring book page outline, thick continuous bold black outlines, zero shading, pure white background, no gradients, uncolored, strictly black and white line art ready for coloring with crayons. ${template.scene(
             character.name,
             character.type
@@ -775,6 +824,8 @@ async function generateOpenAiIllustration(
       targetAge: targetAge,
       character: character,
       referenceImageUrl: referenceImageUrl || undefined,
+      artStyle: artStyle || (isColor ? "Playful, colorful illustrations" : "Black and white line art"),
+      pageStructure: pageStructure || undefined,
       pages: pages,
       pageCount: pages.length,
       format: {
