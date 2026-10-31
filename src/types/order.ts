@@ -51,6 +51,8 @@ export interface PaperTalesOrder {
   status: OrderStatus;
   pageCount: number;
   quantity: number;
+  trimSize?: "8.5x8.5" | "6x9" | "8.5x11";
+  interiorColor?: "black_and_white" | "standard_color";
   
   // Financial breakdown
   creationFee: number;

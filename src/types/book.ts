@@ -38,6 +38,19 @@ export interface JournalPageData {
   illustrationPlacement?: "bottom_right" | "top_right";
 }
 
+export type BookCoverColorScheme = "midnight_glacier" | "warm_cream" | "storybook_vibrant" | "minimal_monochrome";
+
+export interface BookCoverDesign {
+  title?: string;
+  subtitle?: string;
+  authorByline?: string;
+  coverPrompt?: string;
+  artStyle?: string;
+  colorScheme?: BookCoverColorScheme;
+  imageUrl?: string;
+  isDesigned?: boolean;
+}
+
 export interface BookPage {
   pageNumber: number;
   title: string;
@@ -49,17 +62,26 @@ export interface BookPage {
   journalData?: JournalPageData;
 }
 
+export type BookGenre =
+  | "coloring_book"
+  | "storybook"
+  | "memory_book"
+  | "activity_book"
+  | "math_book"
+  | "science_book";
+
 export interface BookProject {
   id: string;
   title: string;
   subtitle?: string;
   authorName: string;
-  genre: "coloring_book" | "storybook" | "memory_book" | "activity_book" | "math_book" | "science_book";
+  genre: BookGenre;
   targetAge: string;
   character: CharacterAnchor;
   referenceImageUrl?: string;
   artStyle?: string;
   pageStructure?: string;
+  cover?: BookCoverDesign;
   pages: BookPage[];
   pageCount: number;
   format: {

@@ -119,8 +119,11 @@ export async function compileBookPdf(book: BookProject): Promise<Uint8Array> {
   });
 
   // Book Title
+  const coverTitleText = book.cover?.title || book.title;
+  const coverSubtitleText = book.cover?.subtitle || book.subtitle;
+  const coverAuthorText = book.cover?.authorByline || book.authorName || "Personal Keepsake Edition";
   const titleFontSize = trimSize === "6x9" ? 22 : 26;
-  coverPage.drawText(book.title, {
+  coverPage.drawText(coverTitleText, {
     x: safeMargin,
     y: cHeight - 85,
     size: titleFontSize,
@@ -130,8 +133,8 @@ export async function compileBookPdf(book: BookProject): Promise<Uint8Array> {
   });
 
   // Subtitle
-  if (book.subtitle) {
-    coverPage.drawText(book.subtitle, {
+  if (coverSubtitleText) {
+    coverPage.drawText(coverSubtitleText, {
       x: safeMargin,
       y: cHeight - 110,
       size: 11,
@@ -155,8 +158,8 @@ export async function compileBookPdf(book: BookProject): Promise<Uint8Array> {
     borderWidth: 1.5,
   });
 
-  // Check if first page has an image to feature on the cover
-  const featuredImage = await tryEmbedImage(pdfDoc, book.pages[0]?.imageUrl);
+  // Prefer dedicated AI cover artwork, falling back to first page image
+  const featuredImage = await tryEmbedImage(pdfDoc, book.cover?.imageUrl || book.pages[0]?.imageUrl);
   if (featuredImage) {
     const imgDims = featuredImage.scaleToFit(coverBoxWidth - 10, coverBoxHeight - 10);
     coverPage.drawImage(featuredImage, {
@@ -180,7 +183,7 @@ export async function compileBookPdf(book: BookProject): Promise<Uint8Array> {
   }
 
   // Author byline & Lulu POD print marks
-  coverPage.drawText(`Created by: ${book.authorName}`, {
+  coverPage.drawText(`Created by: ${coverAuthorText}`, {
     x: safeMargin,
     y: 55,
     size: 11,

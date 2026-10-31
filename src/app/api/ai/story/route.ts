@@ -194,7 +194,8 @@ async function generateOpenAiIllustration(
 ): Promise<string | null> {
   if (!apiKey || !apiKey.startsWith("sk-")) return null;
   const preferredModels = [
-    process.env.OPENAI_IMAGE_MODEL || "gpt-image-2.5-sunburst-2026-09-08",
+    process.env.OPENAI_IMAGE_MODEL || "gpt-image-2.5-flare",
+    "gpt-image-2.5-sunburst",
     "gpt-image-2",
   ];
 
@@ -212,7 +213,7 @@ async function generateOpenAiIllustration(
           n: 1,
           size: "1024x1024",
         }),
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(45000),
       });
 
       if (res.ok) {
@@ -231,6 +232,47 @@ async function generateOpenAiIllustration(
     } catch (err) {
       console.warn(`OpenAI image generation ${model} failed:`, err);
     }
+  }
+  return null;
+}
+
+async function generateGeminiIllustration(
+  prompt: string,
+  apiKey?: string
+): Promise<string | null> {
+  if (!apiKey) return null;
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          instances: [{ prompt }],
+          parameters: {
+            sampleCount: 1,
+            aspectRatio: "1:1",
+          },
+        }),
+        signal: AbortSignal.timeout(25000),
+      }
+    );
+
+    if (res.ok) {
+      const data = await res.json();
+      const b64 = data.predictions?.[0]?.bytesBase64Encoded;
+      const mime = data.predictions?.[0]?.mimeType || "image/jpeg";
+      if (b64) {
+        return `data:${mime};base64,${b64}`;
+      }
+    } else {
+      const errText = await res.text();
+      console.warn("Gemini Imagen generation error:", res.status, errText);
+    }
+  } catch (err) {
+    console.warn("Gemini Imagen generation failed:", err);
   }
   return null;
 }
@@ -625,12 +667,18 @@ DIRECT CONTINUITY CHECKLIST:
                 let pageIllustrationUrl: string | undefined = undefined;
 
                 if (promptForImage) {
-                  // Primary: OpenAI gpt-image-2.5-sunburst / gpt-image-2
+                  // 1. Primary: OpenAI gpt-image-2.5-flare
                   if (hasOpenAI && openaiKey) {
                     pageIllustrationUrl = (await generateOpenAiIllustration(promptForImage, openaiKey)) || undefined;
                   }
 
-                  // Resilient fallback: Pollinations line-art
+                  // 2. High-speed Fallback: Google Imagen 3 (via GEMINI_API_KEY)
+                  if (!pageIllustrationUrl && (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY)) {
+                    const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+                    pageIllustrationUrl = (await generateGeminiIllustration(promptForImage, geminiKey)) || undefined;
+                  }
+
+                  // 3. Resilient fallback: Pollinations line-art
                   if (!pageIllustrationUrl) {
                     pageIllustrationUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
                       promptForImage
@@ -763,6 +811,10 @@ DIRECT CONTINUITY CHECKLIST:
       if (fallbackIllustrationPrompt) {
         if (hasOpenAI && openaiKey && i === 0) {
           fallbackImageUrl = (await generateOpenAiIllustration(fallbackIllustrationPrompt, openaiKey)) || undefined;
+        }
+        if (!fallbackImageUrl && (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) && i === 0) {
+          const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+          fallbackImageUrl = (await generateGeminiIllustration(fallbackIllustrationPrompt, geminiKey)) || undefined;
         }
         if (!fallbackImageUrl) {
           fallbackImageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(

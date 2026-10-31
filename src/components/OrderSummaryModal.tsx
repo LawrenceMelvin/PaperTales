@@ -6,11 +6,13 @@ import { BookProject } from "@/types/book";
 import { CompanionProduct, LuluQuoteResponse, PaperTalesOrder } from "@/types/order";
 import { PayPalButtons } from "@paypal/react-paypal-js";
 import confetti from "canvas-confetti";
+import { calculateBookQuote } from "@/lib/pricing-calculator";
 
 interface OrderSummaryModalProps {
   isOpen: boolean;
   onClose: () => void;
   book: BookProject;
+  initialFulfillmentType?: "physical_print" | "digital_pdf";
   onOrderCompleted?: (order: PaperTalesOrder) => void;
   onDownloadPdf?: () => void;
 }
@@ -19,15 +21,23 @@ export default function OrderSummaryModal({
   isOpen,
   onClose,
   book,
+  initialFulfillmentType = "physical_print",
   onOrderCompleted,
   onDownloadPdf,
 }: OrderSummaryModalProps) {
-  const [fulfillmentType, setFulfillmentType] = useState<"physical_print" | "digital_pdf">("physical_print");
+  const [fulfillmentType, setFulfillmentType] = useState<"physical_print" | "digital_pdf">(initialFulfillmentType);
   const [luluQuote, setLuluQuote] = useState<LuluQuoteResponse | null>(null);
   const [loadingQuote, setLoadingQuote] = useState<boolean>(true);
   const [companionProducts, setCompanionProducts] = useState<CompanionProduct[]>([]);
   const [selectedCompanion, setSelectedCompanion] = useState<CompanionProduct | null>(null);
   const [completedOrder, setCompletedOrder] = useState<PaperTalesOrder | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setFulfillmentType(initialFulfillmentType);
+      setCompletedOrder(null);
+    }
+  }, [isOpen, initialFulfillmentType, book.id]);
 
   // Fetch dynamic Lulu quote and Channel3 companion suggestions on mount
   useEffect(() => {
@@ -57,7 +67,7 @@ export default function OrderSummaryModal({
         const ch3Data = await ch3Res.json();
         if (ch3Data.success && ch3Data.products && ch3Data.products.length > 0) {
           setCompanionProducts(ch3Data.products);
-          setSelectedCompanion(ch3Data.products[0]); // default companion recommendation
+          setSelectedCompanion(initialFulfillmentType === "physical_print" ? ch3Data.products[0] : null);
         }
       } catch (err) {
         console.error("Error fetching checkout details:", err);
@@ -67,16 +77,18 @@ export default function OrderSummaryModal({
     }
 
     fetchData();
-  }, [isOpen, book.pageCount, book.genre, book.format?.trimSize, book.format?.interiorColor]);
+  }, [isOpen, book.pageCount, book.genre, book.format?.trimSize, book.format?.interiorColor, initialFulfillmentType]);
 
   if (!isOpen) return null;
 
-  // Base pricing calculations
-  const creationFee = 3.5; // Platform & AI generation fee
+  // Dynamic page-count pricing formula (First 5 pages free)
+  const effectivePages = book.pageCount || book.pages?.length || 12;
+  const dynamicQuote = calculateBookQuote(effectivePages);
+  const creationFee = dynamicQuote.priceUsd > 0 ? dynamicQuote.priceUsd : 0.99;
   const printCost = fulfillmentType === "physical_print" ? luluQuote?.unitPrintCost || 4.5 : 0;
   const shippingCost = fulfillmentType === "physical_print" ? luluQuote?.shippingCost || 3.99 : 0;
   const companionCost = selectedCompanion ? selectedCompanion.price : 0;
-  const grandTotal = creationFee + printCost + shippingCost + companionCost;
+  const grandTotal = Number((creationFee + printCost + shippingCost + companionCost).toFixed(2));
 
   const handleOrderSuccess = (order: PaperTalesOrder) => {
     setCompletedOrder(order);
@@ -228,7 +240,9 @@ export default function OrderSummaryModal({
                     <p className="text-[11px] text-[#a0b4c4]">
                       High-res vector 300 DPI PDF with bleed margins. Print at home or read on tablets.
                     </p>
-                    <span className="text-xs font-bold text-purple-300 mt-2">$3.50 (Or 5 Tokens)</span>
+                    <span className="text-xs font-bold text-purple-300 mt-2">
+                      ${creationFee.toFixed(2)} ({dynamicQuote.tokensRequired} Tokens)
+                    </span>
                   </div>
                 </div>
               </div>
@@ -365,6 +379,8 @@ export default function OrderSummaryModal({
                             fulfillmentType,
                             status: fulfillmentType === "physical_print" ? "in_production" : "paid",
                             pageCount: book.pageCount,
+                            trimSize: book.format?.trimSize,
+                            interiorColor: book.format?.interiorColor,
                             quantity: 1,
                             creationFee,
                             printCost,
@@ -414,6 +430,8 @@ export default function OrderSummaryModal({
                             authorName: book.authorName,
                             fulfillmentType,
                             pageCount: book.pageCount,
+                            trimSize: book.format?.trimSize,
+                            interiorColor: book.format?.interiorColor,
                             quantity: 1,
                             creationFee,
                             printCost,

@@ -1,25 +1,46 @@
 import { LuluQuoteResponse, PaperTalesOrder, ShippingAddress } from "@/types/order";
 
 export const LULU_PACKAGES = {
-  SQUARE_SOFTCOVER_BW: "0850X0850.BW.STD.PB.060UW444.GXX", // 8.5" x 8.5" Square Softcover, B&W Standard, 60# Uncoated White, Gloss
-  SQUARE_SOFTCOVER_COLOR: "0850X0850.FC.STD.PB.060UW444.GXX", // 8.5" x 8.5" Square Softcover, Full Color Standard, 60# Uncoated White, Gloss
-  LETTER_SOFTCOVER_BW: "0850X1100.BW.STD.PB.060UW444.GXX", // 8.5" x 11" Letter Softcover, B&W Standard, 60# Uncoated White, Gloss
-  LETTER_SOFTCOVER_COLOR: "0850X1100.FC.STD.PB.060UW444.GXX", // 8.5" x 11" Letter Softcover, Full Color Standard, 60# Uncoated White, Gloss
-  DIGEST_SOFTCOVER_BW: "0600X0900.BW.STD.PB.060UW444.GXX", // 6" x 9" Digest Softcover, B&W Standard, 60# Uncoated White, Gloss
-  DIGEST_SOFTCOVER_COLOR: "0600X0900.FC.STD.PB.060UW444.GXX", // 6" x 9" Digest Softcover, Full Color Standard, 60# Uncoated White, Gloss
+  // 8.5" x 8.5" Square Softcover
+  SQUARE_SOFTCOVER_BW: "0850X0850.BW.STD.PB.060UW444.GXX", // Perfect Bound (32-800 pgs)
+  SQUARE_SOFTCOVER_COLOR: "0850X0850.FC.STD.PB.060UW444.GXX",
+  SQUARE_SADDLE_BW: "0850X0850.BW.STD.SS.060UW444.GXX", // Saddle Stitch (4-48 pgs)
+  SQUARE_SADDLE_COLOR: "0850X0850.FC.STD.SS.060UW444.GXX",
+
+  // 8.5" x 11" Letter Softcover
+  LETTER_SOFTCOVER_BW: "0850X1100.BW.STD.PB.060UW444.GXX", // Perfect Bound (32-800 pgs)
+  LETTER_SOFTCOVER_COLOR: "0850X1100.FC.STD.PB.060UW444.GXX",
+  LETTER_SADDLE_BW: "0850X1100.BW.STD.SS.060UW444.GXX", // Saddle Stitch (4-48 pgs)
+  LETTER_SADDLE_COLOR: "0850X1100.FC.STD.SS.060UW444.GXX",
+
+  // 6" x 9" Digest Softcover
+  DIGEST_SOFTCOVER_BW: "0600X0900.BW.STD.PB.060UW444.GXX", // Perfect Bound (32-800 pgs)
+  DIGEST_SOFTCOVER_COLOR: "0600X0900.FC.STD.PB.060UW444.GXX",
+  DIGEST_SADDLE_BW: "0600X0900.BW.STD.SS.060UW444.GXX", // Saddle Stitch (4-48 pgs)
+  DIGEST_SADDLE_COLOR: "0600X0900.FC.STD.SS.060UW444.GXX",
+
   // Backward compatibility aliases
   SQUARE_SOFTCOVER: "0850X0850.BW.STD.PB.060UW444.GXX",
   LETTER_SOFTCOVER: "0850X1100.BW.STD.PB.060UW444.GXX",
 };
 
-export function getLuluPackageId(trimSize?: string, interiorColor?: string): string {
+export function getLuluPackageId(
+  trimSize?: string,
+  interiorColor?: string,
+  pageCount: number = 32
+): string {
   const isColor = interiorColor === "standard_color";
+  const isSaddle = pageCount < 32;
+
   if (trimSize === "8.5x11") {
+    if (isSaddle) return isColor ? LULU_PACKAGES.LETTER_SADDLE_COLOR : LULU_PACKAGES.LETTER_SADDLE_BW;
     return isColor ? LULU_PACKAGES.LETTER_SOFTCOVER_COLOR : LULU_PACKAGES.LETTER_SOFTCOVER_BW;
   }
   if (trimSize === "6x9") {
+    if (isSaddle) return isColor ? LULU_PACKAGES.DIGEST_SADDLE_COLOR : LULU_PACKAGES.DIGEST_SADDLE_BW;
     return isColor ? LULU_PACKAGES.DIGEST_SOFTCOVER_COLOR : LULU_PACKAGES.DIGEST_SOFTCOVER_BW;
   }
+  if (isSaddle) return isColor ? LULU_PACKAGES.SQUARE_SADDLE_COLOR : LULU_PACKAGES.SQUARE_SADDLE_BW;
   return isColor ? LULU_PACKAGES.SQUARE_SOFTCOVER_COLOR : LULU_PACKAGES.SQUARE_SOFTCOVER_BW;
 }
 
@@ -33,13 +54,13 @@ export async function calculateLuluQuote(
   const luluSecret = process.env.LULU_CLIENT_SECRET;
   const env = process.env.LULU_ENVIRONMENT || "production";
   const isMock = !luluKey || luluKey.startsWith("sb-") || luluKey === "test_lulu_client_key";
-  const chosenPackage = getLuluPackageId(options?.trimSize, options?.interiorColor);
+  const chosenPackage = getLuluPackageId(options?.trimSize, options?.interiorColor, pageCount);
 
   // If real credentials exist, call the live Lulu API
   if (!isMock && luluKey && luluSecret) {
     // Try production endpoint first if configured or fallback to sandbox
-    const hosts = env === "sandbox" 
-      ? ["https://api.sandbox.lulu.com", "https://api.lulu.com"] 
+    const hosts = env === "sandbox"
+      ? ["https://api.sandbox.lulu.com", "https://api.lulu.com"]
       : ["https://api.lulu.com", "https://api.sandbox.lulu.com"];
 
     for (const host of hosts) {
@@ -113,22 +134,31 @@ export async function calculateLuluQuote(
     }
   }
 
-  // Realistic fallback formula modeling Lulu rates (slight color premium)
+  // Realistic fallback formula modeling calibrated Lulu rates
   const isColor = options?.interiorColor === "standard_color";
-  const basePages = 12;
-  const baseManufacturingPrice = isColor ? 4.19 : 3.39;
-  const pricePerPage = isColor ? 0.045 : 0.035;
+  const isSaddle = pageCount < 32;
+  const isDigest = options?.trimSize === "6x9";
+
+  // Base rates calibrated from live Lulu sandbox API benchmarks:
+  // Perfect Bound: $3.39 (Letter/Square) or $2.79 (Digest)
+  // Saddle Stitch: $4.99 - $5.29
+  let baseManufacturingPrice = isSaddle ? 4.99 : (isDigest ? 2.79 : 3.39);
+  if (isColor) baseManufacturingPrice += 1.20;
+
   const fulfillmentFee = 0.75;
-  const extraPages = Math.max(0, pageCount - basePages);
+  const extraPages = isSaddle ? Math.max(0, pageCount - 16) : Math.max(0, pageCount - 32);
+  const pricePerPage = isColor ? 0.045 : (isDigest ? 0.025 : 0.0385);
   const unitPrint = Number((baseManufacturingPrice + fulfillmentFee + extraPages * pricePerPage).toFixed(2));
-  const shipping = address?.countryCode && address.countryCode !== "US" ? 8.99 : 5.69;
+
+  const isUK = address?.countryCode === "GB" || address?.countryCode === "UK";
+  const shipping = isUK ? 5.22 : (address?.countryCode && address.countryCode !== "US" ? 8.99 : 5.69);
   const total = Number((unitPrint * quantity + shipping).toFixed(2));
 
   return {
     podPackageId: chosenPackage,
     unitPrintCost: unitPrint,
     shippingCost: shipping,
-    carrierLevel: "Standard Ground (Tracked)",
+    carrierLevel: isUK ? "Royal Mail Tracked" : "Standard Ground (Tracked)",
     totalCost: total,
     currency: "USD",
     estimatedDeliveryDays: "4-6 business days",
@@ -164,6 +194,12 @@ export async function submitLuluPrintJob(
         const firstName = recipientParts[0] || "Valued";
         const lastName = recipientParts.slice(1).join(" ") || "Customer";
 
+        const chosenPackage = getLuluPackageId(
+          order.trimSize,
+          order.interiorColor,
+          order.pageCount
+        );
+
         const jobRes = await fetch(`${host}/print-jobs/`, {
           method: "POST",
           headers: {
@@ -177,10 +213,12 @@ export async function submitLuluPrintJob(
             line_items: [
               {
                 external_id: `item_${order.bookId}`,
-                pod_package_id: LULU_PACKAGES.SQUARE_SOFTCOVER,
-                quantity: 1,
+                title: order.bookTitle || "PaperTales Custom Book",
+                pod_package_id: chosenPackage,
+                quantity: order.quantity || 1,
                 page_count: Math.max(order.pageCount, 12),
                 printable_normalization: {
+                  pod_package_id: chosenPackage,
                   cover: { source_url: coverPdfUrl },
                   interior: { source_url: interiorPdfUrl },
                 },

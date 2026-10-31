@@ -56,24 +56,13 @@ export default function Navbar({ onOpenTokenModal, onOpenOrderTracking }: Navbar
             <Printer className="w-3.5 h-3.5" />
             Lulu POD
           </a>
-          {onOpenOrderTracking ? (
-            <button
-              type="button"
-              onClick={onOpenOrderTracking}
-              className="text-[#a0b4c4] hover:text-sky-300 transition-colors duration-150 flex items-center gap-1.5 cursor-pointer"
-            >
-              <LayoutDashboard className="w-3.5 h-3.5 text-purple-300" />
-              AG Grid Orders
-            </button>
-          ) : (
-            <Link
-              href="/dashboard"
-              className="text-[#a0b4c4] hover:text-sky-300 transition-colors duration-150 flex items-center gap-1.5"
-            >
-              <LayoutDashboard className="w-3.5 h-3.5 text-purple-300" />
-              AG Grid Orders
-            </Link>
-          )}
+          <Link
+            href="/bookstore"
+            className="text-[#a0b4c4] hover:text-sky-300 transition-colors duration-150 flex items-center gap-1.5"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-purple-300" />
+            Bookstore &amp; Vault
+          </Link>
         </nav>
 
         {/* Trailing Action Badges and CTAs */}

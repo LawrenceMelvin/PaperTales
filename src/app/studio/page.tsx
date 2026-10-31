@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import BookViewer from "@/components/BookViewer";
 import TokenModal from "@/components/TokenModal";
@@ -8,8 +9,9 @@ import OrderSummaryModal from "@/components/OrderSummaryModal";
 import BookDetailsModal from "@/components/BookDetailsModal";
 import OrderTrackingGrid from "@/components/OrderTrackingGrid";
 import BookLibraryModal from "@/components/BookLibraryModal";
+import { BOOKSTORE_CATALOG, bookstoreItemToBookProject } from "@/lib/bookstore-catalog";
 
-import { BookProject, BookPage, CharacterAnchor } from "@/types/book";
+import { BookProject, BookPage, CharacterAnchor, BookCoverDesign, BookCoverColorScheme } from "@/types/book";
 import { CompanionProduct } from "@/types/order";
 import { deductClientTokens, getClientTokenBalance } from "@/lib/token-store";
 import { calculateBookQuote } from "@/lib/pricing-calculator";
@@ -184,11 +186,20 @@ interface BookDraftData {
   interiorColor?: "black_and_white" | "standard_color";
   lineRuleSpacing?: "wide" | "college";
   channel3Query?: string;
-  recommendedAction?: "design_hero_page" | "expand_full_spread";
+  recommendedAction?: "design_hero_page" | "expand_full_spread" | "design_book_cover";
   designerNote?: string;
 }
 
-type DiscussionStage = "discovery" | "designing" | "brief_review" | "concept_locked" | "revising";
+interface CoverDraftData {
+  title?: string | null;
+  subtitle?: string | null;
+  authorByline?: string | null;
+  coverPrompt?: string | null;
+  colorScheme?: BookCoverColorScheme | null;
+  isReadyForCover?: boolean;
+}
+
+type DiscussionStage = "discovery" | "designing" | "brief_review" | "concept_locked" | "revising" | "cover_design";
 
 interface DraftChange {
   field: string;
@@ -211,6 +222,7 @@ interface ChatMessageItem {
   quickReplies?: string[];
   printAdvisory?: PrintAdvisoryData;
   bookDraft?: BookDraftData;
+  coverDraft?: CoverDraftData;
 }
 
 const INITIAL_MESSAGES: ChatMessageItem[] = [];
@@ -282,8 +294,10 @@ export default function StudioPage() {
   const [pageCount, setPageCount] = useState<number>(5);
   const [userTokens, setUserTokens] = useState<number>(12);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [isGeneratingCover, setIsGeneratingCover] = useState<boolean>(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState<boolean>(false);
   const [isPrintingPageOne, setIsPrintingPageOne] = useState<boolean>(false);
+  const [activeViewerPageIndex, setActiveViewerPageIndex] = useState<number>(0);
 
   // Chat conversation state
   const [messages, setMessages] = useState<ChatMessageItem[]>(INITIAL_MESSAGES);
@@ -292,9 +306,13 @@ export default function StudioPage() {
   const [isDiscussionDone, setIsDiscussionDone] = useState<boolean>(false);
   const [isEditingCharacterName, setIsEditingCharacterName] = useState<boolean>(false);
 
-  // Proof lifecycle: whether a Master Page 1 proof exists and whether later edits made it outdated
+  // Proof & Cover lifecycle: tracks Page 1 proof -> Full Interior Pages -> Front Book Cover
   const [hasProof, setHasProof] = useState<boolean>(false);
   const [isProofStale, setIsProofStale] = useState<boolean>(false);
+  const [hasFullBook, setHasFullBook] = useState<boolean>(false);
+  const [hasCover, setHasCover] = useState<boolean>(false);
+  const [coverPrompt, setCoverPrompt] = useState<string>("");
+  const [coverColorScheme, setCoverColorScheme] = useState<BookCoverColorScheme>("midnight_glacier");
   const [lockedTitle, setLockedTitle] = useState<string | null>(null);
 
   // Live Channel3 companion products
@@ -305,7 +323,48 @@ export default function StudioPage() {
   const [isConfirmed, setIsConfirmed] = useState<boolean>(true);
   const [isBookUnlocked, setIsBookUnlocked] = useState<boolean>(false);
 
-  // Sync unlock status if previously purchased
+  // Sync unlock status if previously purchased, and check for ?remix=<bookId> from Bookstore
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const remixId = params.get("remix");
+      if (remixId) {
+        const found = BOOKSTORE_CATALOG.find((b) => b.id === remixId);
+        if (found) {
+          const remixed = bookstoreItemToBookProject(found);
+          setBook(remixed);
+          setSelectedGenre(found.studioGenre);
+          setPageCount(found.pageCount);
+          setHasProof(true);
+          setIsProofStale(false);
+          setHasFullBook(true);
+          setHasCover(true);
+          setIsDiscussionDone(false);
+          setMessages((prev) => {
+            if (prev.some((m) => m.id.startsWith("msg_bookstore_remix_"))) return prev;
+            return [
+              ...prev,
+              {
+                id: `msg_bookstore_remix_${Date.now()}`,
+                role: "assistant",
+                content: `📚 **Loaded "${found.title}" from Bookstore & Vault!**\n\nAll ${found.pageCount} pages and the front cover are loaded in the preview below. Still in our same chat — tell me how you'd like to personalize the character, title, cover, or pages!`,
+                quickReplies: [
+                  "Personalize the cover title & author name",
+                  "Change the main character to my child",
+                  "Tweak Page 1 illustration",
+                ],
+                discussionStage: "cover_design",
+                isReadyForProof: true,
+              },
+            ];
+          });
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     try {
       const stored = localStorage.getItem("papertales_orders");
@@ -440,22 +499,27 @@ export default function StudioPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: newThread.map((m) => ({ role: m.role, content: m.content })),
-            projectState: {
-              title: book.title !== INITIAL_BOOK.title ? book.title : undefined,
-              subtitle: book.subtitle,
-              genre: selectedGenre,
-              pageCount,
-              trimSize: book.format.trimSize,
-              characterName: character.name,
-              characterType: character.type,
-              characterTraits: character.traits,
-              pageStructure: pageStructure || undefined,
-              prompt: hasProof || effectiveLockedTitle ? prompt : undefined,
-            },
-            hasProof,
-            lockedTitle: effectiveLockedTitle,
-          }),
-        });
+          projectState: {
+            title: book.title !== INITIAL_BOOK.title ? book.title : undefined,
+            subtitle: book.subtitle,
+            authorName: authorName || book.cover?.authorByline || undefined,
+            genre: selectedGenre,
+            pageCount,
+            trimSize: book.format.trimSize,
+            characterName: character.name,
+            characterType: character.type,
+            characterTraits: character.traits,
+            pageStructure: pageStructure || undefined,
+            prompt: hasProof || effectiveLockedTitle ? prompt : undefined,
+            coverPrompt: coverPrompt || book.cover?.coverPrompt || undefined,
+            coverColorScheme: coverColorScheme || book.cover?.colorScheme || undefined,
+          },
+          hasProof,
+          hasFullBook,
+          hasCover,
+          lockedTitle: effectiveLockedTitle,
+        }),
+      });
 
       const data = await res.json();
       if (data.success) {
@@ -541,14 +605,41 @@ export default function StudioPage() {
           }
         }
 
+        // Synchronize coverDraft into cover state when designing or revising the cover
+        if (data.coverDraft) {
+          if (data.coverDraft.coverPrompt) {
+            setCoverPrompt(data.coverDraft.coverPrompt);
+          }
+          if (data.coverDraft.colorScheme) {
+            setCoverColorScheme(data.coverDraft.colorScheme);
+          }
+          if (data.coverDraft.authorByline) {
+            setAuthorName(data.coverDraft.authorByline);
+          }
+          setBook((prev) => ({
+            ...prev,
+            title: data.coverDraft.title || prev.title,
+            subtitle: data.coverDraft.subtitle || prev.subtitle,
+            authorName: data.coverDraft.authorByline || prev.authorName,
+            cover: {
+              ...prev.cover,
+              title: data.coverDraft.title || prev.cover?.title || prev.title,
+              subtitle: data.coverDraft.subtitle || prev.cover?.subtitle || prev.subtitle,
+              authorByline: data.coverDraft.authorByline || prev.cover?.authorByline || prev.authorName,
+              coverPrompt: data.coverDraft.coverPrompt || prev.cover?.coverPrompt || coverPrompt,
+              colorScheme: data.coverDraft.colorScheme || prev.cover?.colorScheme || coverColorScheme,
+            },
+          }));
+        }
+
         if (data.lockedTitle) setLockedTitle(data.lockedTitle);
-        if (hasProof && data.requiresNewProof) setIsProofStale(true);
+        if (hasProof && !hasFullBook && data.requiresNewProof) setIsProofStale(true);
 
         const assistantMsg: ChatMessageItem = {
           id: `msg_${Date.now() + 1}`,
           role: "assistant",
           content: data.reply,
-          discussionStage: data.discussionStage || "designing",
+          discussionStage: data.discussionStage || (hasFullBook ? "cover_design" : "designing"),
           isReadyForProof: Boolean(data.isReadyForProof),
           requiresNewProof: Boolean(data.requiresNewProof),
           changes: Array.isArray(data.changes) ? data.changes : [],
@@ -561,6 +652,7 @@ export default function StudioPage() {
                 pageCount: data.bookDraft.pageCount || requestedPages,
               }
             : undefined,
+          coverDraft: data.coverDraft || undefined,
         };
         setMessages([...newThread, assistantMsg]);
       }
@@ -605,14 +697,17 @@ export default function StudioPage() {
 
       const data = await res.json();
       if (data.success && data.book) {
-        setBook({
+        setBook((prev) => ({
           ...data.book,
           title: data.book.title,
+          cover: prev.cover,
           pageCount: 1,
-        });
+        }));
         setIsConfirmed(false); // Hero proof ready for inspection
         setHasProof(true);
         setIsProofStale(false);
+        setHasFullBook(false);
+        setActiveViewerPageIndex(1); // Show Master Page 1 immediately
 
         // Smooth scroll to the Book Display below
         const displayEl = document.getElementById("book-display-section");
@@ -627,7 +722,7 @@ export default function StudioPage() {
     }
   };
 
-  // Stage 2: Expand to Full Spread (e.g. 30 pages) based on approved hero template
+  // Stage 2: Expand to Full Spread (e.g. 15 or 30 pages) based on approved hero template
   const handleExpandFullSpread = async () => {
     if (quote.tokensRequired > 0) {
       const balance = getClientTokenBalance();
@@ -669,24 +764,130 @@ export default function StudioPage() {
 
       const data = await res.json();
       if (data.success && data.book) {
-        setBook(data.book);
+        setBook((prev) => ({
+          ...data.book,
+          cover: prev.cover,
+        }));
         if (quote.tokensRequired > 0) {
           deductClientTokens(quote.tokensRequired);
         }
         setIsConfirmed(true);
         setHasProof(true);
         setIsProofStale(false);
+        setHasFullBook(true);
+        setActiveViewerPageIndex(1);
 
-        // Smooth scroll to the Book Display below
-        const displayEl = document.getElementById("book-display-section");
-        if (displayEl) {
-          displayEl.scrollIntoView({ behavior: "smooth" });
-        }
+        // Append a cover design prompt in the SAME continuous chat thread so the user can design the Book Cover next!
+        const generatedCount = data.book.pages?.length || pageCount;
+        const isJournalBook =
+          data.book.format?.trimSize === "6x9" ||
+          selectedGenre === "memory_book" ||
+          Boolean(data.book.pages?.some((p: any) => p.journalData));
+
+        const coverInviteMsg: ChatMessageItem = {
+          id: `msg_cover_invite_${Date.now()}`,
+          role: "assistant",
+          content: `🎉 All ${generatedCount} interior pages of "${data.book.title}" are now generated!\n\nNext step: let's design your **Front Book Cover** right here in our chat. How would you like your cover to look? Tell me your cover illustration idea, color mood, subtitle, or author credit — or tap a suggestion below:`,
+          discussionStage: "cover_design",
+          quickReplies: isJournalBook
+            ? [
+                "Minimalist line-art emblem cover on warm cream paper",
+                "Midnight glacier cover with bold title & tech border",
+                "Vibrant storybook cover with custom author byline",
+              ]
+            : [
+                `Vibrant hero cover starring ${character.name}`,
+                "Minimalist monochrome line-art cover ready to color",
+                "Midnight glacier edition with golden starlight frame",
+              ],
+          coverDraft: {
+            title: data.book.title,
+            subtitle: data.book.subtitle,
+            authorByline: authorName || data.book.authorName || null,
+            coverPrompt: `Book cover illustration for "${data.book.title}" featuring ${character.name} (${character.type}), ${artStyle || prompt}`,
+            colorScheme: "midnight_glacier",
+            isReadyForCover: true,
+          },
+        };
+
+        setMessages((prev) => [...prev, coverInviteMsg]);
+        setIsDiscussionDone(false); // Open the same chat thread so user sees the cover invitation immediately
       }
     } catch (err) {
       console.error("Full book expansion failed:", err);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  // Stage 3: Design Front Book Cover using decisions from the same AI chat
+  const handleDesignBookCover = async (overrideCoverDraft?: CoverDraftData) => {
+    setIsGeneratingCover(true);
+    try {
+      const effectiveCoverTitle = overrideCoverDraft?.title || book.cover?.title || book.title;
+      const effectiveCoverSubtitle = overrideCoverDraft?.subtitle || book.cover?.subtitle || book.subtitle;
+      const effectiveCoverAuthor =
+        overrideCoverDraft?.authorByline || book.cover?.authorByline || authorName || book.authorName;
+      const effectiveScheme: BookCoverColorScheme =
+        overrideCoverDraft?.colorScheme || book.cover?.colorScheme || coverColorScheme || "midnight_glacier";
+
+      const rawCoverPrompt =
+        overrideCoverDraft?.coverPrompt ||
+        coverPrompt ||
+        book.cover?.coverPrompt ||
+        `Front book cover centerpiece artwork for "${effectiveCoverTitle}" — ${prompt || book.subtitle || "custom edition"}`;
+
+      const isMonochromeCover =
+        effectiveScheme === "minimal_monochrome" ||
+        /\b(monochrome|black and white|line art|coloring cover)\b/i.test(rawCoverPrompt);
+
+      const res = await fetch("/api/ai/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: `Front book cover centerpiece illustration (no text inside image), ${rawCoverPrompt}`,
+          characterTraits: character.traits.join(", "),
+          pageNumber: 0,
+          artStyle: isMonochromeCover
+            ? "Clean high-contrast black and white line art emblem, pure white background"
+            : artStyle || "Playful, vibrant book cover illustration",
+          interiorColor: isMonochromeCover ? "black_and_white" : "standard_color",
+        }),
+      });
+
+      const data = await res.json();
+      const generatedCoverUrl = data.success && data.imageUrl ? data.imageUrl : book.pages[0]?.imageUrl;
+
+      const updatedCover: BookCoverDesign = {
+        title: effectiveCoverTitle,
+        subtitle: effectiveCoverSubtitle,
+        authorByline: effectiveCoverAuthor,
+        coverPrompt: rawCoverPrompt,
+        artStyle: isMonochromeCover ? "Monochrome line-art cover" : artStyle,
+        colorScheme: effectiveScheme,
+        imageUrl: generatedCoverUrl,
+        isDesigned: true,
+      };
+
+      setBook((prev) => ({
+        ...prev,
+        title: effectiveCoverTitle || prev.title,
+        subtitle: effectiveCoverSubtitle || prev.subtitle,
+        authorName: effectiveCoverAuthor || prev.authorName,
+        cover: updatedCover,
+      }));
+      setHasCover(true);
+      setActiveViewerPageIndex(0); // Flip BookViewer directly to the Front Cover (index 0)
+
+      // Smooth scroll to the Book Display below so the user sees the new cover
+      const displayEl = document.getElementById("book-display-section");
+      if (displayEl) {
+        displayEl.scrollIntoView({ behavior: "smooth" });
+      }
+    } catch (err) {
+      console.error("Book cover generation failed:", err);
+    } finally {
+      setIsGeneratingCover(false);
     }
   };
 
@@ -766,6 +967,45 @@ export default function StudioPage() {
     }));
   };
 
+  const handleCoverUpdate = (updatedCover: BookCoverDesign) => {
+    setBook((prev) => ({
+      ...prev,
+      cover: updatedCover,
+    }));
+    setHasCover(Boolean(updatedCover.isDesigned));
+    if (updatedCover.coverPrompt) setCoverPrompt(updatedCover.coverPrompt);
+    if (updatedCover.colorScheme) setCoverColorScheme(updatedCover.colorScheme);
+  };
+
+  const handleDesignCoverInChat = () => {
+    setIsDiscussionDone(false);
+    // Only append the cover design prompt if the latest message isn't already the cover invite
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.discussionStage === "cover_design") return prev;
+      return [
+        ...prev,
+        {
+          id: `msg_cover_focus_${Date.now()}`,
+          role: "assistant",
+          content: `🎨 **Let's design or refine the Front Book Cover for "${book.title}"!**\n\nStill in our same conversation — tell me what scene, colors, subtitle, or author byline you'd like on the cover, or pick an option below:`,
+          quickReplies: [
+            `Heroic cover of ${character.name} with "${book.title}"`,
+            "Magical glowing night-sky cover with stars",
+            "Warm storybook cover with author byline",
+            "Generate Front Book Cover now",
+          ],
+          discussionStage: "cover_design",
+          isReadyForProof: true,
+        },
+      ];
+    });
+    setTimeout(() => {
+      const chatInput = document.querySelector("textarea") as HTMLTextAreaElement | null;
+      if (chatInput) chatInput.focus();
+    }, 100);
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-[#0a0e1a] text-[#e0e8f0] relative selection:bg-sky-500/30 selection:text-sky-200">
       {/* Ambient Glacier Aurora Frost in Studio Background */}
@@ -804,14 +1044,13 @@ export default function StudioPage() {
                   </h2>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setBookLibraryOpen(true)}
+                  <Link
+                    href="/bookstore"
                     className="text-[11px] font-bold px-3 py-1 rounded-full bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
                   >
                     <BookOpen className="w-3.5 h-3.5 text-purple-300" />
-                    <span>📚 Book Library</span>
-                  </button>
+                    <span>📚 Bookstore &amp; Vault</span>
+                  </Link>
                   {messages.length > 0 && (
                     <button
                       type="button"
@@ -828,7 +1067,7 @@ export default function StudioPage() {
                     className="text-[11px] font-bold px-3 py-1 rounded-full glacier-glass hover:bg-slate-800 text-sky-200 border border-sky-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
                   >
                     <Package className="w-3.5 h-3.5 text-sky-400" />
-                    <span className="hidden sm:inline">AG Grid Orders</span>
+                    <span className="hidden sm:inline">My Orders</span>
                   </button>
                   <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -1095,38 +1334,105 @@ export default function StudioPage() {
                               );
                             })()}
 
-                            {/* Transition Prompt to Confirmation Card on Latest Turn: only once the designer has locked the brief */}
-                            {isLatestAssistant && (msg.isReadyForProof || msg.requiresNewProof) && (
-                              <div className="pt-2.5 border-t border-sky-400/20 flex flex-wrap items-center justify-between gap-2 animate-in fade-in">
-                                <span className="text-[11px] text-sky-300 font-medium">
-                                  {msg.requiresNewProof || isProofStale
-                                    ? "✏️ Edits applied! Redesign your Master Page 1 proof to see them."
-                                    : "✨ Concept ready! Design your free Master Page 1 proof now with OpenAI."}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setIsDiscussionDone(true);
-                                    handleDesignHeroPage();
-                                  }}
-                                  disabled={isGenerating}
-                                  className="px-3.5 py-1.5 rounded-xl bg-sky-400 text-slate-950 font-bold text-xs hover:bg-sky-300 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow disabled:opacity-50"
-                                >
-                                  {isGenerating ? (
+                            {/* Stage-aware Action CTA on Latest Assistant Turn (Page 1 Proof -> Full Interior Expansion -> Book Cover Design) */}
+                            {isLatestAssistant &&
+                              (hasFullBook ||
+                                msg.discussionStage === "cover_design" ||
+                                Boolean(msg.coverDraft?.isReadyForCover) ||
+                                msg.isReadyForProof ||
+                                msg.requiresNewProof ||
+                                hasProof) && (
+                                <div className="pt-2.5 border-t border-sky-400/20 flex flex-wrap items-center justify-between gap-2 animate-in fade-in">
+                                  {hasFullBook ||
+                                  msg.discussionStage === "cover_design" ||
+                                  Boolean(msg.coverDraft?.isReadyForCover) ? (
                                     <>
-                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                      <span>Designing Master Proof...</span>
+                                      <span className="text-[11px] text-sky-300 font-medium">
+                                        {hasCover
+                                          ? "✨ Cover updated in chat! Regenerate your Front Book Cover to see changes."
+                                          : "🎨 Interior pages complete! Generate your Front Book Cover from our chat now."}
+                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDesignBookCover(msg.coverDraft)}
+                                          disabled={isGeneratingCover}
+                                          className="px-3.5 py-1.5 rounded-xl bg-sky-400 text-slate-950 font-bold text-xs hover:bg-sky-300 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow disabled:opacity-50"
+                                        >
+                                          {isGeneratingCover ? (
+                                            <>
+                                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                              <span>Designing Book Cover...</span>
+                                            </>
+                                          ) : (
+                                            <span>
+                                              {hasCover
+                                                ? "🎨 Regenerate Book Cover →"
+                                                : "🎨 Generate Front Book Cover Now →"}
+                                            </span>
+                                          )}
+                                        </button>
+                                      </div>
+                                    </>
+                                  ) : hasProof && !msg.requiresNewProof && !isProofStale ? (
+                                    <>
+                                      <span className="text-[11px] text-emerald-300 font-medium">
+                                        ✨ Master Page 1 proof is ready! Expand to all {pageCount} interior pages now.
+                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setIsDiscussionDone(true);
+                                            handleExpandFullSpread();
+                                          }}
+                                          disabled={isGenerating}
+                                          className="px-3.5 py-1.5 rounded-xl bg-sky-400 text-slate-950 font-bold text-xs hover:bg-sky-300 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow disabled:opacity-50"
+                                        >
+                                          {isGenerating ? (
+                                            <>
+                                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                              <span>Generating {pageCount} Pages...</span>
+                                            </>
+                                          ) : (
+                                            <span>✨ Generate Full Book ({pageCount} Pages) →</span>
+                                          )}
+                                        </button>
+                                      </div>
                                     </>
                                   ) : (
-                                    <span>
-                                      {msg.requiresNewProof || isProofStale
-                                        ? "🎨 Redesign Master Proof with Edits →"
-                                        : "🎨 Design Master Page 1 Proof Now (Free) →"}
-                                    </span>
+                                    <>
+                                      <span className="text-[11px] text-sky-300 font-medium">
+                                        {msg.requiresNewProof || isProofStale
+                                          ? "✏️ Edits applied! Redesign your Master Page 1 proof to see them."
+                                          : "✨ Concept ready! Design your free Master Page 1 proof now with OpenAI."}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setIsDiscussionDone(true);
+                                          handleDesignHeroPage();
+                                        }}
+                                        disabled={isGenerating}
+                                        className="px-3.5 py-1.5 rounded-xl bg-sky-400 text-slate-950 font-bold text-xs hover:bg-sky-300 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow disabled:opacity-50"
+                                      >
+                                        {isGenerating ? (
+                                          <>
+                                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                            <span>Designing Master Proof...</span>
+                                          </>
+                                        ) : (
+                                          <span>
+                                            {msg.requiresNewProof || isProofStale
+                                              ? "🎨 Redesign Master Proof with Edits →"
+                                              : "🎨 Design Master Page 1 Proof Now (Free) →"}
+                                          </span>
+                                        )}
+                                      </button>
+                                    </>
                                   )}
-                                </button>
-                              </div>
-                            )}
+                                </div>
+                              )}
                           </div>
 
                           {isUser && (
@@ -1227,25 +1533,30 @@ export default function StudioPage() {
                   <span>Back to Discussion</span>
                 </button>
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setBookLibraryOpen(true)}
+                  <Link
+                    href="/bookstore"
                     className="text-[11px] font-bold px-3 py-1 rounded-full bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
                   >
                     <BookOpen className="w-3.5 h-3.5 text-purple-300" />
-                    <span>📚 Book Library</span>
-                  </button>
+                    <span>📚 Bookstore &amp; Vault</span>
+                  </Link>
                   <button
                     type="button"
                     onClick={() => setOrderTrackingOpen(true)}
                     className="text-[11px] font-bold px-3 py-1 rounded-full glacier-glass hover:bg-slate-800 text-sky-200 border border-sky-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
                   >
                     <Package className="w-3.5 h-3.5 text-sky-400" />
-                    <span>AG Grid Orders</span>
+                    <span>My Orders</span>
                   </button>
                   <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    Ready for Master Proof
+                    {hasFullBook && hasCover
+                      ? "Book & Cover Complete"
+                      : hasFullBook
+                      ? "Interior Complete • Ready for Cover"
+                      : hasProof && !isProofStale
+                      ? "Page 1 Proof Ready"
+                      : "Ready for Master Proof"}
                   </span>
                 </div>
               </div>
@@ -1491,16 +1802,32 @@ export default function StudioPage() {
                 </div>
               </div>
 
-              {/* Designer Recommendation Banner */}
+              {/* Dynamic Stage Recommendation Banner */}
               <div className="p-3 rounded-xl bg-[#0b1c30] border border-[#1a385c] flex items-start gap-2.5 text-xs text-sky-200">
                 <Sparkles className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
                 <p className="leading-relaxed text-slate-200">
-                  <strong className="text-white">Designer Recommendation:</strong> Let&apos;s design your Master Page 1 Proof first for free to check layout and visual style before creating all {pageCount} pages.
+                  {hasFullBook && !hasCover ? (
+                    <>
+                      <strong className="text-white">Final Step — Front Book Cover:</strong> All {book.pages.length} interior pages are ready! Now let&apos;s design your custom Front Book Cover using our same AI chat or generate it right below.
+                    </>
+                  ) : hasFullBook && hasCover ? (
+                    <>
+                      <strong className="text-emerald-300">Book &amp; Front Cover Complete:</strong> Your {book.pages.length}-page book and custom Front Cover are ready! Preview the spreads below, tweak any page or cover in chat, or export your 300 DPI PDF.
+                    </>
+                  ) : hasProof && !isProofStale ? (
+                    <>
+                      <strong className="text-white">Master Page 1 Proof Ready:</strong> Check Page 1 below! If you love the look, expand all {pageCount} pages now, or continue in chat to tweak anything.
+                    </>
+                  ) : (
+                    <>
+                      <strong className="text-white">Designer Recommendation:</strong> Let&apos;s design your Master Page 1 Proof first for free to check layout and visual style before creating all {pageCount} pages.
+                    </>
+                  )}
                 </p>
               </div>
 
               {/* Stale proof warning: edits from the discussion aren't in the current proof yet */}
-              {hasProof && isProofStale && (
+              {hasProof && !hasFullBook && isProofStale && (
                 <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-400/40 flex items-start gap-2.5 text-xs animate-in fade-in">
                   <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                   <p className="leading-relaxed text-amber-100">
@@ -1510,8 +1837,98 @@ export default function StudioPage() {
                 </div>
               )}
 
-              {/* Stage 1 Master Page CTA Buttons: Expand or Continue Chat */}
-              {book.pages.length === 1 && !isProofStale ? (
+              {/* Multi-Stage Primary CTA Buttons */}
+              {hasFullBook && !hasCover ? (
+                <div className="space-y-2.5 pt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={handleDesignCoverInChat}
+                      className="py-3 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 border-2 border-sky-400/80 text-sky-200 font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <MessageSquare className="w-4 h-4 text-sky-400" />
+                      <span>💬 Customize Cover in Same AI Chat</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDesignBookCover()}
+                      disabled={isGeneratingCover || isGenerating}
+                      className="py-3 px-4 rounded-2xl bg-[#7dd3fc] hover:bg-[#a0e3ff] text-[#001f2e] font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 transition-all hover:brightness-105 active:scale-95 disabled:opacity-50 cursor-pointer"
+                    >
+                      {isGeneratingCover ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin text-[#001f2e]" />
+                          <span>Designing Front Cover...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Palette className="w-4 h-4 text-[#001f2e]" />
+                          <span>🎨 Generate Front Book Cover Now</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {pageCount !== book.pages.length && (
+                    <div className="text-center">
+                      <button
+                        type="button"
+                        onClick={handleExpandFullSpread}
+                        disabled={isGenerating}
+                        className="text-xs text-sky-300 hover:text-sky-200 underline font-semibold cursor-pointer"
+                      >
+                        ✨ Update Interior to {pageCount} Pages
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : hasFullBook && hasCover ? (
+                <div className="space-y-2.5 pt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={handleDesignCoverInChat}
+                      className="py-3 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 border-2 border-sky-400/80 text-sky-200 font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <MessageSquare className="w-4 h-4 text-sky-400" />
+                      <span>💬 Tweak Cover or Pages in AI Chat</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDesignBookCover()}
+                      disabled={isGeneratingCover || isGenerating}
+                      className="py-3 px-4 rounded-2xl bg-[#7dd3fc] hover:bg-[#a0e3ff] text-[#001f2e] font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 transition-all hover:brightness-105 active:scale-95 disabled:opacity-50 cursor-pointer"
+                    >
+                      {isGeneratingCover ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin text-[#001f2e]" />
+                          <span>Regenerating Front Cover...</span>
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-4 h-4 text-[#001f2e]" />
+                          <span>🔄 Regenerate Front Book Cover</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {pageCount !== book.pages.length && (
+                    <div className="text-center">
+                      <button
+                        type="button"
+                        onClick={handleExpandFullSpread}
+                        disabled={isGenerating}
+                        className="text-xs text-sky-300 hover:text-sky-200 underline font-semibold cursor-pointer"
+                      >
+                        ✨ Expand / Update Interior ({pageCount} Pgs)
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : hasProof && !isProofStale ? (
                 <div className="space-y-2.5 pt-1">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <button
@@ -1617,6 +2034,10 @@ export default function StudioPage() {
             <BookViewer
               book={book}
               onPageUpdate={handlePageUpdate}
+              onCoverUpdate={handleCoverUpdate}
+              onDesignCoverInChat={handleDesignCoverInChat}
+              activePageIndex={activeViewerPageIndex}
+              onPageIndexChange={setActiveViewerPageIndex}
               onDownloadPdf={handleDownloadFullPdf}
               onPrintFirstPage={handlePrintFirstPage}
               onOpenBookDetails={() => setBookDetailsOpen(true)}
@@ -1624,7 +2045,7 @@ export default function StudioPage() {
               onOpenTokenModal={() => setTokenModalOpen(true)}
               isDownloading={isDownloadingPdf || isPrintingPageOne}
               isConfirmed={hasProof}
-              isBookUnlocked={false}
+              isBookUnlocked={isBookUnlocked}
             />
 
 
@@ -1738,6 +2159,8 @@ export default function StudioPage() {
             setBook(remixedBook);
             setHasProof(true);
             setIsProofStale(false);
+            setHasFullBook(remixedBook.pages.length > 1);
+            setHasCover(Boolean(remixedBook.cover?.isDesigned));
             setIsDiscussionDone(true);
             setPageCount(remixedBook.pages.length);
             // Append guidance message into the chat assistant

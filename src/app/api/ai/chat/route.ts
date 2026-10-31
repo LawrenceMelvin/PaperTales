@@ -5,11 +5,12 @@ interface ChatMessage {
   content: string;
 }
 
-type DiscussionStage = "discovery" | "designing" | "brief_review" | "concept_locked" | "revising";
+type DiscussionStage = "discovery" | "designing" | "brief_review" | "concept_locked" | "revising" | "cover_design";
 
 interface ProjectState {
   title?: string;
   subtitle?: string;
+  authorName?: string;
   genre?: string;
   pageCount?: number;
   trimSize?: string;
@@ -24,9 +25,18 @@ interface ProjectState {
   cornerDecorations?: "tech_brackets" | "gears" | "minimal" | "none";
   interiorColor?: "black_and_white" | "standard_color";
   artStyle?: string;
+  coverPrompt?: string;
+  coverColorScheme?: "midnight_glacier" | "warm_cream" | "storybook_vibrant" | "minimal_monochrome";
 }
 
-const VALID_STAGES: DiscussionStage[] = ["discovery", "designing", "brief_review", "concept_locked", "revising"];
+const VALID_STAGES: DiscussionStage[] = [
+  "discovery",
+  "designing",
+  "brief_review",
+  "concept_locked",
+  "revising",
+  "cover_design",
+];
 
 const TITLE_PICK_PATTERN = /I (?:pick|choose) the (?:print-safe )?title:\s*["“](.+?)["”]/i;
 const NEW_TITLE_REQUEST_PATTERN =
@@ -84,7 +94,12 @@ STAGES ("discussionStage"):
    - Picking a title fills the title field only. It does NOT finish the consultation if other required fields are missing.
 3. "brief_review": all required fields are filled. Present a short bulleted summary of the full brief and ask the creator to approve it or request changes. quickReplies should include an approval phrase like "Looks perfect, let's design page 1" and a change option.
 4. "concept_locked": ONLY when the creator explicitly approves the brief summary you presented (or explicitly asks to skip ahead and design now). Set isReadyForProof = true. Briefly confirm and say you're ready to design the free Master Page 1 proof.
-5. "revising": the project is already locked or a proof already exists (see CURRENT PROJECT STATE) and the creator asks for a change. Apply the change to bookDraft/designBrief, confirm ONLY what changed (do not restate the whole brief or the title), list the edits in "changes", set requiresNewProof = true if the change affects visuals/content (theme, style, character, structure, title, genre, trim), and set isReadyForProof = true when the brief is still complete.
+5. "revising": the project is already locked or a proof already exists (see CURRENT PROJECT STATE) and the creator asks for a change. Apply the change to bookDraft/designBrief, confirm ONLY what changed (do not restate the whole brief or the title), list the edits in "changes".
+   - IMPORTANT: If Page 1 proof is already generated and the creator approves Page 1 or asks to generate all pages / expand the full book (or only changes pageCount), set requiresNewProof = false and bookDraft.recommendedAction = "expand_full_spread". Only set requiresNewProof = true if they ask to change the visual layout, interior structure, border, or art style of Page 1.
+6. "cover_design": All interior pages are ALREADY generated (see CURRENT PROJECT STATE: Full interior pages generated = YES), OR the creator asks to design/customize the Front Book Cover in this same conversation.
+   - Reference the book's title, character/theme, and style from earlier in the conversation!
+   - Help the creator shape their Front Book Cover: cover illustration scene ("coverPrompt"), subtitle/tagline ("subtitle"), author credit/byline ("authorByline"), and cover theme ("colorScheme": "midnight_glacier" | "warm_cream" | "storybook_vibrant" | "minimal_monochrome").
+   - Populate "coverDraft" and set coverDraft.isReadyForCover = true as soon as the creator describes or selects a cover direction (or approves your suggested cover concept). Set bookDraft.recommendedAction = "design_book_cover".
 
 TITLE RULES:
 - If a title is already locked (see CURRENT PROJECT STATE), do NOT restate or re-confirm it, and keep "titleOptions": [] unless the creator explicitly asks for new or different titles.
@@ -99,7 +114,7 @@ COPYRIGHT: If a known franchise is referenced (Disney, Marvel, Pokemon, etc.), d
 OUTPUT: a single flat JSON object with exactly these keys:
 {
   "reply": string,
-  "discussionStage": "discovery" | "designing" | "brief_review" | "concept_locked" | "revising",
+  "discussionStage": "discovery" | "designing" | "brief_review" | "concept_locked" | "revising" | "cover_design",
   "isReadyForProof": boolean,
   "titleOptions": [],
   "designBrief": { "purpose": string|null, "audience": string|null, "bookType": string|null, "theme": string|null, "artStyle": string|null, "pageStructure": string|null, "pageCount": number|null, "trimSize": string|null, "title": string|null },
@@ -119,25 +134,42 @@ OUTPUT: a single flat JSON object with exactly these keys:
     "cornerDecorations": "tech_brackets" | "gears" | "minimal" | "none",
     "interiorColor": "black_and_white" | "standard_color",
     "pageCount": number, "trimSize": "6x9" | "8.5x8.5" | "8.5x11",
-    "recommendedAction": "design_hero_page",
+    "recommendedAction": "design_hero_page" | "expand_full_spread" | "design_book_cover",
     "designerNote": string,
     "channel3Query": "search query for companion supplies"
+  },
+  "coverDraft": {
+    "title": string | null,
+    "subtitle": string | null,
+    "authorByline": string | null,
+    "coverPrompt": "Detailed visual prompt for the front cover artwork matching the book's theme and style" | null,
+    "colorScheme": "midnight_glacier" | "warm_cream" | "storybook_vibrant" | "minimal_monochrome" | null,
+    "isReadyForCover": boolean
   },
   "quickReplies": string[],
   "printAdvisory": { "hasRisk": boolean, "franchiseName": string|null, "safeTitle": string|null, "safeCharacter": string|null, "explanation": string|null }
 }
-"changes" is [] unless discussionStage is "revising". Output valid JSON only, no markdown.`;
+"changes" is [] unless discussionStage is "revising" or "cover_design". Output valid JSON only, no markdown.`;
 
-function buildStateMessage(state: ProjectState | undefined, lockedTitle: string | null, hasProof: boolean): string {
+function buildStateMessage(
+  state: ProjectState | undefined,
+  lockedTitle: string | null,
+  hasProof: boolean,
+  hasFullBook: boolean,
+  hasCover: boolean
+): string {
   const lines = [
     "CURRENT PROJECT STATE (source of truth for the studio; apply the creator's edits on top of this):",
     `- Locked title: ${lockedTitle ? `"${lockedTitle}"` : "none yet"}`,
-    `- Page 1 proof already generated: ${hasProof ? "YES (any visual/content change requires a new proof)" : "no"}`,
+    `- Page 1 proof already generated: ${hasProof ? "YES" : "no"}`,
+    `- Full interior pages generated: ${hasFullBook ? "YES (all interior pages are complete! Guide the creator to design/refine the Front Book Cover in stage 'cover_design')" : "no"}`,
+    `- Front Book Cover already generated: ${hasCover ? "YES (creator can tweak the cover or interior)" : "no"}`,
   ];
   if (state) {
     if (state.genre) lines.push(`- Lane/genre: ${state.genre}`);
     if (state.pageCount) lines.push(`- Page count: ${state.pageCount}`);
     if (state.trimSize) lines.push(`- Trim size: ${state.trimSize}`);
+    if (state.authorName) lines.push(`- Author byline: ${state.authorName}`);
     if (state.characterName || state.characterType)
       lines.push(`- Character/protagonist: ${state.characterName || "?"} (${state.characterType || "?"})`);
     if (state.artStyle) lines.push(`- Art style: ${state.artStyle}`);
@@ -148,6 +180,8 @@ function buildStateMessage(state: ProjectState | undefined, lockedTitle: string 
     if (state.cornerDecorations) lines.push(`- Corner decorations: ${state.cornerDecorations}`);
     if (state.interiorColor) lines.push(`- Interior print color: ${state.interiorColor}`);
     if (state.prompt) lines.push(`- Current book description: ${state.prompt}`);
+    if (state.coverPrompt) lines.push(`- Current cover artwork prompt: ${state.coverPrompt}`);
+    if (state.coverColorScheme) lines.push(`- Current cover color scheme: ${state.coverColorScheme}`);
   }
   return lines.join("\n");
 }
@@ -188,6 +222,8 @@ export async function POST(req: NextRequest) {
     const messages: ChatMessage[] = Array.isArray(body.messages) ? body.messages : [];
     const projectState: ProjectState | undefined = body.projectState;
     const hasProof = Boolean(body.hasProof);
+    const hasFullBook = Boolean(body.hasFullBook);
+    const hasCover = Boolean(body.hasCover);
 
     const openaiKey = process.env.OPENAI_API_KEY;
     const groqKey = process.env.GROQ_API_KEY;
@@ -207,7 +243,7 @@ export async function POST(req: NextRequest) {
 
     const formattedMessages = [
       { role: "system", content: SYSTEM_PROMPT },
-      { role: "system", content: buildStateMessage(projectState, lockedTitle, hasProof) },
+      { role: "system", content: buildStateMessage(projectState, lockedTitle, hasProof, hasFullBook, hasCover) },
       ...messages.map((m) => ({ role: m.role, content: m.content })),
     ];
 
@@ -252,6 +288,12 @@ export async function POST(req: NextRequest) {
     const missingFields: string[] = Array.isArray(parsed.missingFields) ? parsed.missingFields : [];
     let isReadyForProof = Boolean(parsed.isReadyForProof);
 
+    // If all interior pages are already generated, default into cover_design stage unless revising interior
+    const userMentionsCover = /\b(cover|front\s*page|author\s*byline|byline|subtitle|tagline|midnight|warm\s*cream|vibrant|monochrome|emblem)\b/i.test(latestUser);
+    if (hasFullBook && (stage === "concept_locked" || stage === "brief_review" || userMentionsCover)) {
+      stage = "cover_design";
+    }
+
     // Never lock while required brief fields are still missing (unless already revising a proofed book).
     if (stage === "concept_locked" && missingFields.length > 0 && !hasProof) {
       stage = "brief_review";
@@ -272,7 +314,61 @@ export async function POST(req: NextRequest) {
     }
 
     const changes = Array.isArray(parsed.changes) ? parsed.changes : [];
-    const requiresNewProof = hasProof && (Boolean(parsed.requiresNewProof) || changes.length > 0);
+
+    // Check if the user is approving Page 1 or asking to generate the full book (or only changing pageCount)
+    const isApprovingOrExpanding =
+      /\b(looks?\s*(great|good|perfect|awesome|nice)|generate\s*(all|the|full)|expand|all\s*\d+\s*pages|proceed|approve|full\s*book|rest\s*of\s*the\s*pages)\b/i.test(
+        latestUser
+      );
+    const visualChanges = changes.filter(
+      (c: any) =>
+        c?.field &&
+        !["pageCount", "pages", "authorName", "authorByline", "coverPrompt", "cover", "colorScheme"].includes(
+          String(c.field)
+        )
+    );
+
+    const requiresNewProof =
+      hasProof &&
+      !hasFullBook &&
+      !isApprovingOrExpanding &&
+      stage !== "cover_design" &&
+      (Boolean(parsed.requiresNewProof) || visualChanges.length > 0);
+
+    if (bookDraft) {
+      if (hasFullBook || stage === "cover_design") {
+        bookDraft.recommendedAction = "design_book_cover";
+      } else if (hasProof && !requiresNewProof) {
+        bookDraft.recommendedAction = "expand_full_spread";
+      }
+    }
+
+    const coverDraft = parsed.coverDraft
+      ? {
+          title: parsed.coverDraft.title || bookDraft?.title || lockedTitle || projectState?.title || null,
+          subtitle: parsed.coverDraft.subtitle || bookDraft?.subtitle || projectState?.subtitle || null,
+          authorByline: parsed.coverDraft.authorByline || projectState?.authorName || null,
+          coverPrompt:
+            parsed.coverDraft.coverPrompt ||
+            (stage === "cover_design" ? latestUser : null) ||
+            projectState?.coverPrompt ||
+            null,
+          colorScheme: parsed.coverDraft.colorScheme || projectState?.coverColorScheme || "midnight_glacier",
+          isReadyForCover:
+            Boolean(parsed.coverDraft.isReadyForCover) ||
+            stage === "cover_design" ||
+            (hasFullBook && userMentionsCover),
+        }
+      : stage === "cover_design" || (hasFullBook && userMentionsCover)
+      ? {
+          title: bookDraft?.title || lockedTitle || projectState?.title || null,
+          subtitle: bookDraft?.subtitle || projectState?.subtitle || null,
+          authorByline: projectState?.authorName || null,
+          coverPrompt: latestUser || projectState?.coverPrompt || projectState?.prompt || null,
+          colorScheme: projectState?.coverColorScheme || "midnight_glacier",
+          isReadyForCover: true,
+        }
+      : null;
 
     return NextResponse.json({
       success: true,
@@ -286,6 +382,7 @@ export async function POST(req: NextRequest) {
       requiresNewProof,
       lockedTitle,
       bookDraft,
+      coverDraft,
       quickReplies: Array.isArray(parsed.quickReplies) ? parsed.quickReplies : [],
       printAdvisory: parsed.printAdvisory || { hasRisk: false },
       engine: engineUsed,

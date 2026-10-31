@@ -38,10 +38,11 @@ export async function POST(req: NextRequest) {
       interiorColor === "standard_color" ||
       Boolean(artStyle && /\b(color|colorful|vibrant|watercolor|pastel|painted|digital art|saturated)\b/i.test(artStyle));
 
-    // 1. Try OpenAI GPT-Image-2.5 (Sunburst) / GPT-Image-2 first
+    // 1. Try OpenAI GPT-Image-2.5 (Flare / Sunburst) first
     if (apiKey && apiKey.startsWith("sk-")) {
       const preferredModels = [
-        process.env.OPENAI_IMAGE_MODEL || "gpt-image-2.5-sunburst-2026-09-08",
+        process.env.OPENAI_IMAGE_MODEL || "gpt-image-2.5-flare",
+        "gpt-image-2.5-sunburst",
         "gpt-image-2",
       ];
 
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
               n: 1,
               size: "1024x1024",
             }),
+            signal: AbortSignal.timeout(45000),
           });
 
           if (openAiRes.ok) {
@@ -90,7 +92,53 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. High-speed, high-resolution AI illustration generator (Pollinations.ai)
+    // 2. High-speed Fallback: Google Imagen 3 (via GEMINI_API_KEY)
+    const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+    if (geminiKey) {
+      try {
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${geminiKey}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              instances: [{ prompt: enhancedPrompt }],
+              parameters: {
+                sampleCount: 1,
+                aspectRatio: "1:1",
+              },
+            }),
+            signal: AbortSignal.timeout(25000),
+          }
+        );
+
+        if (geminiRes.ok) {
+          const geminiData = await geminiRes.json();
+          const b64 = geminiData.predictions?.[0]?.bytesBase64Encoded;
+          const mime = geminiData.predictions?.[0]?.mimeType || "image/jpeg";
+          if (b64) {
+            return NextResponse.json({
+              success: true,
+              model: "imagen-3.0-generate-002",
+              imageUrl: `data:${mime};base64,${b64}`,
+              costEstimateUsd: 0.030,
+              message: isColor
+                ? "Full-color illustration generated with Google Imagen 3"
+                : "Vector line-art generated with Google Imagen 3",
+            });
+          }
+        } else {
+          const errBody = await geminiRes.text();
+          console.warn("Gemini Imagen request error:", geminiRes.status, errBody);
+        }
+      } catch (geminiErr) {
+        console.warn("Gemini Imagen call error:", geminiErr);
+      }
+    }
+
+    // 3. Resilient fallback: Pollinations.ai
     const pollinationsUrl = getPollinationsImageUrl(enhancedPrompt);
 
     return NextResponse.json({

@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { BookProject, BookPage } from "@/types/book";
+import React, { useState, useEffect } from "react";
+import { BookProject, BookPage, BookCoverDesign } from "@/types/book";
 import {
   ChevronLeft,
   ChevronRight,
@@ -29,6 +29,10 @@ import { getClientTokenBalance, deductClientTokens } from "@/lib/token-store";
 interface BookViewerProps {
   book: BookProject;
   onPageUpdate: (updatedPage: BookPage) => void;
+  onCoverUpdate?: (updatedCover: BookCoverDesign) => void;
+  onDesignCoverInChat?: () => void;
+  activePageIndex?: number;
+  onPageIndexChange?: (idx: number) => void;
   onDownloadPdf: () => void;
   onOrderPhysical: () => void;
   onPrintFirstPage?: () => void;
@@ -42,6 +46,10 @@ interface BookViewerProps {
 export default function BookViewer({
   book,
   onPageUpdate,
+  onCoverUpdate,
+  onDesignCoverInChat,
+  activePageIndex,
+  onPageIndexChange,
   onDownloadPdf,
   onOrderPhysical,
   onPrintFirstPage,
@@ -51,10 +59,21 @@ export default function BookViewer({
   isConfirmed = true,
   isBookUnlocked = false,
 }: BookViewerProps) {
-  const [currentPageIndex, setCurrentPageIndex] = useState<number>(0);
+  const [currentPageIndex, setCurrentPageIndex] = useState<number>(activePageIndex ?? 0);
   const [editingStory, setEditingStory] = useState<boolean>(false);
   const [editText, setEditText] = useState<string>("");
   const [mobilePageTab, setMobilePageTab] = useState<"story" | "art">("story");
+
+  useEffect(() => {
+    if (typeof activePageIndex === "number" && activePageIndex !== currentPageIndex) {
+      setCurrentPageIndex(activePageIndex);
+    }
+  }, [activePageIndex]);
+
+  const updatePageIndex = (nextIdx: number) => {
+    setCurrentPageIndex(nextIdx);
+    if (onPageIndexChange) onPageIndexChange(nextIdx);
+  };
 
   // Floating AI text refine states
   const [textSelection, setTextSelection] = useState<{
@@ -80,7 +99,7 @@ export default function BookViewer({
 
   const handleNext = () => {
     if (currentPageIndex < totalPages) {
-      setCurrentPageIndex((prev) => prev + 1);
+      updatePageIndex(currentPageIndex + 1);
       setEditingStory(false);
       setTextSelection(null);
       setArtModalOpen(false);
@@ -89,7 +108,7 @@ export default function BookViewer({
 
   const handlePrev = () => {
     if (currentPageIndex > 0) {
-      setCurrentPageIndex((prev) => prev - 1);
+      updatePageIndex(currentPageIndex - 1);
       setEditingStory(false);
       setTextSelection(null);
       setArtModalOpen(false);
@@ -197,7 +216,7 @@ export default function BookViewer({
   };
 
   const handleTweakArt = async (customInstruction?: string) => {
-    if (!activePage) return;
+    if (!isCover && !activePage) return;
     const balance = getClientTokenBalance();
     if (balance < 2) {
       setArtModalOpen(false);
@@ -207,9 +226,13 @@ export default function BookViewer({
 
     setIsGeneratingArt(true);
     try {
+      const basePrompt = isCover
+        ? book.cover?.coverPrompt || `Book cover artwork for "${book.title}" starring ${book.character?.name || "the protagonist"}`
+        : activePage?.imagePrompt || (isColorBook ? "children's illustration" : "coloring page illustration");
+
       const fullPrompt = customInstruction
-        ? `${activePage.imagePrompt || (isColorBook ? "children's illustration" : "coloring page illustration")}, modification: ${customInstruction}`
-        : `${activePage.imagePrompt || (isColorBook ? "children's illustration" : "coloring page illustration")}, fresh alternative composition`;
+        ? `${basePrompt}, modification: ${customInstruction}`
+        : `${basePrompt}, fresh alternative composition`;
 
       const res = await fetch("/api/ai/image", {
         method: "POST",
@@ -217,21 +240,36 @@ export default function BookViewer({
         body: JSON.stringify({
           prompt: fullPrompt,
           characterTraits: book.character?.traits?.join(", ") || "",
-          pageNumber: activePage.pageNumber,
-          artStyle: book.artStyle,
-          interiorColor: book.format?.interiorColor,
+          pageNumber: isCover ? 0 : activePage?.pageNumber,
+          artStyle: book.cover?.artStyle || book.artStyle,
+          interiorColor: isCover
+            ? book.cover?.colorScheme === "minimal_monochrome"
+              ? "black_and_white"
+              : "standard_color"
+            : book.format?.interiorColor,
         }),
       });
 
       const data = await res.json();
       if (data.success) {
         deductClientTokens(2);
-        if (data.imageUrl) {
-          onPageUpdate({ ...activePage, imageUrl: data.imageUrl, svgData: undefined });
-        } else if (data.svg) {
-          onPageUpdate({ ...activePage, svgData: data.svg, imageUrl: undefined });
+        if (isCover && onCoverUpdate) {
+          onCoverUpdate({
+            ...book.cover,
+            title: book.cover?.title || book.title,
+            subtitle: book.cover?.subtitle || book.subtitle,
+            coverPrompt: fullPrompt,
+            imageUrl: data.imageUrl || book.cover?.imageUrl,
+            isDesigned: true,
+          });
+        } else if (activePage) {
+          if (data.imageUrl) {
+            onPageUpdate({ ...activePage, imageUrl: data.imageUrl, svgData: undefined });
+          } else if (data.svg) {
+            onPageUpdate({ ...activePage, svgData: data.svg, imageUrl: undefined });
+          }
         }
-        setArtFeedback("Artwork updated!");
+        setArtFeedback(isCover ? "Cover artwork updated!" : "Artwork updated!");
         setTimeout(() => setArtFeedback(null), 4000);
       }
     } catch (err) {
@@ -674,49 +712,177 @@ export default function BookViewer({
       <div className="relative w-full min-h-[460px] sm:min-h-[520px] lg:min-h-[560px] glacier-glass rounded-2xl p-3 sm:p-6 lg:p-7 flex items-center justify-center border border-sky-400/25 shadow-2xl">
         {isCover ? (
           /* Cover Spread */
-          <div
-            className={`w-full ${coverAspectClass} bg-[#0f1524] rounded-r-2xl border border-sky-400/40 book-shadow flex flex-col justify-between p-6 sm:p-8 relative overflow-hidden text-white transition-all duration-300`}
-          >
-            <div className="absolute top-0 bottom-0 left-0 w-3 bg-gradient-to-r from-sky-400/40 to-sky-400/10" />
+          (() => {
+            const coverImage = book.cover?.imageUrl;
+            const coverScheme = book.cover?.colorScheme || "midnight_glacier";
+            const isLightCover = coverScheme === "warm_cream" || coverScheme === "minimal_monochrome";
+            const coverBgClass =
+              coverScheme === "warm_cream"
+                ? "bg-[#fffcf5] text-slate-900 border-amber-300/80"
+                : coverScheme === "minimal_monochrome"
+                ? "bg-white text-slate-950 border-slate-900 border-2"
+                : coverScheme === "storybook_vibrant"
+                ? "bg-gradient-to-br from-sky-900 via-indigo-950 to-purple-950 text-white border-sky-300/60"
+                : "bg-[#0f1524] text-white border-sky-400/40";
 
-            <div className="text-center pt-2 sm:pt-4">
-              <span className="text-[10px] sm:text-xs uppercase tracking-widest font-extrabold text-sky-300">
-                {isJournal
-                  ? "Personalized Reflection Journal"
-                  : isActivityBook
-                  ? (isColorBook ? "Personalized Science & Activity Book" : "Science & Activity Book")
-                  : (isColorBook ? "Personalized Storybook" : "Personalized Story & Coloring")}
-              </span>
-              <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight mt-1 mb-1 font-serif">
-                {book.title}
-              </h1>
-              {book.subtitle && <p className="text-xs font-medium text-[#a0b4c4]">{book.subtitle}</p>}
-            </div>
+            const coverTitle = book.cover?.title || book.title;
+            const coverSubtitle = book.cover?.subtitle || book.subtitle;
+            const coverAuthor =
+              book.cover?.authorByline ||
+              (book.authorName && book.authorName.trim() !== "" && book.authorName !== "Lawrence & Leo"
+                ? book.authorName
+                : "");
 
-            {/* Cover Graphic Frame */}
-            <div className="w-full flex-1 my-3 sm:my-4 border-2 border-dashed border-sky-400/30 rounded-xl flex flex-col items-center justify-center p-4 bg-slate-900/60">
-              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 border-sky-400/60 flex items-center justify-center mb-2 bg-slate-950">
-                <Sparkles className="w-6 h-6 sm:w-7 sm:h-7 text-sky-400" />
+            return (
+              <div
+                className={`w-full ${coverAspectClass} ${coverBgClass} rounded-r-2xl border book-shadow flex flex-col justify-between p-6 sm:p-8 relative overflow-hidden transition-all duration-300`}
+              >
+                <div
+                  className={`absolute top-0 bottom-0 left-0 w-3 ${
+                    isLightCover
+                      ? "bg-gradient-to-r from-slate-900/20 to-transparent"
+                      : "bg-gradient-to-r from-sky-400/40 to-sky-400/10"
+                  }`}
+                />
+
+                {/* Top Cover Action Buttons */}
+                <div className="flex items-center justify-between gap-1.5 z-10 -mt-1 mb-1">
+                  {book.cover?.isDesigned ? (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Custom AI Cover
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-400 border border-sky-400/30">
+                      Front Cover Preview
+                    </span>
+                  )}
+
+                  <div className="flex items-center gap-1.5">
+                    {onDesignCoverInChat && (
+                      <button
+                        type="button"
+                        onClick={onDesignCoverInChat}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-400/40 flex items-center gap-1 transition-all cursor-pointer"
+                        title="Use the AI Chat to customize the cover"
+                      >
+                        <Sparkles className="w-3 h-3 text-sky-400" />
+                        <span>Design in Chat</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setArtModalOpen(true)}
+                      disabled={isGeneratingArt}
+                      className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-900/90 hover:bg-slate-950 text-sky-300 border border-sky-400/40 flex items-center gap-1 transition-all cursor-pointer"
+                    >
+                      {isGeneratingArt ? (
+                        <Loader2 className="w-3 h-3 animate-spin text-sky-400" />
+                      ) : (
+                        <Palette className="w-3 h-3 text-sky-400" />
+                      )}
+                      <span>Tweak Cover</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="text-center pt-1">
+                  <span
+                    className={`text-[10px] sm:text-xs uppercase tracking-widest font-extrabold ${
+                      isLightCover ? "text-slate-600" : "text-sky-300"
+                    }`}
+                  >
+                    {isJournal
+                      ? "Personalized Reflection Journal"
+                      : isActivityBook
+                      ? isColorBook
+                        ? "Personalized Science & Activity Book"
+                        : "Science & Activity Book"
+                      : isColorBook
+                      ? "Personalized Storybook"
+                      : "Personalized Story & Coloring"}
+                  </span>
+                  <h1
+                    className={`text-xl sm:text-2xl font-black tracking-tight mt-1 mb-1 font-serif ${
+                      isLightCover ? "text-slate-950" : "text-white"
+                    }`}
+                  >
+                    {coverTitle}
+                  </h1>
+                  {coverSubtitle && (
+                    <p className={`text-xs font-medium ${isLightCover ? "text-slate-600" : "text-[#a0b4c4]"}`}>
+                      {coverSubtitle}
+                    </p>
+                  )}
+                </div>
+
+                {/* Cover Graphic Frame */}
+                <div
+                  className={`w-full flex-1 my-3 sm:my-4 rounded-xl flex flex-col items-center justify-center p-2.5 relative overflow-hidden ${
+                    coverImage
+                      ? isLightCover
+                        ? "border-2 border-slate-800 bg-white shadow-inner"
+                        : "border border-sky-400/40 bg-slate-950/60 shadow-inner"
+                      : isLightCover
+                      ? "border-2 border-dashed border-slate-300 bg-slate-50"
+                      : "border-2 border-dashed border-sky-400/30 bg-slate-900/60"
+                  }`}
+                >
+                  {coverImage ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={coverImage}
+                      alt={`${coverTitle} Front Cover`}
+                      className="w-full h-full max-h-[210px] sm:max-h-[240px] object-contain rounded-lg"
+                    />
+                  ) : (
+                    <>
+                      <div
+                        className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 flex items-center justify-center mb-2 ${
+                          isLightCover ? "border-slate-400 bg-white" : "border-sky-400/60 bg-slate-950"
+                        }`}
+                      >
+                        <Sparkles className={`w-6 h-6 sm:w-7 sm:h-7 ${isLightCover ? "text-slate-700" : "text-sky-400"}`} />
+                      </div>
+                      <p className={`text-xs sm:text-sm font-bold ${isLightCover ? "text-slate-900" : "text-white"}`}>
+                        {isJournal ? "Custom Edition" : `Featuring ${book.character.name}`}
+                      </p>
+                      <p
+                        className={`text-[11px] text-center max-w-[220px] mt-0.5 ${
+                          isLightCover ? "text-slate-600" : "text-[#a0b4c4]"
+                        }`}
+                      >
+                        {book.cover?.coverPrompt
+                          ? book.cover.coverPrompt
+                          : `${book.character.type} • ${book.character.traits.join(", ")}`}
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                <div
+                  className={`flex items-center justify-between border-t pt-3 text-xs ${
+                    isLightCover ? "border-slate-200 text-slate-600" : "border-white/10 text-[#a0b4c4]"
+                  }`}
+                >
+                  <span>
+                    {coverAuthor ? (
+                      <>
+                        Author:{" "}
+                        <strong className={isLightCover ? "text-slate-950" : "text-white"}>{coverAuthor}</strong>
+                      </>
+                    ) : (
+                      <strong className={isLightCover ? "text-slate-950" : "text-white"}>
+                        Personal Keepsake Edition
+                      </strong>
+                    )}
+                  </span>
+                  <span className={`text-[10px] font-mono ${isLightCover ? "text-slate-700 font-bold" : "text-sky-300"}`}>
+                    {is6x9 ? '6" × 9" Lulu POD' : is85x11 ? '8.5" × 11" Lulu POD' : '8.5" × 8.5" Lulu POD'}
+                  </span>
+                </div>
               </div>
-              <p className="text-xs sm:text-sm font-bold text-white">Featuring {book.character.name}</p>
-              <p className="text-[11px] text-[#a0b4c4] text-center max-w-[220px] mt-0.5">
-                {book.character.type} &bull; {book.character.traits.join(", ")}
-              </p>
-            </div>
-
-            <div className="flex items-center justify-between border-t border-white/10 pt-3 text-xs text-[#a0b4c4]">
-              <span>
-                {book.authorName && book.authorName.trim() !== "" && book.authorName !== "Lawrence & Leo" ? (
-                  <>Author: <strong className="text-white">{book.authorName}</strong></>
-                ) : (
-                  <strong className="text-white">Personal Keepsake Edition</strong>
-                )}
-              </span>
-              <span className="text-[10px] text-sky-300 font-mono">
-                {is6x9 ? '6" × 9" Lulu POD' : is85x11 ? '8.5" × 11" Lulu POD' : '8.5" × 8.5" Lulu POD'}
-              </span>
-            </div>
-          </div>
+            );
+          })()
         ) : (
           /* Interior 2-Page Spread */
           <div className={`w-full h-full ${spreadAspectClass} flex flex-col sm:flex-row bg-white rounded-2xl border border-slate-300 book-shadow overflow-hidden text-slate-900 transition-all duration-300`}>
@@ -1268,10 +1434,10 @@ export default function BookViewer({
                 </div>
                 <div>
                   <h4 className="text-sm sm:text-base font-extrabold text-white">
-                    Tweak Illustration
+                    {isCover ? "Tweak Cover Illustration" : "Tweak Illustration"}
                   </h4>
                   <p className="text-[11px] text-[#a0b4c4]">
-                    Page {activePage?.pageNumber} Line Art &bull; 2 Tokens
+                    {isCover ? "Front Book Cover" : `Page ${activePage?.pageNumber} Artwork`} &bull; 2 Tokens
                   </p>
                 </div>
               </div>
