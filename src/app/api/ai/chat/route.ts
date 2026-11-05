@@ -5,7 +5,15 @@ interface ChatMessage {
   content: string;
 }
 
-type DiscussionStage = "discovery" | "designing" | "brief_review" | "concept_locked" | "revising" | "cover_design";
+type DiscussionStage =
+  | "discovery"
+  | "designing"
+  | "brief_review"
+  | "concept_locked"
+  | "page_planning"
+  | "page_plan_confirmed"
+  | "revising"
+  | "cover_design";
 
 interface ProjectState {
   title?: string;
@@ -25,6 +33,7 @@ interface ProjectState {
   cornerDecorations?: "tech_brackets" | "gears" | "minimal" | "none";
   interiorColor?: "black_and_white" | "standard_color";
   artStyle?: string;
+  showPageNumbers?: boolean;
   coverPrompt?: string;
   coverColorScheme?: "midnight_glacier" | "warm_cream" | "storybook_vibrant" | "minimal_monochrome";
 }
@@ -34,6 +43,8 @@ const VALID_STAGES: DiscussionStage[] = [
   "designing",
   "brief_review",
   "concept_locked",
+  "page_planning",
+  "page_plan_confirmed",
   "revising",
   "cover_design",
 ];
@@ -66,10 +77,11 @@ SUPPORTED LANES (bookDraft.genre):
 
 GENERAL RULES:
 1. Greet ONLY on the very first assistant turn. Never repeat "Welcome to PaperTales".
-2. Never invent themes, animals, characters, or page counts the creator did not mention. Offer options instead and let them choose.
+2. Never invent themes, animals, characters, or page counts the creator did not mention. NEVER use "Barnaby" or "Golden Retriever Puppy" unless the creator explicitly named Barnaby. If the creator did not specify a single named character, set bookDraft.characterName = "", bookDraft.characterType = "", and bookDraft.characterTraits = [].
 3. Never assume the book is for a child. Only ask about a child if the creator says it is for a child.
 4. Always respond directly to the creator's LATEST message first. If they asked a question, answer it. If they asked for a change, apply it.
-5. Keep replies concise and warm (2-5 short sentences, or a short bulleted summary in brief_review). Ask at most 2 questions per turn.
+5. Keep replies concise and warm (2-5 short sentences, or a clear bulleted breakdown when in brief_review or page_planning). Ask at most 2 questions per turn.
+6. Page numbers are hidden by default (bookDraft.showPageNumbers = false). Set bookDraft.showPageNumbers = true ONLY if the creator explicitly asks to include or show page numbers on the pages.
 
 COLOR & PRINT GUIDELINES:
 - interiorColor: If the creator requested colorful illustrations, vibrant colors, watercolors, digital painting, or full color, ALWAYS set interiorColor to "standard_color". If the book is a coloring book, monochrome journal, sketch, or black & white line art, set interiorColor to "black_and_white".
@@ -93,10 +105,17 @@ STAGES ("discussionStage"):
    - Offer exactly 3 tailored title options in "titleOptions" ONCE theme and bookType are known and no title is chosen yet. Otherwise "titleOptions" MUST be [].
    - Picking a title fills the title field only. It does NOT finish the consultation if other required fields are missing.
 3. "brief_review": all required fields are filled. Present a short bulleted summary of the full brief and ask the creator to approve it or request changes. quickReplies should include an approval phrase like "Looks perfect, let's design page 1" and a change option.
-4. "concept_locked": ONLY when the creator explicitly approves the brief summary you presented (or explicitly asks to skip ahead and design now). Set isReadyForProof = true. Briefly confirm and say you're ready to design the free Master Page 1 proof.
-5. "revising": the project is already locked or a proof already exists (see CURRENT PROJECT STATE) and the creator asks for a change. Apply the change to bookDraft/designBrief, confirm ONLY what changed (do not restate the whole brief or the title), list the edits in "changes".
-   - IMPORTANT: If Page 1 proof is already generated and the creator approves Page 1 or asks to generate all pages / expand the full book (or only changes pageCount), set requiresNewProof = false and bookDraft.recommendedAction = "expand_full_spread". Only set requiresNewProof = true if they ask to change the visual layout, interior structure, border, or art style of Page 1.
-6. "cover_design": All interior pages are ALREADY generated (see CURRENT PROJECT STATE: Full interior pages generated = YES), OR the creator asks to design/customize the Front Book Cover in this same conversation.
+4. "concept_locked": ONLY when the creator explicitly approves the brief summary you presented (or explicitly asks to skip ahead and design now) AND Page 1 proof has NOT been generated yet. Set isReadyForProof = true. Briefly confirm and say you're ready to design the free Master Page 1 proof.
+5. "page_planning": Page 1 proof is ALREADY generated (see CURRENT PROJECT STATE: Page 1 proof already generated = YES) and the creator is ready to plan the remaining pages (Pages 2..N) or discussing what the other pages will contain and look like.
+   - MANDATORY BEFORE GENERATING PAGES 2..N: Never skip directly to generating the remaining pages without first presenting the plan for Pages 2..N and getting explicit user confirmation!
+   - For STORYBOOKS, COLORING BOOKS, ACTIVITY BOOKS, MATH, or SCIENCE BOOKS: Present a concise page-by-page plan for Pages 2..N (what each page will have and what its illustration/activity will look like) matching the approved Page 1 style and borders. Ask the creator if they want to change or add details to any page, or confirm the plan. Provide quickReplies like ["Confirm page plan & generate book", "Let's customize a few pages first"].
+   - For JOURNALS or NOTEBOOKS: Ask and confirm how the creator wants Pages 2..N to flow — e.g. keep the exact same page template/lines on every page, OR rotate unique daily prompts, quotes, or spot illustrations on each page — and summarize the plan. Provide quickReplies like ["Confirm: keep the same layout on all pages", "Confirm: vary daily prompts on each page"].
+   - While presenting or refining the plan in "page_planning", set isPagePlanConfirmed = false and requiresNewProof = false.
+6. "page_plan_confirmed": Page 1 proof is ALREADY generated, you ALREADY presented the Page 2..N plan (or journal page structure options), and the creator's latest message explicitly CONFIRMS/APPROVES the plan for the remaining pages.
+   - Set discussionStage = "page_plan_confirmed", isPagePlanConfirmed = true, requiresNewProof = false, and bookDraft.recommendedAction = "expand_full_spread".
+   - Remind them that the first 5 pages will be generated 100% free right now (and any pages beyond 5 will appear as a blurred preview ready to unlock anytime).
+7. "revising": Page 1 proof already exists and the creator asks to change the visual layout, border, page number visibility, or art style of Page 1 itself. Apply the change to bookDraft/designBrief, confirm ONLY what changed, list the edits in "changes", and set requiresNewProof = true so they can redesign Page 1 proof.
+8. "cover_design": All interior pages are ALREADY generated (see CURRENT PROJECT STATE: Full interior pages generated = YES), OR the creator asks to design/customize the Front Book Cover in this same conversation.
    - Reference the book's title, character/theme, and style from earlier in the conversation!
    - Help the creator shape their Front Book Cover: cover illustration scene ("coverPrompt"), subtitle/tagline ("subtitle"), author credit/byline ("authorByline"), and cover theme ("colorScheme": "midnight_glacier" | "warm_cream" | "storybook_vibrant" | "minimal_monochrome").
    - Populate "coverDraft" and set coverDraft.isReadyForCover = true as soon as the creator describes or selects a cover direction (or approves your suggested cover concept). Set bookDraft.recommendedAction = "design_book_cover".
@@ -114,8 +133,9 @@ COPYRIGHT: If a known franchise is referenced (Disney, Marvel, Pokemon, etc.), d
 OUTPUT: a single flat JSON object with exactly these keys:
 {
   "reply": string,
-  "discussionStage": "discovery" | "designing" | "brief_review" | "concept_locked" | "revising" | "cover_design",
+  "discussionStage": "discovery" | "designing" | "brief_review" | "concept_locked" | "page_planning" | "page_plan_confirmed" | "revising" | "cover_design",
   "isReadyForProof": boolean,
+  "isPagePlanConfirmed": boolean,
   "titleOptions": [],
   "designBrief": { "purpose": string|null, "audience": string|null, "bookType": string|null, "theme": string|null, "artStyle": string|null, "pageStructure": string|null, "pageCount": number|null, "trimSize": string|null, "title": string|null },
   "missingFields": string[],
@@ -126,15 +146,16 @@ OUTPUT: a single flat JSON object with exactly these keys:
     "genre": "coloring_book" | "storybook" | "memory_book" | "activity_book" | "math_book" | "science_book",
     "artStyle": string,
     "characterName": string, "characterType": string, "characterTraits": string[],
-    "prompt": "Detailed visual + content description of the book that reflects the full current brief",
-    "pageStructure": "Summary of page interior structure, sections, prompts, or line layouts requested",
+    "prompt": "Detailed visual + content description of the book that reflects the full current brief and page plan",
+    "pageStructure": "Summary of page interior structure, page-by-page plan, sections, prompts, or line layouts requested",
     "layoutType": "empty_lined" | "guided_sections" | "classic_prompt",
     "borderText": string | null,
     "borderStyle": "robotic" | "modern" | "playful" | "none",
     "cornerDecorations": "tech_brackets" | "gears" | "minimal" | "none",
     "interiorColor": "black_and_white" | "standard_color",
+    "showPageNumbers": boolean,
     "pageCount": number, "trimSize": "6x9" | "8.5x8.5" | "8.5x11",
-    "recommendedAction": "design_hero_page" | "expand_full_spread" | "design_book_cover",
+    "recommendedAction": "design_hero_page" | "plan_remaining_pages" | "expand_full_spread" | "design_book_cover",
     "designerNote": string,
     "channel3Query": "search query for companion supplies"
   },
@@ -149,20 +170,22 @@ OUTPUT: a single flat JSON object with exactly these keys:
   "quickReplies": string[],
   "printAdvisory": { "hasRisk": boolean, "franchiseName": string|null, "safeTitle": string|null, "safeCharacter": string|null, "explanation": string|null }
 }
-"changes" is [] unless discussionStage is "revising" or "cover_design". Output valid JSON only, no markdown.`;
+"changes" is [] unless discussionStage is "revising", "page_planning", "page_plan_confirmed", or "cover_design". Output valid JSON only, no markdown.`;
 
 function buildStateMessage(
   state: ProjectState | undefined,
   lockedTitle: string | null,
   hasProof: boolean,
   hasFullBook: boolean,
-  hasCover: boolean
+  hasCover: boolean,
+  hasPlannedPages: boolean
 ): string {
   const lines = [
     "CURRENT PROJECT STATE (source of truth for the studio; apply the creator's edits on top of this):",
     `- Locked title: ${lockedTitle ? `"${lockedTitle}"` : "none yet"}`,
-    `- Page 1 proof already generated: ${hasProof ? "YES" : "no"}`,
-    `- Full interior pages generated: ${hasFullBook ? "YES (all interior pages are complete! Guide the creator to design/refine the Front Book Cover in stage 'cover_design')" : "no"}`,
+    `- Page 1 proof already generated: ${hasProof ? "YES (Before generating remaining pages, guide the creator through 'page_planning' and wait for their confirmation to move to 'page_plan_confirmed')" : "no"}`,
+    `- Page 2..N plan already presented in chat: ${hasPlannedPages ? "YES" : "no"}`,
+    `- Full interior pages generated: ${hasFullBook ? "YES (all interior pages are generated! Guide the creator to design/refine the Front Book Cover in stage 'cover_design')" : "no"}`,
     `- Front Book Cover already generated: ${hasCover ? "YES (creator can tweak the cover or interior)" : "no"}`,
   ];
   if (state) {
@@ -170,8 +193,8 @@ function buildStateMessage(
     if (state.pageCount) lines.push(`- Page count: ${state.pageCount}`);
     if (state.trimSize) lines.push(`- Trim size: ${state.trimSize}`);
     if (state.authorName) lines.push(`- Author byline: ${state.authorName}`);
-    if (state.characterName || state.characterType)
-      lines.push(`- Character/protagonist: ${state.characterName || "?"} (${state.characterType || "?"})`);
+    if (state.characterName)
+      lines.push(`- Character/protagonist: ${state.characterName} (${state.characterType || ""})`);
     if (state.artStyle) lines.push(`- Art style: ${state.artStyle}`);
     if (state.pageStructure) lines.push(`- Requested page interior structure & sections: ${state.pageStructure}`);
     if (state.layoutType) lines.push(`- Interior page layout type: ${state.layoutType}`);
@@ -179,6 +202,7 @@ function buildStateMessage(
     if (state.borderStyle) lines.push(`- Border font/style: ${state.borderStyle}`);
     if (state.cornerDecorations) lines.push(`- Corner decorations: ${state.cornerDecorations}`);
     if (state.interiorColor) lines.push(`- Interior print color: ${state.interiorColor}`);
+    if (state.showPageNumbers !== undefined) lines.push(`- Show page numbers on pages: ${state.showPageNumbers ? "YES" : "NO"}`);
     if (state.prompt) lines.push(`- Current book description: ${state.prompt}`);
     if (state.coverPrompt) lines.push(`- Current cover artwork prompt: ${state.coverPrompt}`);
     if (state.coverColorScheme) lines.push(`- Current cover color scheme: ${state.coverColorScheme}`);
@@ -224,6 +248,7 @@ export async function POST(req: NextRequest) {
     const hasProof = Boolean(body.hasProof);
     const hasFullBook = Boolean(body.hasFullBook);
     const hasCover = Boolean(body.hasCover);
+    const hasPlannedPages = Boolean(body.hasPlannedPages);
 
     const openaiKey = process.env.OPENAI_API_KEY;
     const groqKey = process.env.GROQ_API_KEY;
@@ -240,10 +265,39 @@ export async function POST(req: NextRequest) {
     const lockedTitle: string | null = detectLockedTitle(messages) || body.lockedTitle || null;
     const latestUser = [...messages].reverse().find((m) => m.role === "user")?.content || "";
     const userWantsNewTitles = NEW_TITLE_REQUEST_PATTERN.test(latestUser);
+    const allUserText = messages
+      .filter((m) => m.role === "user")
+      .map((m) => m.content)
+      .join(" ");
+    const userMentionedBarnaby = /\bbarnaby\b/i.test(allUserText);
+
+    // Strip any unrequested Barnaby defaults from incoming projectState
+    const sanitizedState: ProjectState | undefined = projectState
+      ? {
+          ...projectState,
+          characterName:
+            !userMentionedBarnaby && /^barnaby$/i.test(projectState.characterName || "")
+              ? ""
+              : projectState.characterName,
+          characterType:
+            !userMentionedBarnaby && /golden retriever puppy/i.test(projectState.characterType || "")
+              ? ""
+              : projectState.characterType,
+          characterTraits:
+            !userMentionedBarnaby &&
+            Array.isArray(projectState.characterTraits) &&
+            projectState.characterTraits.some((t) => /red scarf/i.test(t))
+              ? []
+              : projectState.characterTraits,
+        }
+      : undefined;
 
     const formattedMessages = [
       { role: "system", content: SYSTEM_PROMPT },
-      { role: "system", content: buildStateMessage(projectState, lockedTitle, hasProof, hasFullBook, hasCover) },
+      {
+        role: "system",
+        content: buildStateMessage(sanitizedState, lockedTitle, hasProof, hasFullBook, hasCover, hasPlannedPages),
+      },
       ...messages.map((m) => ({ role: m.role, content: m.content })),
     ];
 
@@ -287,6 +341,44 @@ export async function POST(req: NextRequest) {
     let stage: DiscussionStage = VALID_STAGES.includes(parsed.discussionStage) ? parsed.discussionStage : "designing";
     const missingFields: string[] = Array.isArray(parsed.missingFields) ? parsed.missingFields : [];
     let isReadyForProof = Boolean(parsed.isReadyForProof);
+    let isPagePlanConfirmed = Boolean(parsed.isPagePlanConfirmed);
+
+    // Check if the user is initiating the post-Page-1 planning step
+    const isInitiatingPagePlanning =
+      hasProof &&
+      !hasFullBook &&
+      /\b(plan\s+(the\s+)?remaining\s+pages|what\s+the\s+other\s+pages\s+will\s+have|let'?s\s+plan\s+pages\s+2)\b/i.test(
+        latestUser
+      );
+
+    // Check if user is explicitly confirming the page plan after planning has started
+    const isConfirmingPagePlan =
+      hasProof &&
+      !hasFullBook &&
+      hasPlannedPages &&
+      !isInitiatingPagePlanning &&
+      /\b(confirm|looks?\s*(great|good|perfect|awesome)|generate\s*(all|the|book|pages|journal)|approve|yes|keep\s+the\s+same\s+layout|vary\s+daily\s+prompts|proceed)\b/i.test(
+        latestUser
+      );
+
+    if (isInitiatingPagePlanning) {
+      stage = "page_planning";
+      isPagePlanConfirmed = false;
+    } else if (isConfirmingPagePlan || stage === "page_plan_confirmed") {
+      if (hasProof && !hasFullBook) {
+        if (!hasPlannedPages && !isConfirmingPagePlan) {
+          // Enforce at least one planning turn before confirmation
+          stage = "page_planning";
+          isPagePlanConfirmed = false;
+        } else {
+          stage = "page_plan_confirmed";
+          isPagePlanConfirmed = true;
+        }
+      }
+    } else if (hasProof && !hasFullBook && stage === "concept_locked") {
+      stage = hasPlannedPages ? "page_plan_confirmed" : "page_planning";
+      isPagePlanConfirmed = hasPlannedPages;
+    }
 
     // If all interior pages are already generated, default into cover_design stage unless revising interior
     const userMentionsCover = /\b(cover|front\s*page|author\s*byline|byline|subtitle|tagline|midnight|warm\s*cream|vibrant|monochrome|emblem)\b/i.test(latestUser);
@@ -301,6 +393,7 @@ export async function POST(req: NextRequest) {
     }
     if (stage === "discovery" || stage === "designing" || stage === "brief_review") {
       isReadyForProof = false;
+      isPagePlanConfirmed = false;
     }
     if (stage === "concept_locked") isReadyForProof = true;
 
@@ -313,19 +406,56 @@ export async function POST(req: NextRequest) {
       bookDraft.title = lockedTitle;
     }
 
+    // Sanitize Barnaby out of bookDraft if user never mentioned Barnaby
+    if (bookDraft && !userMentionedBarnaby) {
+      if (/^barnaby$/i.test(bookDraft.characterName || "")) {
+        bookDraft.characterName = "";
+      }
+      if (/golden retriever puppy/i.test(bookDraft.characterType || "")) {
+        bookDraft.characterType = "";
+      }
+      if (Array.isArray(bookDraft.characterTraits) && bookDraft.characterTraits.some((t: string) => /red scarf/i.test(t))) {
+        bookDraft.characterTraits = [];
+      }
+    }
+
+    // Detect explicit page number request in chat
+    const wantsPageNumbers = /\b(add|show|include|put|with|enable)\s+(page\s*numbers?|numbering)\b/i.test(allUserText);
+    const hidePageNumbers = /\b(no|remove|hide|without)\s+(page\s*numbers?|numbering)\b/i.test(latestUser);
+    if (bookDraft) {
+      if (hidePageNumbers) {
+        bookDraft.showPageNumbers = false;
+      } else if (wantsPageNumbers || sanitizedState?.showPageNumbers) {
+        bookDraft.showPageNumbers = true;
+      } else if (bookDraft.showPageNumbers === undefined) {
+        bookDraft.showPageNumbers = false;
+      }
+    }
+
     const changes = Array.isArray(parsed.changes) ? parsed.changes : [];
 
-    // Check if the user is approving Page 1 or asking to generate the full book (or only changing pageCount)
+    // Check if the user is approving Page 1 or planning/confirming the full book
     const isApprovingOrExpanding =
+      isInitiatingPagePlanning ||
+      isConfirmingPagePlan ||
+      stage === "page_planning" ||
+      stage === "page_plan_confirmed" ||
       /\b(looks?\s*(great|good|perfect|awesome|nice)|generate\s*(all|the|full)|expand|all\s*\d+\s*pages|proceed|approve|full\s*book|rest\s*of\s*the\s*pages)\b/i.test(
         latestUser
       );
     const visualChanges = changes.filter(
       (c: any) =>
         c?.field &&
-        !["pageCount", "pages", "authorName", "authorByline", "coverPrompt", "cover", "colorScheme"].includes(
-          String(c.field)
-        )
+        ![
+          "pageCount",
+          "pages",
+          "pageStructure",
+          "authorName",
+          "authorByline",
+          "coverPrompt",
+          "cover",
+          "colorScheme",
+        ].includes(String(c.field))
     );
 
     const requiresNewProof =
@@ -338,8 +468,10 @@ export async function POST(req: NextRequest) {
     if (bookDraft) {
       if (hasFullBook || stage === "cover_design") {
         bookDraft.recommendedAction = "design_book_cover";
-      } else if (hasProof && !requiresNewProof) {
+      } else if (stage === "page_plan_confirmed" || isPagePlanConfirmed) {
         bookDraft.recommendedAction = "expand_full_spread";
+      } else if (hasProof && !requiresNewProof) {
+        bookDraft.recommendedAction = "plan_remaining_pages";
       }
     }
 
@@ -375,6 +507,7 @@ export async function POST(req: NextRequest) {
       reply: parsed.reply,
       discussionStage: stage,
       isReadyForProof,
+      isPagePlanConfirmed,
       titleOptions,
       designBrief: parsed.designBrief || null,
       missingFields,

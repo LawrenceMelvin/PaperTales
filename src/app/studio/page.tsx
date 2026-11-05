@@ -185,8 +185,9 @@ interface BookDraftData {
   cornerDecorations?: "tech_brackets" | "gears" | "minimal" | "none";
   interiorColor?: "black_and_white" | "standard_color";
   lineRuleSpacing?: "wide" | "college";
+  showPageNumbers?: boolean;
   channel3Query?: string;
-  recommendedAction?: "design_hero_page" | "expand_full_spread" | "design_book_cover";
+  recommendedAction?: "design_hero_page" | "plan_remaining_pages" | "expand_full_spread" | "design_book_cover";
   designerNote?: string;
 }
 
@@ -199,7 +200,15 @@ interface CoverDraftData {
   isReadyForCover?: boolean;
 }
 
-type DiscussionStage = "discovery" | "designing" | "brief_review" | "concept_locked" | "revising" | "cover_design";
+type DiscussionStage =
+  | "discovery"
+  | "designing"
+  | "brief_review"
+  | "concept_locked"
+  | "page_planning"
+  | "page_plan_confirmed"
+  | "revising"
+  | "cover_design";
 
 interface DraftChange {
   field: string;
@@ -216,6 +225,7 @@ interface ChatMessageItem {
   content: string;
   discussionStage?: DiscussionStage;
   isReadyForProof?: boolean;
+  isPagePlanConfirmed?: boolean;
   requiresNewProof?: boolean;
   changes?: DraftChange[];
   titleOptions?: string[];
@@ -280,8 +290,8 @@ const INITIAL_BOOK: BookProject = {
 export default function StudioPage() {
   const [selectedGenre, setSelectedGenre] = useState<BookGenre>("coloring_book");
   const [book, setBook] = useState<BookProject>(INITIAL_BOOK);
-  const [character, setCharacter] = useState<CharacterAnchor>(GENRE_LANES[0].defaultCharacter);
-  const [prompt, setPrompt] = useState<string>(GENRE_LANES[0].defaultPrompt);
+  const [character, setCharacter] = useState<CharacterAnchor>({ name: "", type: "", traits: [] });
+  const [prompt, setPrompt] = useState<string>("");
   const [artStyle, setArtStyle] = useState<string>("Playful, colorful illustrations");
   const [pageStructure, setPageStructure] = useState<string>("");
   const [layoutType, setLayoutType] = useState<"empty_lined" | "guided_sections" | "classic_prompt">("classic_prompt");
@@ -289,12 +299,15 @@ export default function StudioPage() {
   const [borderStyle, setBorderStyle] = useState<"robotic" | "modern" | "playful" | "none">("none");
   const [cornerDecorations, setCornerDecorations] = useState<"tech_brackets" | "gears" | "minimal" | "none">("none");
   const [lineRuleSpacing, setLineRuleSpacing] = useState<"wide" | "college">("college");
+  const [showPageNumbers, setShowPageNumbers] = useState<boolean>(false);
   const [authorName, setAuthorName] = useState<string>("");
   const [targetAge, setTargetAge] = useState<string>("4-8");
   const [pageCount, setPageCount] = useState<number>(5);
-  const [userTokens, setUserTokens] = useState<number>(12);
+  const [userTokens, setUserTokens] = useState<number>(0);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isGeneratingCover, setIsGeneratingCover] = useState<boolean>(false);
+  const [isUnlockingPages, setIsUnlockingPages] = useState<boolean>(false);
+  const [pendingUnlockAfterPayment, setPendingUnlockAfterPayment] = useState<boolean>(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState<boolean>(false);
   const [isPrintingPageOne, setIsPrintingPageOne] = useState<boolean>(false);
   const [activeViewerPageIndex, setActiveViewerPageIndex] = useState<number>(0);
@@ -306,9 +319,11 @@ export default function StudioPage() {
   const [isDiscussionDone, setIsDiscussionDone] = useState<boolean>(false);
   const [isEditingCharacterName, setIsEditingCharacterName] = useState<boolean>(false);
 
-  // Proof & Cover lifecycle: tracks Page 1 proof -> Full Interior Pages -> Front Book Cover
+  // Proof, Page Plan & Cover lifecycle: tracks Page 1 proof -> Page 2..N Plan & Confirmation -> Full Interior Pages -> Front Book Cover
   const [hasProof, setHasProof] = useState<boolean>(false);
   const [isProofStale, setIsProofStale] = useState<boolean>(false);
+  const [hasPlannedPages, setHasPlannedPages] = useState<boolean>(false);
+  const [isPagePlanConfirmed, setIsPagePlanConfirmed] = useState<boolean>(false);
   const [hasFullBook, setHasFullBook] = useState<boolean>(false);
   const [hasCover, setHasCover] = useState<boolean>(false);
   const [coverPrompt, setCoverPrompt] = useState<string>("");
@@ -436,9 +451,6 @@ export default function StudioPage() {
   const handleSelectGenre = (genreId: BookGenre) => {
     if (hasProof && genreId !== selectedGenre) setIsProofStale(true);
     setSelectedGenre(genreId);
-    const cfg = GENRE_LANES.find((g) => g.id === genreId) || GENRE_LANES[0];
-    setPrompt(cfg.defaultPrompt);
-    setCharacter(cfg.defaultCharacter);
     setBook((prev) => ({
       ...prev,
       genre: genreId,
@@ -506,15 +518,17 @@ export default function StudioPage() {
             genre: selectedGenre,
             pageCount,
             trimSize: book.format.trimSize,
-            characterName: character.name,
-            characterType: character.type,
-            characterTraits: character.traits,
+            characterName: character.name || undefined,
+            characterType: character.type || undefined,
+            characterTraits: character.traits.length > 0 ? character.traits : undefined,
             pageStructure: pageStructure || undefined,
+            showPageNumbers,
             prompt: hasProof || effectiveLockedTitle ? prompt : undefined,
             coverPrompt: coverPrompt || book.cover?.coverPrompt || undefined,
             coverColorScheme: coverColorScheme || book.cover?.colorScheme || undefined,
           },
           hasProof,
+          hasPlannedPages,
           hasFullBook,
           hasCover,
           lockedTitle: effectiveLockedTitle,
@@ -533,12 +547,19 @@ export default function StudioPage() {
             setSelectedGenre(data.bookDraft.genre);
           }
           const draftTrim = TRIM_SIZES.includes(data.bookDraft.trimSize) ? data.bookDraft.trimSize : null;
-          if (data.bookDraft.title || draftTrim) {
+          if (data.bookDraft.title || draftTrim || data.bookDraft.showPageNumbers !== undefined) {
+            if (typeof data.bookDraft.showPageNumbers === "boolean") {
+              setShowPageNumbers(data.bookDraft.showPageNumbers);
+            }
             setBook((prev) => ({
               ...prev,
               title: data.bookDraft.title || prev.title,
               subtitle: data.bookDraft.subtitle || prev.subtitle,
               genre: data.bookDraft.genre || prev.genre,
+              showPageNumbers:
+                typeof data.bookDraft.showPageNumbers === "boolean"
+                  ? data.bookDraft.showPageNumbers
+                  : prev.showPageNumbers,
               format: draftTrim ? { ...prev.format, trimSize: draftTrim } : prev.format,
             }));
           }
@@ -578,11 +599,11 @@ export default function StudioPage() {
               artStyle: data.bookDraft.artStyle,
             }));
           }
-          if (data.bookDraft.characterName || data.bookDraft.characterType) {
+          if (data.bookDraft.characterName !== undefined || data.bookDraft.characterType !== undefined) {
             setCharacter({
-              name: data.bookDraft.characterName || character.name,
-              type: data.bookDraft.characterType || character.type,
-              traits: data.bookDraft.characterTraits || character.traits,
+              name: data.bookDraft.characterName ?? "",
+              type: data.bookDraft.characterType ?? "",
+              traits: Array.isArray(data.bookDraft.characterTraits) ? data.bookDraft.characterTraits : [],
             });
           }
 
@@ -634,6 +655,12 @@ export default function StudioPage() {
 
         if (data.lockedTitle) setLockedTitle(data.lockedTitle);
         if (hasProof && !hasFullBook && data.requiresNewProof) setIsProofStale(true);
+        if (data.discussionStage === "page_planning" || data.discussionStage === "page_plan_confirmed") {
+          setHasPlannedPages(true);
+        }
+        if (data.discussionStage === "page_plan_confirmed" || data.isPagePlanConfirmed) {
+          setIsPagePlanConfirmed(true);
+        }
 
         const assistantMsg: ChatMessageItem = {
           id: `msg_${Date.now() + 1}`,
@@ -641,6 +668,7 @@ export default function StudioPage() {
           content: data.reply,
           discussionStage: data.discussionStage || (hasFullBook ? "cover_design" : "designing"),
           isReadyForProof: Boolean(data.isReadyForProof),
+          isPagePlanConfirmed: Boolean(data.isPagePlanConfirmed || data.discussionStage === "page_plan_confirmed"),
           requiresNewProof: Boolean(data.requiresNewProof),
           changes: Array.isArray(data.changes) ? data.changes : [],
           titleOptions: data.titleOptions || [],
@@ -667,12 +695,13 @@ export default function StudioPage() {
   const handleDesignHeroPage = async () => {
     setIsGenerating(true);
     try {
+      const effectiveTitle = book.title !== INITIAL_BOOK.title ? book.title : lockedTitle || "";
       const res = await fetch("/api/ai/story", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: book.title,
-          subtitle: book.subtitle,
+          title: effectiveTitle,
+          subtitle: book.subtitle !== INITIAL_BOOK.subtitle ? book.subtitle : "",
           prompt,
           pageStructure: pageStructure || undefined,
           layoutType,
@@ -682,6 +711,7 @@ export default function StudioPage() {
           interiorColor: book.format.interiorColor,
           artStyle,
           lineRuleSpacing,
+          showPageNumbers,
           authorName,
           targetAge,
           genre: selectedGenre,
@@ -706,6 +736,8 @@ export default function StudioPage() {
         setIsConfirmed(false); // Hero proof ready for inspection
         setHasProof(true);
         setIsProofStale(false);
+        setHasPlannedPages(false);
+        setIsPagePlanConfirmed(false);
         setHasFullBook(false);
         setActiveViewerPageIndex(1); // Show Master Page 1 immediately
 
@@ -722,16 +754,16 @@ export default function StudioPage() {
     }
   };
 
-  // Stage 2: Expand to Full Spread (e.g. 15 or 30 pages) based on approved hero template
-  const handleExpandFullSpread = async () => {
-    if (quote.tokensRequired > 0) {
-      const balance = getClientTokenBalance();
-      if (balance < quote.tokensRequired) {
-        setTokenModalOpen(true);
-        return;
-      }
-    }
+  // Stage 1.5: Transition into the same AI chat thread to co-plan & confirm Pages 2..N before generating
+  const handleStartPagePlanning = () => {
+    setIsDiscussionDone(false);
+    handleSendMessage(
+      `Page 1 proof looks great! Before we generate the remaining pages, let's plan what Pages 2 to ${pageCount} will have and look like so I can review and confirm.`
+    );
+  };
 
+  // Stage 2: Expand to Full Spread (First 5 Pages 100% Free + Pages 6..N Blurred Preview until Unlocked)
+  const handleExpandFullSpread = async () => {
     setIsGenerating(true);
     try {
       const res = await fetch("/api/ai/story", {
@@ -749,6 +781,7 @@ export default function StudioPage() {
           interiorColor: book.format.interiorColor,
           artStyle,
           lineRuleSpacing,
+          showPageNumbers,
           authorName,
           targetAge,
           genre: selectedGenre,
@@ -756,7 +789,9 @@ export default function StudioPage() {
           characterType: character.type,
           characterTraits: character.traits,
           referenceImageUrl: referenceImageUrl || undefined,
-          pageCount, // Full requested page count
+          pageCount, // Full requested page count (e.g. 12 pages)
+          freePagesLimit: isBookUnlocked ? pageCount : 5, // First 5 pages are 100% free; pages 6..N are locked/blurred
+          existingPageOne: book.pages[0], // Keep approved Master Page 1 Proof intact
           trimSize: book.format.trimSize,
           messages: messages.map((m) => ({ role: m.role, content: m.content })),
         }),
@@ -768,8 +803,8 @@ export default function StudioPage() {
           ...data.book,
           cover: prev.cover,
         }));
-        if (quote.tokensRequired > 0) {
-          deductClientTokens(quote.tokensRequired);
+        if (pageCount <= 5) {
+          setIsBookUnlocked(true);
         }
         setIsConfirmed(true);
         setHasProof(true);
@@ -777,8 +812,9 @@ export default function StudioPage() {
         setHasFullBook(true);
         setActiveViewerPageIndex(1);
 
-        // Append a cover design prompt in the SAME continuous chat thread so the user can design the Book Cover next!
+        // Append a cover design & preview summary in the SAME continuous chat thread
         const generatedCount = data.book.pages?.length || pageCount;
+        const lockedCount = Math.max(0, generatedCount - 5);
         const isJournalBook =
           data.book.format?.trimSize === "6x9" ||
           selectedGenre === "memory_book" ||
@@ -787,7 +823,10 @@ export default function StudioPage() {
         const coverInviteMsg: ChatMessageItem = {
           id: `msg_cover_invite_${Date.now()}`,
           role: "assistant",
-          content: `🎉 All ${generatedCount} interior pages of "${data.book.title}" are now generated!\n\nNext step: let's design your **Front Book Cover** right here in our chat. How would you like your cover to look? Tell me your cover illustration idea, color mood, subtitle, or author credit — or tap a suggestion below:`,
+          content:
+            lockedCount > 0 && !isBookUnlocked
+              ? `🎉 **Your first 5 pages of "${data.book.title}" are generated for FREE!**\n\nPages 1–5 are ready to explore below, and Pages 6–${generatedCount} are shown in blurred preview mode (you can unlock them anytime right on the page).\n\nWould you also like to design your **Front Book Cover** right here in our chat?`
+              : `🎉 All ${generatedCount} interior pages of "${data.book.title}" are now generated!\n\nNext step: let's design your **Front Book Cover** right here in our chat. How would you like your cover to look?`,
           discussionStage: "cover_design",
           quickReplies: isJournalBook
             ? [
@@ -796,7 +835,9 @@ export default function StudioPage() {
                 "Vibrant storybook cover with custom author byline",
               ]
             : [
-                `Vibrant hero cover starring ${character.name}`,
+                character.name
+                  ? `Vibrant hero cover starring ${character.name}`
+                  : `Vibrant illustrated cover for "${data.book.title}"`,
                 "Minimalist monochrome line-art cover ready to color",
                 "Midnight glacier edition with golden starlight frame",
               ],
@@ -804,14 +845,21 @@ export default function StudioPage() {
             title: data.book.title,
             subtitle: data.book.subtitle,
             authorByline: authorName || data.book.authorName || null,
-            coverPrompt: `Book cover illustration for "${data.book.title}" featuring ${character.name} (${character.type}), ${artStyle || prompt}`,
+            coverPrompt: character.name
+              ? `Book cover illustration for "${data.book.title}" featuring ${character.name} (${character.type}), ${artStyle || prompt}`
+              : `Book cover illustration for "${data.book.title}", ${artStyle || prompt}`,
             colorScheme: "midnight_glacier",
             isReadyForCover: true,
           },
         };
 
         setMessages((prev) => [...prev, coverInviteMsg]);
-        setIsDiscussionDone(false); // Open the same chat thread so user sees the cover invitation immediately
+        setIsDiscussionDone(true);
+
+        const displayEl = document.getElementById("book-display-section");
+        if (displayEl) {
+          displayEl.scrollIntoView({ behavior: "smooth" });
+        }
       }
     } catch (err) {
       console.error("Full book expansion failed:", err);
@@ -819,6 +867,86 @@ export default function StudioPage() {
       setIsGenerating(false);
     }
   };
+
+  // Unlock blurred pages 6..N once tokens are available or purchased via PayPal
+  const executeUnlockRemainingPages = async (tokensToDeduct: number) => {
+    setIsUnlockingPages(true);
+    try {
+      if (tokensToDeduct > 0) {
+        deductClientTokens(tokensToDeduct);
+      }
+      const res = await fetch("/api/ai/story", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: book.id,
+          title: book.title,
+          subtitle: book.subtitle,
+          prompt,
+          pageStructure: pageStructure || undefined,
+          artStyle,
+          interiorColor: book.format.interiorColor,
+          showPageNumbers: book.showPageNumbers,
+          authorName,
+          targetAge,
+          genre: selectedGenre,
+          characterName: character.name,
+          characterType: character.type,
+          characterTraits: character.traits,
+          trimSize: book.format.trimSize,
+          unlockPagesOnly: true,
+          existingPages: book.pages,
+          messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.book) {
+        setBook((prev) => ({
+          ...prev,
+          pages: data.book.pages,
+        }));
+      } else {
+        setBook((prev) => ({
+          ...prev,
+          pages: prev.pages.map((p) => ({ ...p, isLocked: false })),
+        }));
+      }
+      setIsBookUnlocked(true);
+    } catch (err) {
+      console.error("Failed to unlock remaining pages:", err);
+      setBook((prev) => ({
+        ...prev,
+        pages: prev.pages.map((p) => ({ ...p, isLocked: false })),
+      }));
+      setIsBookUnlocked(true);
+    } finally {
+      setIsUnlockingPages(false);
+      setPendingUnlockAfterPayment(false);
+    }
+  };
+
+  const handleUnlockRemainingPages = () => {
+    const lockedPagesCount = Math.max(0, book.pages.length - 5);
+    const tokensNeeded = lockedPagesCount > 0 ? lockedPagesCount : quote.tokensRequired;
+    const balance = getClientTokenBalance();
+    if (balance < tokensNeeded) {
+      setPendingUnlockAfterPayment(true);
+      setTokenModalOpen(true);
+      return;
+    }
+    executeUnlockRemainingPages(tokensNeeded);
+  };
+
+  // Auto-unlock remaining pages immediately after user buys tokens in TokenModal
+  useEffect(() => {
+    if (!pendingUnlockAfterPayment) return;
+    const lockedPagesCount = Math.max(0, book.pages.length - 5);
+    const tokensNeeded = lockedPagesCount > 0 ? lockedPagesCount : quote.tokensRequired;
+    if (userTokens >= tokensNeeded && tokensNeeded > 0) {
+      setTokenModalOpen(false);
+      executeUnlockRemainingPages(tokensNeeded);
+    }
+  }, [userTokens, pendingUnlockAfterPayment]);
 
   // Stage 3: Design Front Book Cover using decisions from the same AI chat
   const handleDesignBookCover = async (overrideCoverDraft?: CoverDraftData) => {
@@ -1375,31 +1503,71 @@ export default function StudioPage() {
                                       </div>
                                     </>
                                   ) : hasProof && !msg.requiresNewProof && !isProofStale ? (
-                                    <>
-                                      <span className="text-[11px] text-emerald-300 font-medium">
-                                        ✨ Master Page 1 proof is ready! Expand to all {pageCount} interior pages now.
-                                      </span>
-                                      <div className="flex items-center gap-2">
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setIsDiscussionDone(true);
-                                            handleExpandFullSpread();
-                                          }}
-                                          disabled={isGenerating}
-                                          className="px-3.5 py-1.5 rounded-xl bg-sky-400 text-slate-950 font-bold text-xs hover:bg-sky-300 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow disabled:opacity-50"
-                                        >
-                                          {isGenerating ? (
-                                            <>
-                                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                              <span>Generating {pageCount} Pages...</span>
-                                            </>
-                                          ) : (
-                                            <span>✨ Generate Full Book ({pageCount} Pages) →</span>
-                                          )}
-                                        </button>
-                                      </div>
-                                    </>
+                                    msg.isPagePlanConfirmed || isPagePlanConfirmed ? (
+                                      <>
+                                        <span className="text-[11px] text-emerald-300 font-medium">
+                                          ✅ Page plan confirmed! Generate your book now (First 5 pages 100% Free).
+                                        </span>
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setIsDiscussionDone(true);
+                                              handleExpandFullSpread();
+                                            }}
+                                            disabled={isGenerating}
+                                            className="px-3.5 py-1.5 rounded-xl bg-sky-400 text-slate-950 font-bold text-xs hover:bg-sky-300 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow disabled:opacity-50"
+                                          >
+                                            {isGenerating ? (
+                                              <>
+                                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                                <span>Generating Pages (First 5 Free)...</span>
+                                              </>
+                                            ) : (
+                                              <span>
+                                                ✨ Confirm &amp; Generate ({pageCount} Pgs &bull; First 5 Free) →
+                                              </span>
+                                            )}
+                                          </button>
+                                        </div>
+                                      </>
+                                    ) : hasPlannedPages || msg.discussionStage === "page_planning" ? (
+                                      <>
+                                        <span className="text-[11px] text-sky-300 font-medium">
+                                          📋 Review the page plan above — reply to customize any page, or confirm to generate:
+                                        </span>
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              handleSendMessage(
+                                                `I confirm this plan for all ${pageCount} pages! Let's generate the book.`
+                                              )
+                                            }
+                                            disabled={isChatting || isGenerating}
+                                            className="px-3.5 py-1.5 rounded-xl bg-emerald-400 text-slate-950 font-bold text-xs hover:bg-emerald-300 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow disabled:opacity-50"
+                                          >
+                                            <span>✅ Confirm Page Plan in Chat →</span>
+                                          </button>
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <span className="text-[11px] text-emerald-300 font-medium">
+                                          ✨ Master Page 1 proof is ready! Let&apos;s plan what Pages 2–{pageCount} will have and look like.
+                                        </span>
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={handleStartPagePlanning}
+                                            disabled={isChatting || isGenerating}
+                                            className="px-3.5 py-1.5 rounded-xl bg-sky-400 text-slate-950 font-bold text-xs hover:bg-sky-300 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow disabled:opacity-50"
+                                          >
+                                            <span>✨ Looks Great! Plan Remaining ({pageCount}) Pages →</span>
+                                          </button>
+                                        </div>
+                                      </>
+                                    )
                                   ) : (
                                     <>
                                       <span className="text-[11px] text-sky-300 font-medium">
@@ -1597,17 +1765,19 @@ export default function StudioPage() {
                       </div>
                     ) : (
                       <span className="flex items-center gap-1.5">
-                        <strong className="text-white font-bold">{character.name || "Barnaby"}</strong>
+                        <strong className="text-white font-bold">
+                          {character.name || "Custom Theme (No Fixed Protagonist)"}
+                        </strong>
                         <button
                           type="button"
                           onClick={() => setIsEditingCharacterName(true)}
                           className="text-[10px] text-sky-400 hover:text-sky-300 underline font-semibold cursor-pointer"
                         >
-                          (Change Child's Name)
+                          {character.name ? "(Change Name)" : "(Add Protagonist Name)"}
                         </button>
                       </span>
                     )}
-                    <span>({character.type || "Explorer"})</span>
+                    {character.type ? <span>({character.type})</span> : null}
                   </div>
                 </div>
 
@@ -1815,9 +1985,19 @@ export default function StudioPage() {
                       <strong className="text-emerald-300">Book &amp; Front Cover Complete:</strong> Your {book.pages.length}-page book and custom Front Cover are ready! Preview the spreads below, tweak any page or cover in chat, or export your 300 DPI PDF.
                     </>
                   ) : hasProof && !isProofStale ? (
-                    <>
-                      <strong className="text-white">Master Page 1 Proof Ready:</strong> Check Page 1 below! If you love the look, expand all {pageCount} pages now, or continue in chat to tweak anything.
-                    </>
+                    isPagePlanConfirmed ? (
+                      <>
+                        <strong className="text-emerald-300">Page Plan Confirmed:</strong> Click below to generate your{" "}
+                        {pageCount}-page book! Your <strong className="text-white">first 5 pages are 100% free</strong>,
+                        and pages 6–{pageCount} will appear in a blurred preview ready to unlock anytime.
+                      </>
+                    ) : (
+                      <>
+                        <strong className="text-white">Master Page 1 Proof Ready:</strong> Check Page 1 below! Next,
+                        let&apos;s plan &amp; confirm what Pages 2–{pageCount} will have and look like in our AI chat
+                         before generating your first 5 free pages.
+                      </>
+                    )
                   ) : (
                     <>
                       <strong className="text-white">Designer Recommendation:</strong> Let&apos;s design your Master Page 1 Proof first for free to check layout and visual style before creating all {pageCount} pages.
@@ -1948,19 +2128,24 @@ export default function StudioPage() {
 
                     <button
                       type="button"
-                      onClick={handleExpandFullSpread}
-                      disabled={isGenerating}
+                      onClick={isPagePlanConfirmed ? handleExpandFullSpread : handleStartPagePlanning}
+                      disabled={isGenerating || isChatting}
                       className="py-3 px-4 rounded-2xl bg-[#7dd3fc] hover:bg-[#a0e3ff] text-[#001f2e] font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 transition-all hover:brightness-105 active:scale-95 disabled:opacity-50 cursor-pointer"
                     >
                       {isGenerating ? (
                         <>
                           <RefreshCw className="w-4 h-4 animate-spin text-[#001f2e]" />
-                          <span>Expanding Spread...</span>
+                          <span>Generating Pages (First 5 Free)...</span>
+                        </>
+                      ) : isPagePlanConfirmed ? (
+                        <>
+                          <Sparkles className="w-4 h-4 text-[#001f2e]" />
+                          <span>✨ Confirm &amp; Generate ({pageCount} Pgs &bull; First 5 Free)</span>
                         </>
                       ) : (
                         <>
                           <Sparkles className="w-4 h-4 text-[#001f2e]" />
-                          <span>✨ Looks Great! Expand ({pageCount} Pgs)</span>
+                          <span>✨ Looks Great! Plan &amp; Expand ({pageCount} Pgs)</span>
                         </>
                       )}
                     </button>
@@ -2043,6 +2228,8 @@ export default function StudioPage() {
               onOpenBookDetails={() => setBookDetailsOpen(true)}
               onOrderPhysical={() => setOrderModalOpen(true)}
               onOpenTokenModal={() => setTokenModalOpen(true)}
+              onUnlockRemainingPages={handleUnlockRemainingPages}
+              isUnlockingPages={isUnlockingPages}
               isDownloading={isDownloadingPdf || isPrintingPageOne}
               isConfirmed={hasProof}
               isBookUnlocked={isBookUnlocked}

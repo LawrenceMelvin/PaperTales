@@ -59,6 +59,7 @@ export interface BookPage {
   imageUrl?: string; // High-contrast monochrome vector line art
   svgData?: string;
   isCover?: boolean;
+  isLocked?: boolean; // True when page > 5 is blurred/locked awaiting token or PayPal unlock
   journalData?: JournalPageData;
 }
 
@@ -81,6 +82,7 @@ export interface BookProject {
   referenceImageUrl?: string;
   artStyle?: string;
   pageStructure?: string;
+  showPageNumbers?: boolean;
   cover?: BookCoverDesign;
   pages: BookPage[];
   pageCount: number;

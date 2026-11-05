@@ -296,11 +296,16 @@ export async function POST(req: NextRequest) {
       targetAge = "4-8",
       genre = "coloring_book",
       trimSize,
-      characterName = "Barnaby",
-      characterType = "Golden Retriever Puppy",
-      characterTraits = ["Wearing a cozy red scarf", "Floppy ears", "Curious tail wag"],
+      characterName = "",
+      characterType = "",
+      characterTraits = [],
       referenceImageUrl,
       pageCount = 5,
+      freePagesLimit,
+      existingPageOne,
+      unlockPagesOnly = false,
+      existingPages,
+      showPageNumbers = false,
       messages: incomingMessages,
     } = body;
 
@@ -314,10 +319,29 @@ export async function POST(req: NextRequest) {
           .filter((m: any) => m.content.trim().length > 0)
       : [];
 
+    const userMessages = conversationMessages.filter(m => m.role === "user");
+    const userTextOnly = `${prompt || ""} ${pageStructure || ""} ${userMessages.map(m => m.content).join(" ")}`;
+    const fullConversationText = `${prompt || ""} ${pageStructure || ""} ${conversationMessages.map(m => m.content).join(" ")}`;
+
+    const userMentionedBarnaby = /\bbarnaby\b/i.test(`${title || ""} ${userTextOnly}`);
+    const sanitizedCharName =
+      !userMentionedBarnaby && /^barnaby$/i.test((characterName || "").trim())
+        ? ""
+        : (characterName || "").trim();
+    const sanitizedCharType =
+      !userMentionedBarnaby && /golden retriever puppy/i.test((characterType || "").trim())
+        ? ""
+        : (characterType || "").trim();
+    const rawTraits = Array.isArray(characterTraits) ? characterTraits : characterTraits ? [characterTraits] : [];
+    const sanitizedTraits =
+      !userMentionedBarnaby && rawTraits.some((t: any) => /red scarf/i.test(String(t)))
+        ? []
+        : rawTraits;
+
     const character: CharacterAnchor = {
-      name: characterName,
-      type: characterType,
-      traits: Array.isArray(characterTraits) ? characterTraits : [characterTraits],
+      name: sanitizedCharName,
+      type: sanitizedCharType,
+      traits: sanitizedTraits,
     };
 
     const count = Math.min(Math.max(pageCount, 1), 60);
@@ -336,10 +360,6 @@ export async function POST(req: NextRequest) {
     const groqKey = process.env.GROQ_API_KEY;
     const hasOpenAI = Boolean(openaiKey && openaiKey.startsWith("sk-"));
     const hasGroq = Boolean(groqKey && groqKey.startsWith("gsk_"));
-
-    const userMessages = conversationMessages.filter(m => m.role === "user");
-    const userTextOnly = `${prompt || ""} ${pageStructure || ""} ${userMessages.map(m => m.content).join(" ")}`;
-    const fullConversationText = `${prompt || ""} ${pageStructure || ""} ${conversationMessages.map(m => m.content).join(" ")}`;
 
     // Check if illustrations were requested
     const wantsIllustrations =
@@ -413,6 +433,84 @@ export async function POST(req: NextRequest) {
       genre === "activity_book" ||
       genre === "science_book" ||
       /\b(activity|activities|fact|facts|puzzle|maze|quiz|workbook|science activity)\b/i.test(`${prompt || ""} ${pageStructure || ""}`);
+
+    const wantsStoryTextInColoring =
+      genre !== "coloring_book" ||
+      /\b(story|storybook|narrative|tale|bedtime|plot|chapters?|paragraph)\b/i.test(userTextOnly);
+
+    const effectiveShowPageNumbers =
+      Boolean(showPageNumbers) ||
+      /\b(add|show|include|put|with|enable)\s+(page\s*numbers?|numbering)\b/i.test(userTextOnly);
+
+    // Fast-path: Unlocking already-planned pages 6..N after token/PayPal checkout
+    if (unlockPagesOnly && Array.isArray(existingPages) && existingPages.length > 0) {
+      const unlockedPages: BookPage[] = await Promise.all(
+        existingPages.map(async (p: BookPage, idx: number) => {
+          const pNum = p.pageNumber || idx + 1;
+          if (!p.isLocked && pNum <= 5) {
+            return { ...p, isLocked: false };
+          }
+          const hasIllust = Boolean(
+            p.journalData?.hasIllustration ||
+              (!isJournalMode && p.imagePrompt && p.imagePrompt.trim().length > 0)
+          );
+          if (!hasIllust) {
+            return { ...p, isLocked: false };
+          }
+
+          const promptForUnlockImage = isJournalMode
+            ? `Minimalist black and white line art vector spot illustration, crisp continuous thin black outlines, pure white background, zero shading, no solid dark fills, clean monochrome icon style: ${p.imagePrompt}`
+            : isColor
+            ? `Children's book illustration, vibrant full color, ${artStyle || "playful colorful digital illustration"}, high detail, rich palette, delightful expression, cinematic lighting: ${p.imagePrompt}`
+            : `Children's coloring book page outline, thick continuous bold black outlines, zero shading, pure white background, no gradients, uncolored, strictly black and white line art ready for coloring with crayons. ${p.imagePrompt}`;
+
+          let unlockedImageUrl: string | undefined = p.imageUrl;
+          if (hasOpenAI && openaiKey) {
+            unlockedImageUrl = (await generateOpenAiIllustration(promptForUnlockImage, openaiKey)) || unlockedImageUrl;
+          }
+          if (!unlockedImageUrl && (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY)) {
+            const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+            unlockedImageUrl = (await generateGeminiIllustration(promptForUnlockImage, geminiKey)) || unlockedImageUrl;
+          }
+          if (!unlockedImageUrl) {
+            unlockedImageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
+              promptForUnlockImage
+            )}?width=1024&height=1024&nologo=true&seed=${100000 + pNum * 1337}`;
+          }
+
+          return {
+            ...p,
+            imageUrl: unlockedImageUrl,
+            isLocked: false,
+          };
+        })
+      );
+
+      const unlockedBook: BookProject = {
+        id: body.id || `book_${Date.now().toString(36)}`,
+        title: title || "Custom Book",
+        subtitle: subtitle || "A Personalized AI-Designed Book",
+        authorName,
+        genre,
+        targetAge,
+        character,
+        referenceImageUrl: referenceImageUrl || undefined,
+        artStyle: artStyle || (isColor ? "Playful, colorful illustrations" : "Black and white line art"),
+        pageStructure: pageStructure || undefined,
+        showPageNumbers: effectiveShowPageNumbers,
+        pages: unlockedPages,
+        pageCount: unlockedPages.length,
+        format: {
+          trimSize: effectiveTrimSize as any,
+          binding: "saddle_stitch",
+          interiorColor: effectiveInteriorColor,
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      return NextResponse.json({ success: true, book: unlockedBook });
+    }
 
     // Call high-capability LLM (OpenAI primary, Groq fallback)
     if (hasOpenAI || hasGroq) {
@@ -523,24 +621,31 @@ CREATOR'S SPECIFICATIONS:
 - Interior Print Color: ${isColor ? "Standard Color (Full Color)" : "Black and White"}
 - Page Structure Requested: "${pageStructure || "Follow creative story arc"}"
 - Trim Size: ${effectiveTrimSize}
-- Protagonist / Star: ${character.name} (${character.type}) with traits: ${character.traits.join(", ")}
+- Protagonist / Star: ${
+              character.name
+                ? `${character.name} (${character.type})${character.traits.length ? ` with traits: ${character.traits.join(", ")}` : ""}`
+                : "No single fixed protagonist — feature the exact subjects/animals/scenes requested by the creator without inventing 'Barnaby'"
+            }
 - Total Pages to Generate: ${count} page(s)
 
 CRITICAL INSTRUCTIONS:
 1. STRICT ADHERENCE TO CREATOR'S THEME & PAGE STRUCTURE:
+   - NEVER use the name "Barnaby" or "Golden Retriever Puppy" unless the creator explicitly requested Barnaby.
 ${
   isActivityBook
     ? `   - The creator requested an engaging, interactive activity and knowledge book (such as alternating activity pages and fascinating fact pages).
    - ODD PAGES (1, 3, 5...): Interactive learning activities, creative challenges, mission prep, or puzzles (e.g. "Mission 1: Design Your Spaceship", "Cosmic Maze", "Alien Word Code", "Planet Match Quiz"). Provide clear, exciting step-by-step instructions.
    - EVEN PAGES (2, 4, 6...): Fascinating, mind-blowing facts, deep-dive scientific discoveries, or storytelling explorations with engaging educational text.`
+    : !wantsStoryTextInColoring
+    ? `   - This is a pure coloring book without story paragraphs. Set "storyText": "" (empty string) on every page, and give each page a short, delightful title describing that page's coloring scene (e.g. "Playful Puppy & Friends", "Woodland Bunnies").`
     : `   - Carefully craft each page to match the creator's exact narrative theme, age group, and style.
-   - Craft heartwarming, engaging page narratives following a cohesive plot arc starring ${character.name}.`
+   - Craft heartwarming, engaging page narratives following a cohesive plot arc${character.name ? ` starring ${character.name}` : ""}.`
 }
 2. VISUAL ART DESCRIPTIONS (for imagePrompt):
 ${
   isColor
     ? `   - For every page, write a vivid, descriptive visual prompt for a gorgeous, high-resolution children's book illustration in "${artStyle || "playful, colorful digital art"}". Describe the lighting, vibrant colors, composition, and key characters/objects without mentioning line art or coloring.`
-    : `   - For every page, write a clear, descriptive visual prompt for 300 DPI high-contrast vector line art matching that exact page scene (pure white background, thick continuous black borders, zero shading, ready for coloring).`
+    : `   - For every page, write a clear, descriptive visual prompt for 300 DPI high-contrast vector line art matching that exact page scene (pure white background, thick continuous black outlines, zero shading, ready for coloring). If the creator requested a decorative border inside the illustration (such as cute animals border, paw prints, stars, or floral frame), explicitly include that border description in "imagePrompt".`
 }
 
 OUTPUT SCHEMA (valid JSON only):
@@ -642,8 +747,23 @@ DIRECT CONTINUITY CHECKLIST:
             const resolvedPages: BookPage[] = await Promise.all(
               parsed.pages.map(async (p: any, idx: number) => {
                 const pNum = idx + 1;
-                const pageTitle = p.title || (isJournalMode ? `Day ${pNum}` : `Chapter ${pNum}`);
-                const pageStoryText = p.storyText || "";
+
+                // Preserve approved Master Page 1 Proof when expanding to full book
+                if (pNum === 1 && existingPageOne && (existingPageOne.imageUrl || existingPageOne.journalData)) {
+                  return {
+                    ...existingPageOne,
+                    pageNumber: 1,
+                    isLocked: false,
+                  };
+                }
+
+                const isPageLocked = typeof freePagesLimit === "number" && pNum > freePagesLimit;
+                const rawPageTitle = p.title || (isJournalMode ? `Day ${pNum}` : `Page ${pNum}`);
+                const pageTitle =
+                  !userMentionedBarnaby && /barnaby/i.test(rawPageTitle)
+                    ? title || `Coloring Page ${pNum}`
+                    : rawPageTitle;
+                const pageStoryText = !wantsStoryTextInColoring && !isJournalMode ? "" : p.storyText || "";
 
                 const hasIllustration = Boolean(
                   p.journalData?.hasIllustration ||
@@ -652,33 +772,39 @@ DIRECT CONTINUITY CHECKLIST:
                     !p.imagePrompt.toLowerCase().includes("subtle, elegant decorative line-art border"))
                 );
 
+                const fallbackSceneDesc = character.name
+                  ? `${pageTitle} starring ${character.name} the ${character.type}`
+                  : `${pageTitle} (${prompt || title || "cute illustration"})`;
+
                 const promptForImage = isJournalMode
                   ? hasIllustration
                     ? `Minimalist black and white line art vector spot illustration, crisp continuous thin black outlines, pure white background, zero shading, no solid dark fills, clean monochrome icon style: ${p.imagePrompt}`
                     : null
                   : isColor
-                  ? `Children's book illustration, vibrant full color, ${artStyle || "playful colorful digital illustration"}, high detail, rich palette, delightful character expression, cinematic lighting: ${
-                      p.imagePrompt || `${pageTitle} starring ${character.name} the ${character.type}`
+                  ? `Children's book illustration, vibrant full color, ${artStyle || "playful colorful digital illustration"}, high detail, rich palette, delightful expression, cinematic lighting: ${
+                      p.imagePrompt || fallbackSceneDesc
                     }`
                   : `Children's coloring book page outline, thick continuous bold black outlines, zero shading, pure white background, no gradients, uncolored, strictly black and white line art ready for coloring with crayons. ${
-                      p.imagePrompt || `${pageTitle} starring ${character.name} the ${character.type}`
+                      p.imagePrompt || fallbackSceneDesc
                     }.${borderInstruction ? ` ${borderInstruction}` : ""}`;
 
                 let pageIllustrationUrl: string | undefined = undefined;
 
                 if (promptForImage) {
-                  // 1. Primary: OpenAI gpt-image-2.5-flare
-                  if (hasOpenAI && openaiKey) {
-                    pageIllustrationUrl = (await generateOpenAiIllustration(promptForImage, openaiKey)) || undefined;
+                  if (!isPageLocked) {
+                    // 1. Primary: OpenAI gpt-image-2.5-flare (only for unlocked/free pages 1..5)
+                    if (hasOpenAI && openaiKey) {
+                      pageIllustrationUrl = (await generateOpenAiIllustration(promptForImage, openaiKey)) || undefined;
+                    }
+
+                    // 2. High-speed Fallback: Google Imagen 3 (via GEMINI_API_KEY)
+                    if (!pageIllustrationUrl && (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY)) {
+                      const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+                      pageIllustrationUrl = (await generateGeminiIllustration(promptForImage, geminiKey)) || undefined;
+                    }
                   }
 
-                  // 2. High-speed Fallback: Google Imagen 3 (via GEMINI_API_KEY)
-                  if (!pageIllustrationUrl && (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY)) {
-                    const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-                    pageIllustrationUrl = (await generateGeminiIllustration(promptForImage, geminiKey)) || undefined;
-                  }
-
-                  // 3. Resilient fallback: Pollinations line-art
+                  // 3. Resilient fallback (also provides zero-cost preview behind frosted blur for locked pages 6..N)
                   if (!pageIllustrationUrl) {
                     pageIllustrationUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
                       promptForImage
@@ -702,6 +828,7 @@ DIRECT CONTINUITY CHECKLIST:
                 storyText: pageStoryText,
                 imagePrompt: p.imagePrompt || `Clean layout for ${pageTitle}`,
                 imageUrl: pageIllustrationUrl,
+                isLocked: isPageLocked,
                 journalData: isJournalMode
                   ? {
                       dayNumber: p.journalData?.dayNumber || pNum,
@@ -740,7 +867,7 @@ DIRECT CONTINUITY CHECKLIST:
 
             const finalBookProject: BookProject = {
               id: `book_${Date.now().toString(36)}`,
-              title: parsed.title || title || (isJournalMode ? "Daily Action Journal" : `${character.name}'s Custom Book`),
+              title: parsed.title || title || (isJournalMode ? "Daily Action Journal" : character.name ? `${character.name}'s Custom Book` : "Custom Coloring & Story Book"),
               subtitle: parsed.subtitle || subtitle || (isJournalMode ? "A 6\" x 9\" Personalized Reflection Journal" : "A Personalized AI-Designed Book"),
               authorName: authorName,
               genre: genre,
@@ -749,6 +876,7 @@ DIRECT CONTINUITY CHECKLIST:
               referenceImageUrl: referenceImageUrl || undefined,
               artStyle: artStyle || (isColor ? "Playful, colorful illustrations" : "Black and white line art"),
               pageStructure: pageStructure || undefined,
+              showPageNumbers: effectiveShowPageNumbers,
               pages: resolvedPages,
               pageCount: resolvedPages.length,
               format: {
@@ -781,9 +909,24 @@ DIRECT CONTINUITY CHECKLIST:
 
     for (let i = 0; i < count; i++) {
       const pNum = i + 1;
+      if (pNum === 1 && existingPageOne && (existingPageOne.imageUrl || existingPageOne.journalData)) {
+        pages.push({
+          ...existingPageOne,
+          pageNumber: 1,
+          isLocked: false,
+        });
+        continue;
+      }
+      const isPageLocked = typeof freePagesLimit === "number" && pNum > freePagesLimit;
       const template = templates[i % templates.length];
-      const pageTitle = isJournalMode ? `Day ${pNum}` : template.title;
-      const storyText = isJournalMode ? "Daily journal entry and action log." : template.story(character.name, character.type);
+      const fallbackCharName = character.name || "Friend";
+      const fallbackCharType = character.type || "Explorer";
+      const pageTitle = isJournalMode ? `Day ${pNum}` : !wantsStoryTextInColoring ? `${title || "Coloring"} - Page ${pNum}` : template.title;
+      const storyText = isJournalMode
+        ? "Daily journal entry and action log."
+        : !wantsStoryTextInColoring
+        ? ""
+        : template.story(fallbackCharName, fallbackCharType);
 
       const spotIllustrationTopic =
         /\b(camera|mic|microphone|notebook|laptop|tools?)\b/i.test(fullConversationText)
@@ -792,27 +935,25 @@ DIRECT CONTINUITY CHECKLIST:
           ? "fitness and wellness icon"
           : `${title || "journal"} reflection motif`;
 
+      const fallbackSceneText = character.name
+        ? template.scene(fallbackCharName, fallbackCharType)
+        : `${prompt || title || "Cute animal friends scene"} (Page ${pNum})`;
+
       const fallbackIllustrationPrompt = isJournalMode
         ? wantsIllustrations
           ? `Minimalist black and white line art spot illustration of ${spotIllustrationTopic}, clean outlines, no shading, pure white background`
           : undefined
         : isColor
-        ? `Children's book illustration, vibrant full color, ${artStyle || "playful colorful digital illustration"}, high detail, rich palette, delightful character expression, cinematic lighting: ${template.scene(
-            character.name,
-            character.type
-          )}`
-        : `Children's coloring book page outline, thick continuous bold black outlines, zero shading, pure white background, no gradients, uncolored, strictly black and white line art ready for coloring with crayons. ${template.scene(
-            character.name,
-            character.type
-          )}.${borderInstruction ? ` ${borderInstruction}` : ""}`;
+        ? `Children's book illustration, vibrant full color, ${artStyle || "playful colorful digital illustration"}, high detail, rich palette, delightful expression, cinematic lighting: ${fallbackSceneText}`
+        : `Children's coloring book page outline, thick continuous bold black outlines, zero shading, pure white background, no gradients, uncolored, strictly black and white line art ready for coloring with crayons. ${fallbackSceneText}.${borderInstruction ? ` ${borderInstruction}` : ""}`;
 
       let fallbackImageUrl: string | undefined = undefined;
 
       if (fallbackIllustrationPrompt) {
-        if (hasOpenAI && openaiKey && i === 0) {
+        if (!isPageLocked && hasOpenAI && openaiKey && i === 0) {
           fallbackImageUrl = (await generateOpenAiIllustration(fallbackIllustrationPrompt, openaiKey)) || undefined;
         }
-        if (!fallbackImageUrl && (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) && i === 0) {
+        if (!isPageLocked && !fallbackImageUrl && (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) && i === 0) {
           const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
           fallbackImageUrl = (await generateGeminiIllustration(fallbackIllustrationPrompt, geminiKey)) || undefined;
         }
@@ -829,6 +970,7 @@ DIRECT CONTINUITY CHECKLIST:
         storyText: storyText,
         imagePrompt: fallbackIllustrationPrompt || `Page ${pNum} outline`,
         imageUrl: fallbackImageUrl,
+        isLocked: isPageLocked,
         journalData: isJournalMode
           ? {
               dayNumber: pNum,
@@ -864,8 +1006,8 @@ DIRECT CONTINUITY CHECKLIST:
       });
     }
 
-    const fallbackTitle = title || (isJournalMode ? "Daily Action & Reflection Journal" : `${character.name}'s Big Adventure`);
-    const fallbackSubtitle = subtitle || (isJournalMode ? "A 6\" x 9\" Personalized Reflection Journal" : "A Personalized AI Storybook");
+    const fallbackTitle = title || (isJournalMode ? "Daily Action & Reflection Journal" : character.name ? `${character.name}'s Big Adventure` : "Custom Coloring Book");
+    const fallbackSubtitle = subtitle || (isJournalMode ? "A 6\" x 9\" Personalized Reflection Journal" : "A Personalized AI Book");
 
     const bookProject: BookProject = {
       id: `book_${Date.now().toString(36)}`,
@@ -878,6 +1020,7 @@ DIRECT CONTINUITY CHECKLIST:
       referenceImageUrl: referenceImageUrl || undefined,
       artStyle: artStyle || (isColor ? "Playful, colorful illustrations" : "Black and white line art"),
       pageStructure: pageStructure || undefined,
+      showPageNumbers: effectiveShowPageNumbers,
       pages: pages,
       pageCount: pages.length,
       format: {

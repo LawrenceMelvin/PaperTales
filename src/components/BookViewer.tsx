@@ -23,6 +23,7 @@ import {
   Palette,
   RefreshCw,
   X,
+  Lock,
 } from "lucide-react";
 import { getClientTokenBalance, deductClientTokens } from "@/lib/token-store";
 
@@ -38,6 +39,8 @@ interface BookViewerProps {
   onPrintFirstPage?: () => void;
   onOpenBookDetails?: () => void;
   onOpenTokenModal?: () => void;
+  onUnlockRemainingPages?: () => void;
+  isUnlockingPages?: boolean;
   isDownloading?: boolean;
   isConfirmed?: boolean;
   isBookUnlocked?: boolean;
@@ -55,6 +58,8 @@ export default function BookViewer({
   onPrintFirstPage,
   onOpenBookDetails,
   onOpenTokenModal,
+  onUnlockRemainingPages,
+  isUnlockingPages = false,
   isDownloading,
   isConfirmed = true,
   isBookUnlocked = false,
@@ -335,6 +340,7 @@ export default function BookViewer({
     pNum: number,
     isRightPage: boolean
   ) => {
+    const isJournalPageLocked = !isBookUnlocked && Boolean(page?.isLocked || pNum > 5);
     const isBlackAndWhite = book.format?.interiorColor === "black_and_white";
     const sections = page?.journalData?.sections;
     const hasSections = Boolean(sections && sections.length > 0);
@@ -414,7 +420,11 @@ export default function BookViewer({
           </>
         )}
 
-        <div className="flex-1 flex flex-col justify-between space-y-2 z-10 px-1 sm:px-2">
+        <div
+          className={`flex-1 flex flex-col justify-between space-y-2 z-10 px-1 sm:px-2 ${
+            isJournalPageLocked ? "filter blur-xs select-none pointer-events-none opacity-50" : ""
+          }`}
+        >
           {/* Top Perimeter Text Border Banner (if present) */}
           {borderText && (
             <div className="flex items-center justify-between border-b border-slate-300 pb-1 -mt-1 overflow-hidden select-none">
@@ -651,12 +661,52 @@ export default function BookViewer({
             </div>
           )}
 
-          {/* Page Footer */}
-          <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-200/70 pt-2">
-            <span className="truncate max-w-[160px] font-medium">{book.title}</span>
-            <span className="font-mono font-bold">Page {pNum}</span>
-          </div>
+          {/* Page Footer (Opt-in via chat: book.showPageNumbers) */}
+          {book.showPageNumbers && (
+            <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-200/70 pt-2">
+              <span className="truncate max-w-[160px] font-medium">{book.title}</span>
+              <span className="font-mono font-bold">Page {pNum}</span>
+            </div>
+          )}
         </div>
+
+        {/* Locked Overlay for Journal Pages > 5 */}
+        {isJournalPageLocked && (
+          <div className="absolute inset-0 z-30 bg-slate-950/60 backdrop-blur-xs flex flex-col items-center justify-center p-4 text-center">
+            <div className="glacier-glass rounded-2xl border border-sky-400/50 p-4 max-w-[260px] shadow-2xl space-y-2.5">
+              <div className="w-9 h-9 rounded-full bg-sky-400/20 border border-sky-400/40 text-sky-300 flex items-center justify-center mx-auto">
+                <Lock className="w-4 h-4 text-sky-300" />
+              </div>
+              <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                First 5 Pages Free
+              </span>
+              <h4 className="text-xs sm:text-sm font-black text-white">
+                Day {pNum} Preview Locked
+              </h4>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                Unlock all remaining pages (Pages 6–{totalPages}) to view and export your complete {totalPages}-page journal.
+              </p>
+              <button
+                type="button"
+                onClick={onUnlockRemainingPages || onOpenTokenModal}
+                disabled={isUnlockingPages}
+                className="w-full py-2 px-3 rounded-xl bg-[#7dd3fc] hover:bg-[#a0e3ff] text-[#001f2e] font-black text-xs shadow-lg flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+              >
+                {isUnlockingPages ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#001f2e]" />
+                    <span>Unlocking Pages...</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-3.5 h-3.5 text-[#001f2e]" />
+                    <span>Unlock Pages 6–{totalPages} ({Math.max(1, totalPages - 5)} Tokens)</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -933,134 +983,147 @@ export default function BookViewer({
               </>
             ) : (
               /* Standard Story & Coloring Spread */
-              <>
-                {/* Left Page (Story & Reading Text) */}
-                <div
-                  className={`flex-1 p-5 sm:p-7 lg:p-8 flex flex-col justify-between border-b sm:border-b-0 sm:border-r border-slate-200 relative bg-[#fffdfa] ${
-                    mobilePageTab === "art" ? "hidden sm:flex" : "flex"
-                  }`}
-                >
-                  <div className="hidden sm:block absolute top-0 bottom-0 right-0 w-5 spine-gradient pointer-events-none" />
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      {isActivityBook
-                        ? ((activePage?.pageNumber || 1) % 2 !== 0
-                            ? `Activity ${(activePage?.pageNumber || 1)}`
-                            : `Discovery ${(activePage?.pageNumber || 1)}`)
-                        : `Chapter ${activePage?.pageNumber}`}
-                    </span>
-                    <h3 className="text-lg sm:text-2xl font-black font-serif text-slate-900 mt-1 mb-4">
-                      {activePage?.title}
-                    </h3>
+              (() => {
+                const isSpreadLocked =
+                  !isBookUnlocked && Boolean(activePage && (activePage.isLocked || activePage.pageNumber > 5));
+                const hasStoryText = Boolean(activePage?.storyText && activePage.storyText.trim().length > 0);
+                const lockedPagesCount = Math.max(1, totalPages - 5);
 
-                    {editingStory ? (
-                      <div className="flex flex-col gap-2">
-                        <textarea
-                          value={editText}
-                          onChange={(e) => setEditText(e.target.value)}
-                          rows={6}
-                          className="w-full text-sm p-3 rounded-xl border border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500 font-serif leading-relaxed text-slate-900"
-                        />
-                        <button
-                          onClick={saveEdit}
-                          className="self-end px-3 py-1.5 text-xs font-bold bg-sky-600 text-white rounded-lg flex items-center gap-1 shadow-sm"
-                        >
-                          <Check className="w-3.5 h-3.5" /> Save Story
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="group relative">
-                        <div className="text-[11px] font-medium text-sky-600 mb-1 flex items-center gap-1 select-none">
-                          <Sparkles className="w-3 h-3 text-sky-500" />
-                          <span>Highlight any text to polish or rewrite with AI (1 🪙)</span>
-                        </div>
-                        <p
-                          onMouseUp={handleStoryMouseUp}
-                          onTouchEnd={handleStoryMouseUp}
-                          className="text-sm sm:text-base lg:text-lg font-serif text-slate-800 leading-relaxed sm:leading-loose cursor-text selection:bg-sky-200 selection:text-sky-950 whitespace-pre-wrap"
-                        >
-                          {activePage?.storyText}
-                        </p>
-                        <div className="flex items-center gap-2 mt-3 flex-wrap">
-                          <button
-                            onClick={() => startEdit(activePage?.storyText || "")}
-                            className="sm:opacity-0 group-hover:opacity-100 transition-opacity text-xs text-sky-700 font-semibold flex items-center gap-1 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200 w-fit"
-                          >
-                            <Edit3 className="w-3 h-3 text-sky-600" /> Manual Edit
-                          </button>
-                          {previousStoryText && (
-                            <button
-                              onClick={handleUndoRefine}
-                              className="text-xs font-bold text-sky-600 hover:text-sky-800 flex items-center gap-1 bg-sky-50/80 px-2.5 py-1 rounded-lg border border-sky-300 w-fit transition-all active:scale-95"
-                            >
-                              <RotateCcw className="w-3 h-3" /> Undo AI Refinement
-                            </button>
+                return (
+                  <div className="relative flex-1 flex flex-col sm:flex-row w-full h-full">
+                    {/* Left Page (Story & Reading Text or Clean Title Page) */}
+                    <div
+                      className={`flex-1 p-5 sm:p-7 lg:p-8 flex flex-col justify-between border-b sm:border-b-0 sm:border-r border-slate-200 relative bg-[#fffdfa] ${
+                        mobilePageTab === "art" ? "hidden sm:flex" : "flex"
+                      } ${isSpreadLocked ? "filter blur-md select-none pointer-events-none opacity-55" : ""}`}
+                    >
+                      <div className="hidden sm:block absolute top-0 bottom-0 right-0 w-5 spine-gradient pointer-events-none" />
+                      <div className="flex-1 flex flex-col justify-between">
+                        <div>
+                          {(isActivityBook || hasStoryText) && (
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              {isActivityBook
+                                ? (activePage?.pageNumber || 1) % 2 !== 0
+                                  ? `Activity ${activePage?.pageNumber || 1}`
+                                  : `Discovery ${activePage?.pageNumber || 1}`
+                                : `Chapter ${activePage?.pageNumber}`}
+                            </span>
                           )}
+                          <h3 className="text-lg sm:text-2xl font-black font-serif text-slate-900 mt-1 mb-4">
+                            {activePage?.title}
+                          </h3>
+
+                          {editingStory ? (
+                            <div className="flex flex-col gap-2">
+                              <textarea
+                                value={editText}
+                                onChange={(e) => setEditText(e.target.value)}
+                                rows={6}
+                                className="w-full text-sm p-3 rounded-xl border border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500 font-serif leading-relaxed text-slate-900"
+                              />
+                              <button
+                                onClick={saveEdit}
+                                className="self-end px-3 py-1.5 text-xs font-bold bg-sky-600 text-white rounded-lg flex items-center gap-1 shadow-sm"
+                              >
+                                <Check className="w-3.5 h-3.5" /> Save Story
+                              </button>
+                            </div>
+                          ) : hasStoryText ? (
+                            <div className="group relative">
+                              <div className="text-[11px] font-medium text-sky-600 mb-1 flex items-center gap-1 select-none">
+                                <Sparkles className="w-3 h-3 text-sky-500" />
+                                <span>Highlight any text to polish or rewrite with AI (1 🪙)</span>
+                              </div>
+                              <p
+                                onMouseUp={handleStoryMouseUp}
+                                onTouchEnd={handleStoryMouseUp}
+                                className="text-sm sm:text-base lg:text-lg font-serif text-slate-800 leading-relaxed sm:leading-loose cursor-text selection:bg-sky-200 selection:text-sky-950 whitespace-pre-wrap"
+                              >
+                                {activePage?.storyText}
+                              </p>
+                              <div className="flex items-center gap-2 mt-3 flex-wrap">
+                                <button
+                                  onClick={() => startEdit(activePage?.storyText || "")}
+                                  className="sm:opacity-0 group-hover:opacity-100 transition-opacity text-xs text-sky-700 font-semibold flex items-center gap-1 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200 w-fit"
+                                >
+                                  <Edit3 className="w-3 h-3 text-sky-600" /> Manual Edit
+                                </button>
+                                {previousStoryText && (
+                                  <button
+                                    onClick={handleUndoRefine}
+                                    className="text-xs font-bold text-sky-600 hover:text-sky-800 flex items-center gap-1 bg-sky-50/80 px-2.5 py-1 rounded-lg border border-sky-300 w-fit transition-all active:scale-95"
+                                  >
+                                    <RotateCcw className="w-3 h-3" /> Undo AI Refinement
+                                  </button>
+                                )}
+                              </div>
+                              {refineFeedback && (
+                                <div className="mt-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1.5 animate-in fade-in">
+                                  <Check className="w-3 h-3 text-emerald-600" />
+                                  <span>{refineFeedback}</span>
+                                </div>
+                              )}
+                            </div>
+                          ) : null}
                         </div>
-                        {refineFeedback && (
-                          <div className="mt-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1.5 animate-in fade-in">
-                            <Check className="w-3 h-3 text-emerald-600" />
-                            <span>{refineFeedback}</span>
+
+                        {book.showPageNumbers && (
+                          <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-200/60 pt-3 mt-4">
+                            <span className="truncate max-w-[150px]">{book.title}</span>
+                            <span>Page {activePage?.pageNumber}</span>
                           </div>
                         )}
                       </div>
-                    )}
-
-                    <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-200/60 pt-3 mt-4">
-                      <span className="truncate max-w-[150px]">{book.title}</span>
-                      <span>Page {activePage?.pageNumber}</span>
                     </div>
-                  </div>
-                </div>
 
-                {/* Right Page (Coloring Line-Art or Full-Color Illustration) */}
-                <div
-                  className={`flex-1 p-5 sm:p-8 lg:p-10 flex flex-col justify-between relative bg-white ${
-                    mobilePageTab === "story" ? "hidden sm:flex" : "flex"
-                  }`}
-                >
-                  <div className="hidden sm:block absolute top-0 bottom-0 left-0 w-5 spine-gradient pointer-events-none" />
+                    {/* Right Page (Coloring Line-Art or Full-Color Illustration — Single clean border without outer CSS box) */}
+                    <div
+                      className={`flex-1 p-4 sm:p-6 lg:p-8 flex flex-col justify-between relative bg-white ${
+                        mobilePageTab === "story" ? "hidden sm:flex" : "flex"
+                      } ${isSpreadLocked ? "filter blur-md select-none pointer-events-none opacity-55" : ""}`}
+                    >
+                      <div className="hidden sm:block absolute top-0 bottom-0 left-0 w-5 spine-gradient pointer-events-none" />
 
-                  <div
-                    className={`w-full flex-1 rounded-xl p-4 flex flex-col items-center justify-center relative overflow-hidden min-h-[260px] sm:min-h-[320px] ${
-                      isColorBook
-                        ? "border border-slate-200/90 bg-slate-50/50 shadow-inner"
-                        : "border-2 border-slate-900 bg-white"
-                    }`}
-                  >
-                  {/* Tweak art trigger button in top-right */}
-                  <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setArtModalOpen(true)}
-                    disabled={isGeneratingArt}
-                    className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-900/90 hover:bg-slate-950 text-sky-300 border border-sky-400/40 shadow-md flex items-center gap-1.5 transition-all hover:scale-102 active:scale-95 cursor-pointer"
-                  >
-                    {isGeneratingArt ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
-                    ) : (
-                      <Palette className="w-3.5 h-3.5 text-sky-400" />
-                    )}
-                    <span>Tweak Art</span>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-400/20 text-sky-300 font-mono">
-                      2 🪙
-                    </span>
-                  </button>
-                </div>
+                      <div
+                        className={`w-full flex-1 rounded-xl p-2 flex flex-col items-center justify-center relative overflow-hidden min-h-[260px] sm:min-h-[340px] ${
+                          isColorBook ? "bg-slate-50/40" : "bg-white"
+                        }`}
+                      >
+                        {/* Tweak art trigger button in top-right */}
+                        {!isSpreadLocked && (
+                          <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setArtModalOpen(true)}
+                              disabled={isGeneratingArt}
+                              className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-900/90 hover:bg-slate-950 text-sky-300 border border-sky-400/40 shadow-md flex items-center gap-1.5 transition-all hover:scale-102 active:scale-95 cursor-pointer"
+                            >
+                              {isGeneratingArt ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
+                              ) : (
+                                <Palette className="w-3.5 h-3.5 text-sky-400" />
+                              )}
+                              <span>Tweak Art</span>
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-400/20 text-sky-300 font-mono">
+                                2 🪙
+                              </span>
+                            </button>
+                          </div>
+                        )}
 
-                {/* Render customized illustration if generated, else fall back to theme template */}
-                {activePage?.imageUrl ? (
-                  <img
-                    src={activePage.imageUrl}
-                    alt={activePage.title}
-                    className="w-full h-full max-h-[340px] object-contain"
-                  />
-                ) : activePage?.svgData ? (
-                  <div
-                    dangerouslySetInnerHTML={{ __html: activePage.svgData }}
-                    className="w-full h-full flex items-center justify-center max-h-[340px]"
-                  />
-                ) : isIceCreamTheme ? (
+                        {/* Render customized illustration if generated, else fall back to theme template */}
+                        {activePage?.imageUrl ? (
+                          <img
+                            src={activePage.imageUrl}
+                            alt={activePage.title}
+                            className="w-full h-full max-h-[360px] object-contain"
+                          />
+                        ) : activePage?.svgData ? (
+                          <div
+                            dangerouslySetInnerHTML={{ __html: activePage.svgData }}
+                            className="w-full h-full flex items-center justify-center max-h-[360px]"
+                          />
+                        ) : isIceCreamTheme ? (
                   /* Ice Cream Cone Vector Line Art (Matching User's Hand-drawn Sketch!) */
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" className="w-full h-full max-h-[340px]">
                     <rect width="400" height="400" fill="#FFFFFF" />
@@ -1227,23 +1290,61 @@ export default function BookViewer({
                     <path d="M 300 110 Q 315 95 330 110 Q 315 125 300 110 Z" fill="none" stroke="#111111" strokeWidth="2.5" />
                   </svg>
                 )}
+              </div>
 
-                <div className="absolute bottom-2 text-center text-[10px] font-semibold text-slate-400">
-                  {isColorBook ? (
-                    <>Vibrant Full-Color &bull; Print Ready (300 DPI) &bull; {book.genre.replace("_", " ").toUpperCase()}</>
-                  ) : (
-                    <>Crisp Vector Line-Art &bull; Print Ready (300 DPI) &bull; {book.genre.replace("_", " ").toUpperCase()}</>
-                  )}
+              {book.showPageNumbers && (
+                <div className="flex items-center justify-end text-[11px] text-slate-400 border-t border-slate-200/60 pt-3 mt-4">
+                  <span>Page {activePage?.pageNumber}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Frosted Blur Lock Overlay for Spreads > Page 5 */}
+            {isSpreadLocked && (
+              <div className="absolute inset-0 z-30 bg-slate-950/65 backdrop-blur-xs flex flex-col items-center justify-center p-4 sm:p-6 text-center animate-in fade-in">
+                <div className="glacier-glass rounded-2xl border-2 border-sky-400/60 p-5 sm:p-7 max-w-md w-full shadow-2xl space-y-3.5">
+                  <div className="w-11 h-11 rounded-full bg-sky-400/20 border border-sky-400/40 text-sky-300 flex items-center justify-center mx-auto">
+                    <Lock className="w-5 h-5 text-sky-300" />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-3 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                      🎁 First 5 Pages Are 100% Free &bull; Page {activePage?.pageNumber} of {totalPages}
+                    </span>
+                    <h4 className="text-base sm:text-lg font-black text-white pt-1">
+                      Unlock Remaining {lockedPagesCount} Pages (Pages 6–{totalPages})
+                    </h4>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      Pages 1–5 are yours for free! Unlock Pages 6–{totalPages} to reveal and generate all{" "}
+                      {lockedPagesCount} remaining pages ({lockedPagesCount} Tokens).
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onUnlockRemainingPages || onOpenTokenModal}
+                    disabled={isUnlockingPages}
+                    className="w-full py-3 px-4 rounded-xl bg-[#7dd3fc] hover:bg-[#a0e3ff] text-[#001f2e] font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 transition-all hover:brightness-105 active:scale-95 disabled:opacity-50 cursor-pointer"
+                  >
+                    {isUnlockingPages ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-[#001f2e]" />
+                        <span>Unlocking &amp; Illustrating Pages 6–{totalPages}...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="w-4 h-4 text-[#001f2e]" />
+                        <span>
+                          🔓 Unlock Pages 6–{totalPages} ({lockedPagesCount} Tokens / PayPal) →
+                        </span>
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
-
-              <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-200/60 pt-3 mt-4">
-                <span>{isColorBook ? "Full-Page Illustrated Scene" : "Activity & Coloring Sheet"}</span>
-                <span>Page {activePage?.pageNumber} Illustration</span>
-              </div>
-            </div>
-          </>
-        )}
+            )}
+          </div>
+        );
+      })()
+    )}
       </div>
     )}
   </div>

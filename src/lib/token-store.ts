@@ -44,7 +44,7 @@ export const AVAILABLE_TOKEN_PACKS: TokenPack[] = [
 
 // In-memory / client-safe token balance management
 const TOKEN_STORAGE_KEY = "papertales_user_tokens";
-const DEFAULT_INITIAL_TOKENS = 12; // Free starter tokens for new users
+const DEFAULT_INITIAL_TOKENS = 0; // First 5 pages are 100% free; pages 6+ unlock via tokens/PayPal
 
 export function getClientTokenBalance(): number {
   if (typeof window === "undefined") return DEFAULT_INITIAL_TOKENS;
