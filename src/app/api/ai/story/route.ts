@@ -240,39 +240,43 @@ async function generateGeminiIllustration(
   prompt: string,
   apiKey?: string
 ): Promise<string | null> {
-  if (!apiKey) return null;
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          instances: [{ prompt }],
-          parameters: {
-            sampleCount: 1,
-            aspectRatio: "1:1",
-          },
-        }),
-        signal: AbortSignal.timeout(25000),
-      }
-    );
+  if (!apiKey || apiKey.startsWith("sb-") || apiKey.startsWith("test_")) return null;
+  const modelsToTry = [
+    process.env.GEMINI_IMAGE_MODEL || "gemini-3.1-flash-lite-image",
+    "gemini-3.1-flash-image",
+  ];
 
-    if (res.ok) {
-      const data = await res.json();
-      const b64 = data.predictions?.[0]?.bytesBase64Encoded;
-      const mime = data.predictions?.[0]?.mimeType || "image/jpeg";
-      if (b64) {
-        return `data:${mime};base64,${b64}`;
+  for (const model of modelsToTry) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseModalities: ["IMAGE"],
+            },
+          }),
+          signal: AbortSignal.timeout(30000),
+        }
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        const part = data.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData?.data);
+        if (part?.inlineData?.data) {
+          const mime = part.inlineData.mimeType || "image/jpeg";
+          return `data:${mime};base64,${part.inlineData.data}`;
+        }
+      } else {
+        const errText = await res.text();
+        console.warn(`Gemini image generation ${model} error:`, res.status, errText.slice(0, 300));
       }
-    } else {
-      const errText = await res.text();
-      console.warn("Gemini Imagen generation error:", res.status, errText);
+    } catch (err) {
+      console.warn(`Gemini image generation ${model} failed:`, err);
     }
-  } catch (err) {
-    console.warn("Gemini Imagen generation failed:", err);
   }
   return null;
 }
@@ -356,8 +360,10 @@ export async function POST(req: NextRequest) {
 
     const effectiveTrimSize = trimSize || (isJournalMode ? (genre === "coloring_book" ? "8.5x8.5" : "6x9") : "8.5x8.5");
 
+    const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
     const groqKey = process.env.GROQ_API_KEY;
+    const hasGemini = Boolean(geminiKey && !geminiKey.startsWith("sb-") && !geminiKey.startsWith("test_"));
     const hasOpenAI = Boolean(openaiKey && openaiKey.startsWith("sk-"));
     const hasGroq = Boolean(groqKey && groqKey.startsWith("gsk_"));
 
@@ -465,12 +471,13 @@ export async function POST(req: NextRequest) {
             : `Children's coloring book page outline, thick continuous bold black outlines, zero shading, pure white background, no gradients, uncolored, strictly black and white line art ready for coloring with crayons. ${p.imagePrompt}`;
 
           let unlockedImageUrl: string | undefined = p.imageUrl;
-          if (hasOpenAI && openaiKey) {
-            unlockedImageUrl = (await generateOpenAiIllustration(promptForUnlockImage, openaiKey)) || unlockedImageUrl;
-          }
-          if (!unlockedImageUrl && (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY)) {
-            const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+          // 1. Tier-1 Primary: Google Gemini 3.1 Flash Lite Image (uses GCP credits, ~3.3s)
+          if (hasGemini && geminiKey) {
             unlockedImageUrl = (await generateGeminiIllustration(promptForUnlockImage, geminiKey)) || unlockedImageUrl;
+          }
+          // 2. Tier-2 Failover: OpenAI gpt-image-2.5-flare
+          if (!unlockedImageUrl && hasOpenAI && openaiKey) {
+            unlockedImageUrl = (await generateOpenAiIllustration(promptForUnlockImage, openaiKey)) || unlockedImageUrl;
           }
           if (!unlockedImageUrl) {
             unlockedImageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(
@@ -512,8 +519,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, book: unlockedBook });
     }
 
-    // Call high-capability LLM (OpenAI primary, Groq fallback)
-    if (hasOpenAI || hasGroq) {
+    // Call high-capability LLM (Gemini primary, OpenAI backup, Groq fallback)
+    if (hasGemini || hasOpenAI || hasGroq) {
       try {
         const schemaExampleJournalData =
           effectiveLayoutType === "empty_lined"
@@ -683,8 +690,52 @@ DIRECT CONTINUITY CHECKLIST:
 
         let aiData: any = null;
 
-        // 1. Primary: OpenAI (gpt-4.1)
-        if (hasOpenAI) {
+        // 1. Tier-1 Primary: Google Gemini 3.8 Flash (uses GCP credits)
+        if (hasGemini && geminiKey) {
+          const geminiModel = process.env.GEMINI_CHAT_MODEL || "gemini-3.8-flash";
+          try {
+            const geminiRes = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  systemInstruction: { parts: [{ text: systemPrompt }] },
+                  contents: [
+                    ...openAiMessages
+                      .filter((m) => m.role === "user" || m.role === "assistant")
+                      .map((m) => ({
+                        role: m.role === "user" ? "user" : "model",
+                        parts: [{ text: m.content }],
+                      })),
+                  ],
+                  generationConfig: {
+                    responseMimeType: "application/json",
+                    temperature: 0.5,
+                  },
+                }),
+                signal: AbortSignal.timeout(45000),
+              }
+            );
+
+            if (geminiRes.ok) {
+              const gData = await geminiRes.json();
+              const raw = gData.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (raw) {
+                const clean = raw.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+                aiData = { choices: [{ message: { content: clean } }] };
+              }
+            } else {
+              const errBody = await geminiRes.text();
+              console.warn(`Gemini story synthesis ${geminiModel} error:`, geminiRes.status, errBody.slice(0, 300));
+            }
+          } catch (geminiStoryErr) {
+            console.warn("Gemini story synthesis failed, falling back to OpenAI/Groq:", geminiStoryErr);
+          }
+        }
+
+        // 2. Tier-2 Backup: OpenAI (gpt-4.1)
+        if (!aiData && hasOpenAI) {
           const model = process.env.OPENAI_CHAT_MODEL || "gpt-4.1";
           try {
             const openAiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -792,15 +843,14 @@ DIRECT CONTINUITY CHECKLIST:
 
                 if (promptForImage) {
                   if (!isPageLocked) {
-                    // 1. Primary: OpenAI gpt-image-2.5-flare (only for unlocked/free pages 1..5)
-                    if (hasOpenAI && openaiKey) {
-                      pageIllustrationUrl = (await generateOpenAiIllustration(promptForImage, openaiKey)) || undefined;
+                    // 1. Tier-1 Primary: Google Gemini 3.1 Flash Lite Image (~3.3s, uses GCP credits)
+                    if (hasGemini && geminiKey) {
+                      pageIllustrationUrl = (await generateGeminiIllustration(promptForImage, geminiKey)) || undefined;
                     }
 
-                    // 2. High-speed Fallback: Google Imagen 3 (via GEMINI_API_KEY)
-                    if (!pageIllustrationUrl && (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY)) {
-                      const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-                      pageIllustrationUrl = (await generateGeminiIllustration(promptForImage, geminiKey)) || undefined;
+                    // 2. Tier-2 Backup: OpenAI gpt-image-2.5-flare (only for unlocked/free pages 1..5)
+                    if (!pageIllustrationUrl && hasOpenAI && openaiKey) {
+                      pageIllustrationUrl = (await generateOpenAiIllustration(promptForImage, openaiKey)) || undefined;
                     }
                   }
 
@@ -950,12 +1000,11 @@ DIRECT CONTINUITY CHECKLIST:
       let fallbackImageUrl: string | undefined = undefined;
 
       if (fallbackIllustrationPrompt) {
-        if (!isPageLocked && hasOpenAI && openaiKey && i === 0) {
-          fallbackImageUrl = (await generateOpenAiIllustration(fallbackIllustrationPrompt, openaiKey)) || undefined;
-        }
-        if (!isPageLocked && !fallbackImageUrl && (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) && i === 0) {
-          const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+        if (!isPageLocked && hasGemini && geminiKey && i === 0) {
           fallbackImageUrl = (await generateGeminiIllustration(fallbackIllustrationPrompt, geminiKey)) || undefined;
+        }
+        if (!isPageLocked && !fallbackImageUrl && hasOpenAI && openaiKey && i === 0) {
+          fallbackImageUrl = (await generateOpenAiIllustration(fallbackIllustrationPrompt, openaiKey)) || undefined;
         }
         if (!fallbackImageUrl) {
           fallbackImageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(

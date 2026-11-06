@@ -1325,12 +1325,11 @@ export default function StudioPage() {
                                 <div className="flex items-center gap-2 text-amber-300 font-bold">
                                   <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                                   <span>
-                                    Print-on-Demand Factory Notice ({msg.printAdvisory.franchiseName || "Trademark Detected"})
+                                    Physical Print Notice ({msg.printAdvisory.franchiseName || "Trademark Detected"})
                                   </span>
                                 </div>
                                 <p className="text-[11px] text-slate-300 leading-relaxed">
-                                  {msg.printAdvisory.explanation ||
-                                    "If printing a physical copy through Lulu POD, industrial print facilities may flag exact trademarked names. You can adopt our print-safe homage title or keep your original choice!"}
+                                  Personal digital PDF downloads have zero restrictions! If you later decide to order physical softcover copies through Lulu POD, commercial facilities may flag trademarked names. You can adopt a print-safe homage title or keep your original choice for personal designing.
                                 </p>
                                 <div className="flex flex-wrap gap-2 pt-1">
                                   {msg.printAdvisory.safeTitle && (
@@ -1351,17 +1350,17 @@ export default function StudioPage() {
                                       className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
                                     >
                                       <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                                      <span>Adopt Safe: &quot;{msg.printAdvisory.safeTitle}&quot;</span>
+                                      <span>Adopt Print-Safe: &quot;{msg.printAdvisory.safeTitle}&quot;</span>
                                     </button>
                                   )}
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      handleSendMessage("Keep my original character and book title, send to print queue");
+                                      handleSendMessage("I prefer to keep my original title and character for personal use. Let's continue designing!");
                                     }}
                                     className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-amber-200 border border-amber-400/30 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
                                   >
-                                    <span>Keep Original &amp; Proceed to Print</span>
+                                    <span>Keep Original &amp; Continue Designing</span>
                                   </button>
                                 </div>
                               </div>

@@ -17,20 +17,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const geminiKey = process.env.GEMINI_API_KEY;
     const groqKey = process.env.GROQ_API_KEY;
     const openAiKey = process.env.OPENAI_API_KEY;
+    const hasGemini = Boolean(geminiKey && !geminiKey.startsWith("sb-") && !geminiKey.startsWith("test_"));
     const hasOpenAI = Boolean(openAiKey && openAiKey.startsWith("sk-"));
     const hasGroq = Boolean(groqKey && groqKey.startsWith("gsk_"));
 
-    const apiKey = hasOpenAI ? openAiKey : (hasGroq ? groqKey : null);
-    const apiUrl = hasOpenAI
-      ? "https://api.openai.com/v1/chat/completions"
-      : "https://api.groq.com/openai/v1/chat/completions";
-    const model = hasOpenAI ? (process.env.OPENAI_CHAT_MODEL || "gpt-4.1") : "openai/gpt-oss-120b";
-
-    if (apiKey) {
-      try {
-        const systemPrompt = `You are a world-class book editor, creative writing mentor, and publishing layout specialist for PaperTales AI.
+    const systemPrompt = `You are a world-class book editor, creative writing mentor, and publishing layout specialist for PaperTales AI.
 Your task is to refine, rewrite, or reformat a specific highlighted passage from a book based on the user's instructions.
 Book Title: "${bookTitle}"
 Genre / Type: "${genre}"
@@ -48,7 +42,7 @@ Output strictly valid JSON with this schema:
   "explanation": "A friendly 1-sentence note explaining what you enhanced"
 }`;
 
-        const userPrompt = `Full Page Context:
+    const userPrompt = `Full Page Context:
 "${fullStoryText}"
 
 Highlighted Text to Refine:
@@ -57,6 +51,55 @@ Highlighted Text to Refine:
 User's Change Instruction:
 "${instruction}"`;
 
+    // 1. Tier-1 Primary: Google Gemini 3.8 Flash
+    if (hasGemini) {
+      const geminiModel = process.env.GEMINI_CHAT_MODEL || "gemini-3.8-flash";
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+            generationConfig: {
+              responseMimeType: "application/json",
+              temperature: 0.4,
+            },
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const raw = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (raw) {
+            const clean = raw.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+            const parsed = JSON.parse(clean);
+            if (parsed.refinedText) {
+              return NextResponse.json({
+                success: true,
+                refinedText: parsed.refinedText,
+                explanation: parsed.explanation || "Text refined by PaperTales AI",
+                tokensUsed: 1,
+                engine: `gemini-${geminiModel}`,
+              });
+            }
+          }
+        }
+      } catch (geminiErr) {
+        console.warn("Gemini refine attempt failed, falling back to OpenAI/Groq:", geminiErr);
+      }
+    }
+
+    // 2. Tier-2 Backup: OpenAI / Groq
+    const apiKey = hasOpenAI ? openAiKey : (hasGroq ? groqKey : null);
+    const apiUrl = hasOpenAI
+      ? "https://api.openai.com/v1/chat/completions"
+      : "https://api.groq.com/openai/v1/chat/completions";
+    const model = hasOpenAI ? (process.env.OPENAI_CHAT_MODEL || "gpt-4.1") : "openai/gpt-oss-120b";
+
+    if (apiKey) {
+      try {
         const res = await fetch(apiUrl, {
           method: "POST",
           headers: {

@@ -32,13 +32,72 @@ export async function POST(req: NextRequest) {
   try {
     const { prompt, characterTraits, pageNumber, artStyle, interiorColor } = await req.json();
 
-    const apiKey = process.env.OPENAI_API_KEY;
     const enhancedPrompt = getCleanIllustrationPrompt(prompt, characterTraits, artStyle, interiorColor);
     const isColor =
       interiorColor === "standard_color" ||
       Boolean(artStyle && /\b(color|colorful|vibrant|watercolor|pastel|painted|digital art|saturated)\b/i.test(artStyle));
 
-    // 1. Try OpenAI GPT-Image-2.5 (Flare / Sunburst) first
+    const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+    const hasGemini = Boolean(geminiKey && !geminiKey.startsWith("sb-") && !geminiKey.startsWith("test_"));
+    const apiKey = process.env.OPENAI_API_KEY;
+
+    // 1. Google Gemini Native Multimodal Image Generation (Tier-1 Primary, uses GCP credits)
+    if (hasGemini) {
+      const isCover = pageNumber === 0;
+      // Front cover uses high-detail model (gemini-3.1-flash-image); interior pages use ultra-fast 3.28s model (gemini-3.1-flash-lite-image)
+      const primaryModel = isCover
+        ? (process.env.GEMINI_COVER_IMAGE_MODEL || "gemini-3.1-flash-image")
+        : (process.env.GEMINI_IMAGE_MODEL || "gemini-3.1-flash-lite-image");
+      const secondaryModel = isCover
+        ? (process.env.GEMINI_IMAGE_MODEL || "gemini-3.1-flash-lite-image")
+        : (process.env.GEMINI_COVER_IMAGE_MODEL || "gemini-3.1-flash-image");
+
+      const geminiModelsToTry = [primaryModel, secondaryModel];
+
+      for (const model of geminiModelsToTry) {
+        try {
+          const geminiRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: enhancedPrompt }] }],
+                generationConfig: {
+                  responseModalities: ["IMAGE"],
+                },
+              }),
+              signal: AbortSignal.timeout(35000),
+            }
+          );
+
+          if (geminiRes.ok) {
+            const data = await geminiRes.json();
+            const part = data.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData?.data);
+            if (part?.inlineData?.data) {
+              const mime = part.inlineData.mimeType || "image/jpeg";
+              const imageUrl = `data:${mime};base64,${part.inlineData.data}`;
+              return NextResponse.json({
+                success: true,
+                model,
+                imageUrl,
+                costEstimateUsd: model.includes("lite") ? 0.0336 : 0.0672,
+                message: isColor
+                  ? `Full-color illustration generated with Google ${model}`
+                  : `Real coloring page line-art generated with Google ${model}`,
+              });
+            }
+          } else {
+            const errBody = await geminiRes.text();
+            console.warn(`Gemini ${model} request error (${geminiRes.status}):`, errBody.slice(0, 300));
+          }
+        } catch (geminiErr) {
+          console.warn(`Gemini ${model} call error:`, geminiErr);
+        }
+      }
+    }
+
+    // 2. OpenAI GPT-Image-2.5 (Flare / Sunburst) as Tier-2 Failover
     if (apiKey && apiKey.startsWith("sk-")) {
       const preferredModels = [
         process.env.OPENAI_IMAGE_MODEL || "gpt-image-2.5-flare",
@@ -84,57 +143,11 @@ export async function POST(req: NextRequest) {
             }
           } else {
             const errBody = await openAiRes.text();
-            console.warn(`OpenAI ${model} request error:`, openAiRes.status, errBody);
+            console.warn(`OpenAI ${model} request error:`, openAiRes.status, errBody.slice(0, 300));
           }
         } catch (apiErr) {
           console.warn(`OpenAI ${model} call error:`, apiErr);
         }
-      }
-    }
-
-    // 2. High-speed Fallback: Google Imagen 3 (via GEMINI_API_KEY)
-    const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-    if (geminiKey) {
-      try {
-        const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${geminiKey}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              instances: [{ prompt: enhancedPrompt }],
-              parameters: {
-                sampleCount: 1,
-                aspectRatio: "1:1",
-              },
-            }),
-            signal: AbortSignal.timeout(25000),
-          }
-        );
-
-        if (geminiRes.ok) {
-          const geminiData = await geminiRes.json();
-          const b64 = geminiData.predictions?.[0]?.bytesBase64Encoded;
-          const mime = geminiData.predictions?.[0]?.mimeType || "image/jpeg";
-          if (b64) {
-            return NextResponse.json({
-              success: true,
-              model: "imagen-3.0-generate-002",
-              imageUrl: `data:${mime};base64,${b64}`,
-              costEstimateUsd: 0.030,
-              message: isColor
-                ? "Full-color illustration generated with Google Imagen 3"
-                : "Vector line-art generated with Google Imagen 3",
-            });
-          }
-        } else {
-          const errBody = await geminiRes.text();
-          console.warn("Gemini Imagen request error:", geminiRes.status, errBody);
-        }
-      } catch (geminiErr) {
-        console.warn("Gemini Imagen call error:", geminiErr);
       }
     }
 

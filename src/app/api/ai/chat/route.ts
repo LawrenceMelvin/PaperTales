@@ -240,6 +240,53 @@ async function callModel(
   return null;
 }
 
+async function callGeminiChat(
+  key: string,
+  model: string,
+  systemInstructions: string,
+  messages: Array<{ role: string; content: string }>
+): Promise<any | null> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+  const contents = messages
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => ({
+      role: m.role === "user" ? "user" : "model",
+      parts: [{ text: m.content }],
+    }));
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      systemInstruction: {
+        parts: [{ text: systemInstructions }],
+      },
+      contents,
+      generationConfig: {
+        responseMimeType: "application/json",
+        temperature: 0.4,
+      },
+    }),
+  });
+
+  if (res.ok) {
+    const data = await res.json();
+    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (raw) {
+      try {
+        const clean = raw.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+        return JSON.parse(clean);
+      } catch (parseErr) {
+        console.warn("Gemini JSON parse failed, raw output:", raw.slice(0, 300));
+      }
+    }
+  } else {
+    const errText = await res.text();
+    console.warn(`Gemini chat ${model} failed (${res.status}):`, errText.slice(0, 300));
+  }
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -250,14 +297,16 @@ export async function POST(req: NextRequest) {
     const hasCover = Boolean(body.hasCover);
     const hasPlannedPages = Boolean(body.hasPlannedPages);
 
+    const geminiKey = process.env.GEMINI_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
     const groqKey = process.env.GROQ_API_KEY;
+    const hasGemini = Boolean(geminiKey && !geminiKey.startsWith("sb-") && !geminiKey.startsWith("test_"));
     const hasOpenAI = Boolean(openaiKey && openaiKey.startsWith("sk-"));
     const hasGroq = Boolean(groqKey && groqKey.startsWith("gsk_"));
 
-    if (!hasOpenAI && !hasGroq) {
+    if (!hasGemini && !hasOpenAI && !hasGroq) {
       return NextResponse.json(
-        { success: false, error: "Neither OPENAI_API_KEY nor GROQ_API_KEY is configured" },
+        { success: false, error: "Neither GEMINI_API_KEY, OPENAI_API_KEY, nor GROQ_API_KEY is configured" },
         { status: 500 }
       );
     }
@@ -304,8 +353,27 @@ export async function POST(req: NextRequest) {
     let parsed: any = null;
     let engineUsed = "unknown";
 
-    // 1. OpenAI is the primary designer model.
-    if (hasOpenAI) {
+    // 1. Google Gemini is the Tier-1 primary designer model (uses creator GCP credits).
+    if (hasGemini) {
+      const geminiModel = process.env.GEMINI_CHAT_MODEL || "gemini-3.8-flash";
+      const combinedSystem = `${SYSTEM_PROMPT}\n\n${buildStateMessage(
+        sanitizedState,
+        lockedTitle,
+        hasProof,
+        hasFullBook,
+        hasCover,
+        hasPlannedPages
+      )}`;
+      try {
+        parsed = await callGeminiChat(geminiKey!, geminiModel, combinedSystem, messages);
+        if (parsed) engineUsed = `gemini-${geminiModel}`;
+      } catch (err) {
+        console.warn("Gemini attempt failed, falling back to OpenAI/Groq:", err);
+      }
+    }
+
+    // 2. OpenAI is the Tier-2 backup.
+    if (!parsed && hasOpenAI) {
       const model = process.env.OPENAI_CHAT_MODEL || "gpt-4.1";
       try {
         parsed = await callModel("https://api.openai.com/v1/chat/completions", openaiKey!, model, formattedMessages);
@@ -315,7 +383,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Groq fallback.
+    // 3. Groq fallback.
     if (!parsed && hasGroq) {
       try {
         parsed = await callModel(

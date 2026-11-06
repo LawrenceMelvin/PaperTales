@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, Printer, Download, Sparkles, CheckCircle2, PackageCheck, Plus, Check } from "lucide-react";
+import { X, Printer, Download, Sparkles, CheckCircle2, PackageCheck, Plus, Check, AlertTriangle, ShieldCheck } from "lucide-react";
 import { BookProject } from "@/types/book";
 import { CompanionProduct, LuluQuoteResponse, PaperTalesOrder } from "@/types/order";
 import { PayPalButtons } from "@paypal/react-paypal-js";
@@ -31,11 +31,13 @@ export default function OrderSummaryModal({
   const [companionProducts, setCompanionProducts] = useState<CompanionProduct[]>([]);
   const [selectedCompanion, setSelectedCompanion] = useState<CompanionProduct | null>(null);
   const [completedOrder, setCompletedOrder] = useState<PaperTalesOrder | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setFulfillmentType(initialFulfillmentType);
       setCompletedOrder(null);
+      setCheckoutError(null);
     }
   }, [isOpen, initialFulfillmentType, book.id]);
 
@@ -245,6 +247,15 @@ export default function OrderSummaryModal({
                     </span>
                   </div>
                 </div>
+
+                {fulfillmentType === "physical_print" && (
+                  <div className="mt-2.5 p-2.5 rounded-xl bg-amber-500/10 border border-amber-400/25 flex items-start gap-2 text-[11px] text-amber-200">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold text-amber-300">Lulu Print Clearance Note:</span> If your book uses trademarked franchise names or logos, commercial print factories may flag the title for review. Digital PDF exports are unrestricted for personal use.
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Channel3 Agentic Commerce Companion Bundling */}
@@ -341,7 +352,17 @@ export default function OrderSummaryModal({
                 <div className="min-h-[45px]">
                   <PayPalButtons
                     style={{ layout: "horizontal", height: 42, label: "checkout" }}
+                    forceReRender={[
+                      fulfillmentType,
+                      creationFee,
+                      printCost,
+                      shippingCost,
+                      selectedCompanion?.id || "none",
+                      grandTotal,
+                      book.title,
+                    ]}
                     createOrder={async () => {
+                      setCheckoutError(null);
                       try {
                         const res = await fetch("/api/paypal/create-order", {
                           method: "POST",
@@ -415,44 +436,62 @@ export default function OrderSummaryModal({
                           return "";
                         }
                         console.error("Error creating PayPal order:", err);
+                        setCheckoutError(err.message || "Failed to initialize PayPal order.");
                         throw err;
                       }
                     }}
                     onApprove={async (data) => {
-                      const res = await fetch("/api/paypal/capture-order", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          orderId: data.orderID,
-                          orderDetails: {
-                            bookId: book.id,
-                            bookTitle: book.title,
-                            authorName: book.authorName,
-                            fulfillmentType,
-                            pageCount: book.pageCount,
-                            trimSize: book.format?.trimSize,
-                            interiorColor: book.format?.interiorColor,
-                            quantity: 1,
-                            creationFee,
-                            printCost,
-                            shippingCost,
-                            companionItem: selectedCompanion,
-                            totalAmount: grandTotal,
-                          },
-                        }),
-                      });
-                      const captureData = await res.json();
-                      if (captureData.success) {
-                        handleOrderSuccess(captureData.order);
-                      } else {
-                        console.error("Capture failed:", captureData);
+                      setCheckoutError(null);
+                      try {
+                        const res = await fetch("/api/paypal/capture-order", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            orderId: data.orderID,
+                            orderDetails: {
+                              bookId: book.id,
+                              bookTitle: book.title,
+                              authorName: book.authorName,
+                              fulfillmentType,
+                              pageCount: book.pageCount,
+                              trimSize: book.format?.trimSize,
+                              interiorColor: book.format?.interiorColor,
+                              quantity: 1,
+                              creationFee,
+                              printCost,
+                              shippingCost,
+                              companionItem: selectedCompanion,
+                              totalAmount: grandTotal,
+                            },
+                          }),
+                        });
+                        const captureData = await res.json();
+                        if (captureData.success) {
+                          handleOrderSuccess(captureData.order);
+                        } else {
+                          console.error("Capture failed:", captureData);
+                          setCheckoutError(
+                            captureData.error ||
+                              "PayPal capture failed. Please ensure you log in with a Sandbox Personal (Buyer) account."
+                          );
+                        }
+                      } catch (err: any) {
+                        setCheckoutError(err.message || "Error capturing PayPal order.");
                       }
                     }}
-                    onError={(err) => {
+                    onError={(err: any) => {
                       console.warn("PayPal checkout notice:", err);
+                      setCheckoutError(
+                        "PayPal Sandbox checkout could not complete. Ensure you log in with a Sandbox Personal (Buyer) account rather than the Merchant account that owns the Client ID."
+                      );
                     }}
                   />
                 </div>
+                {checkoutError && (
+                  <div className="mt-2.5 p-2.5 rounded-lg bg-rose-500/15 border border-rose-400/30 text-[11px] text-rose-200 text-center">
+                    {checkoutError}
+                  </div>
+                )}
                 <p className="text-[10px] text-center text-[#a0b4c4] mt-2">
                   🔒 Zero-Friction Checkout: Shipping address retrieved securely from your PayPal account
                 </p>

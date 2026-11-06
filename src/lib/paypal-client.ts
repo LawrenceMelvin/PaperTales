@@ -90,21 +90,17 @@ export async function createPayPalOrder(params: PayPalCreateOrderParams) {
               items: params.items.map((it) => ({
                 name: it.name.slice(0, 127),
                 description: it.description?.slice(0, 127),
-                unit_amount: { currency_code: "USD", value: it.unitAmount.toFixed(2) },
+                unit_amount: { currency_code: "USD", value: Number(it.unitAmount).toFixed(2) },
                 quantity: it.quantity.toString(),
-                category: it.category || "PHYSICAL_GOODS",
+                category: params.requireShippingAddress ? "PHYSICAL_GOODS" : it.category || "DIGITAL_GOODS",
               })),
             },
           ],
-          payment_source: {
-            paypal: {
-              experience_context: {
-                brand_name: "PaperTales AI Studio",
-                landing_page: "NO_PREFERENCE",
-                user_action: "PAY_NOW",
-                shipping_preference: params.requireShippingAddress ? "GET_FROM_FILE" : "NO_SHIPPING",
-              },
-            },
+          application_context: {
+            brand_name: "PaperTales AI Studio",
+            landing_page: "NO_PREFERENCE",
+            user_action: "PAY_NOW",
+            shipping_preference: params.requireShippingAddress ? "GET_FROM_FILE" : "NO_SHIPPING",
           },
         };
 

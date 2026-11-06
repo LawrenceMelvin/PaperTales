@@ -17,10 +17,12 @@ export default function TokenModal({ isOpen, onClose, onSuccess }: TokenModalPro
   const [selectedPack, setSelectedPack] = useState<TokenPack>(AVAILABLE_TOKEN_PACKS[1]); // Default to Creator bundle
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const handleCaptureSuccess = (pack: TokenPack) => {
+    setErrorMessage(null);
     addClientTokens(pack.tokens + (pack.bonusTokens || 0));
     confetti({ particleCount: 75, spread: 60, origin: { y: 0.7 } });
     setSuccessMessage(`Successfully refilled ${pack.tokens + (pack.bonusTokens || 0)} tokens!`);
@@ -134,8 +136,10 @@ export default function TokenModal({ isOpen, onClose, onSuccess }: TokenModalPro
                 <div className="min-h-[45px]">
                   <PayPalButtons
                     style={{ layout: "horizontal", height: 42, label: "pay" }}
+                    forceReRender={[selectedPack.id, selectedPack.priceUsd]}
                     createOrder={async () => {
                       setIsProcessing(true);
+                      setErrorMessage(null);
                       try {
                         const res = await fetch("/api/paypal/create-order", {
                           method: "POST",
@@ -157,30 +161,48 @@ export default function TokenModal({ isOpen, onClose, onSuccess }: TokenModalPro
                         return data.orderId;
                       } catch (err: any) {
                         setIsProcessing(false);
+                        setErrorMessage(err.message || "Could not initialize PayPal order.");
                         console.error("Token order error:", err);
                         throw err;
                       }
                     }}
                     onApprove={async (data) => {
                       setIsProcessing(true);
-                      const res = await fetch("/api/paypal/capture-order", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          orderId: data.orderID,
-                        }),
-                      });
-                      const captureData = await res.json();
-                      setIsProcessing(false);
-                      if (captureData.success) {
-                        handleCaptureSuccess(selectedPack);
+                      setErrorMessage(null);
+                      try {
+                        const res = await fetch("/api/paypal/capture-order", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            orderId: data.orderID,
+                          }),
+                        });
+                        const captureData = await res.json();
+                        setIsProcessing(false);
+                        if (captureData.success) {
+                          handleCaptureSuccess(selectedPack);
+                        } else {
+                          setErrorMessage(captureData.error || "PayPal payment capture failed. Please ensure you are logging in with a Sandbox Buyer (Personal) account.");
+                        }
+                      } catch (err: any) {
+                        setIsProcessing(false);
+                        setErrorMessage(err.message || "Error capturing PayPal payment.");
                       }
                     }}
-                    onError={(err) => {
+                    onError={(err: any) => {
                       console.warn("PayPal token button notice:", err);
+                      setErrorMessage(
+                        "PayPal Sandbox checkout could not complete. Make sure you log in with a Sandbox Personal (Buyer) account, not the Merchant account that owns the Client ID."
+                      );
                     }}
                   />
                 </div>
+
+                {errorMessage && (
+                  <div className="mt-3 p-2.5 rounded-lg bg-rose-500/15 border border-rose-400/30 text-[11px] text-rose-200 text-center">
+                    {errorMessage}
+                  </div>
+                )}
 
                 <p className="text-[10px] text-center text-[#a0b4c4] mt-2">
                   🔒 Encrypted transaction via PayPal Sandbox &bull; Instant balance crediting
