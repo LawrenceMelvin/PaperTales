@@ -5,15 +5,16 @@ import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import BookViewer from "@/components/BookViewer";
 import TokenModal from "@/components/TokenModal";
+import UnlockChoiceModal from "@/components/UnlockChoiceModal";
 import OrderSummaryModal from "@/components/OrderSummaryModal";
 import BookDetailsModal from "@/components/BookDetailsModal";
 import OrderTrackingGrid from "@/components/OrderTrackingGrid";
 import BookLibraryModal from "@/components/BookLibraryModal";
 import { BOOKSTORE_CATALOG, bookstoreItemToBookProject } from "@/lib/bookstore-catalog";
 
-import { BookProject, BookPage, CharacterAnchor, BookCoverDesign, BookCoverColorScheme } from "@/types/book";
-import { CompanionProduct } from "@/types/order";
-import { deductClientTokens, getClientTokenBalance } from "@/lib/token-store";
+import { BookProject, BookPage, CharacterAnchor, BookCoverDesign, BookCoverColorScheme, EditingPageReference } from "@/types/book";
+import { CompanionProduct, PaperTalesOrder } from "@/types/order";
+import { deductClientTokens, getClientTokenBalance, markFirstBookClaimed } from "@/lib/token-store";
 import { calculateBookQuote } from "@/lib/pricing-calculator";
 import {
   Sparkles,
@@ -278,6 +279,11 @@ const INITIAL_BOOK: BookProject = {
     },
   ],
   pageCount: 5,
+  cover: {
+    title: "Barnaby's Ice Cream Adventure",
+    subtitle: "A Personalized AI Coloring Storybook",
+    colorScheme: "warm_cream",
+  },
   format: {
     trimSize: "8.5x8.5",
     binding: "saddle_stitch",
@@ -311,6 +317,37 @@ export default function StudioPage() {
   const [isDownloadingPdf, setIsDownloadingPdf] = useState<boolean>(false);
   const [isPrintingPageOne, setIsPrintingPageOne] = useState<boolean>(false);
   const [activeViewerPageIndex, setActiveViewerPageIndex] = useState<number>(0);
+  const [activePageReference, setActivePageReference] = useState<EditingPageReference | null>(null);
+
+  const handleEditPageInChat = (pageIndex: number) => {
+    if (pageIndex === 0) {
+      setActivePageReference({
+        pageIndex: 0,
+        isCover: true,
+        title: book.cover?.title || book.title,
+        imagePrompt: book.cover?.coverPrompt,
+        imageUrl: book.cover?.imageUrl,
+      });
+    } else {
+      const p = book.pages[pageIndex - 1];
+      if (p) {
+        setActivePageReference({
+          pageIndex,
+          isCover: false,
+          title: p.title,
+          storyText: p.storyText,
+          imagePrompt: p.imagePrompt,
+          imageUrl: p.imageUrl,
+        });
+      }
+    }
+    setIsDiscussionDone(false);
+    const chatInput = document.querySelector('textarea[placeholder*="Ask papertales"]') as HTMLTextAreaElement | null;
+    if (chatInput) {
+      chatInput.scrollIntoView({ behavior: "smooth" });
+      chatInput.focus();
+    }
+  };
 
   // Chat conversation state
   const [messages, setMessages] = useState<ChatMessageItem[]>(INITIAL_MESSAGES);
@@ -327,7 +364,7 @@ export default function StudioPage() {
   const [hasFullBook, setHasFullBook] = useState<boolean>(false);
   const [hasCover, setHasCover] = useState<boolean>(false);
   const [coverPrompt, setCoverPrompt] = useState<string>("");
-  const [coverColorScheme, setCoverColorScheme] = useState<BookCoverColorScheme>("midnight_glacier");
+  const [coverColorScheme, setCoverColorScheme] = useState<BookCoverColorScheme>("warm_cream");
   const [lockedTitle, setLockedTitle] = useState<string | null>(null);
 
   // Live Channel3 companion products
@@ -399,10 +436,41 @@ export default function StudioPage() {
 
   // Modals state
   const [tokenModalOpen, setTokenModalOpen] = useState<boolean>(false);
+  const [unlockChoiceOpen, setUnlockChoiceOpen] = useState<boolean>(false);
   const [orderModalOpen, setOrderModalOpen] = useState<boolean>(false);
   const [bookDetailsOpen, setBookDetailsOpen] = useState<boolean>(false);
   const [orderTrackingOpen, setOrderTrackingOpen] = useState<boolean>(false);
   const [bookLibraryOpen, setBookLibraryOpen] = useState<boolean>(false);
+
+  const handleDirectUnlockSuccess = (order: PaperTalesOrder) => {
+    setIsBookUnlocked(true);
+    setBook((prev) => ({
+      ...prev,
+      pages: prev.pages.map((p) => ({ ...p, isLocked: false })),
+    }));
+    markFirstBookClaimed();
+    try {
+      const stored = localStorage.getItem("papertales_orders");
+      const existing = stored ? JSON.parse(stored) : [];
+      localStorage.setItem("papertales_orders", JSON.stringify([order, ...existing]));
+    } catch {
+      // ignore
+    }
+    setUnlockChoiceOpen(false);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `msg_digital_unlocked_${Date.now()}`,
+        role: "assistant",
+        content: `🎉 **"${book.title}" is officially unlocked!**\n\nAll ${book.pageCount} pages are in full view. You can review every spread below, ask me to tweak any page in chat, or download your print-ready 300 DPI vector PDF!`,
+        quickReplies: [
+          "Download Full 300 DPI PDF",
+          "Tweak Page 1 in chat",
+          "Order physical softcover",
+        ],
+      },
+    ]);
+  };
 
   // Dedicated ref strictly for the internal chat scroll container
   const chatScrollContainerRef = useRef<HTMLDivElement>(null);
@@ -532,6 +600,7 @@ export default function StudioPage() {
           hasFullBook,
           hasCover,
           lockedTitle: effectiveLockedTitle,
+          editingPageReference: activePageReference || undefined,
         }),
       });
 
@@ -651,6 +720,66 @@ export default function StudioPage() {
               colorScheme: data.coverDraft.colorScheme || prev.cover?.colorScheme || coverColorScheme,
             },
           }));
+        }
+
+        // Synchronize single-sided coloring preference from AI Helper
+        if (typeof data.bookDraft?.singleSidedColoring === "boolean") {
+          setBook((prev) => ({
+            ...prev,
+            singleSidedColoring: data.bookDraft.singleSidedColoring,
+          }));
+        }
+
+        // Apply targeted page/cover edits directly into the book project
+        if (data.pageEdit) {
+          if (data.pageEdit.pageIndex === 0) {
+            setBook((prev) => ({
+              ...prev,
+              cover: {
+                ...prev.cover,
+                title: data.pageEdit.title || prev.cover?.title || prev.title,
+                subtitle: data.pageEdit.subtitle || prev.cover?.subtitle || prev.subtitle,
+                coverPrompt: data.pageEdit.imagePrompt || prev.cover?.coverPrompt,
+              },
+            }));
+            if (data.pageEdit.regenerateArt) {
+              handleDesignBookCover();
+            }
+          } else if (data.pageEdit.pageIndex > 0) {
+            const targetIdx = data.pageEdit.pageIndex - 1;
+            const existingPage = book.pages[targetIdx];
+            if (existingPage) {
+              const updatedPage: BookPage = {
+                ...existingPage,
+                title: data.pageEdit.title || existingPage.title,
+                storyText: data.pageEdit.storyText !== undefined ? data.pageEdit.storyText : existingPage.storyText,
+                imagePrompt: data.pageEdit.imagePrompt || existingPage.imagePrompt,
+              };
+              handlePageUpdate(updatedPage);
+              if (data.pageEdit.regenerateArt) {
+                fetch("/api/ai/image", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    prompt: data.pageEdit.imagePrompt || existingPage.imagePrompt,
+                    characterTraits: character.traits.join(", "),
+                    pageNumber: data.pageEdit.pageIndex,
+                    artStyle,
+                    interiorColor: book.format.interiorColor,
+                  }),
+                })
+                  .then((r) => r.json())
+                  .then((imgData) => {
+                    if (imgData.success && imgData.imageUrl) {
+                      handlePageUpdate({ ...updatedPage, imageUrl: imgData.imageUrl });
+                    }
+                  })
+                  .catch((err) => console.error("Auto image regeneration failed:", err));
+              }
+              setActiveViewerPageIndex(data.pageEdit.pageIndex);
+            }
+          }
+          setActivePageReference(null);
         }
 
         if (data.lockedTitle) setLockedTitle(data.lockedTitle);
@@ -848,7 +977,7 @@ export default function StudioPage() {
             coverPrompt: character.name
               ? `Book cover illustration for "${data.book.title}" featuring ${character.name} (${character.type}), ${artStyle || prompt}`
               : `Book cover illustration for "${data.book.title}", ${artStyle || prompt}`,
-            colorScheme: "midnight_glacier",
+            colorScheme: "warm_cream",
             isReadyForCover: true,
           },
         };
@@ -957,7 +1086,7 @@ export default function StudioPage() {
       const effectiveCoverAuthor =
         overrideCoverDraft?.authorByline || book.cover?.authorByline || authorName || book.authorName;
       const effectiveScheme: BookCoverColorScheme =
-        overrideCoverDraft?.colorScheme || book.cover?.colorScheme || coverColorScheme || "midnight_glacier";
+        overrideCoverDraft?.colorScheme || book.cover?.colorScheme || coverColorScheme || "warm_cream";
 
       const rawCoverPrompt =
         overrideCoverDraft?.coverPrompt ||
@@ -1062,6 +1191,13 @@ export default function StudioPage() {
       return;
     }
 
+    if (!book.cover?.isDesigned) {
+      const proceed = window.confirm(
+        "⚠️ Front Cover Notice:\n\nYour book does not have a customized front cover design yet. It will compile with the default title cover.\n\nClick OK to proceed with downloading now, or Cancel to design your cover in the AI Studio first."
+      );
+      if (!proceed) return;
+    }
+
     setIsDownloadingPdf(true);
     try {
       const res = await fetch("/api/pdf/compile", {
@@ -1135,11 +1271,11 @@ export default function StudioPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#0a0e1a] text-[#e0e8f0] relative selection:bg-sky-500/30 selection:text-sky-200">
-      {/* Ambient Glacier Aurora Frost in Studio Background */}
+    <div className="flex flex-col min-h-screen bg-[#FFFDF9] text-[#1E2530] relative selection:bg-amber-500/20 selection:text-amber-900">
+      {/* Ambient Warm Sunlit Atelier Background */}
       <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute top-10 left-1/4 w-[800px] h-[600px] bg-sky-400/10 rounded-full blur-[160px] opacity-60" />
-        <div className="absolute bottom-10 right-10 w-[650px] h-[650px] bg-purple-500/10 rounded-full blur-[180px] opacity-40" />
+        <div className="absolute top-10 left-1/4 w-[800px] h-[600px] bg-amber-400/10 rounded-full blur-[160px] opacity-70" />
+        <div className="absolute bottom-10 right-10 w-[650px] h-[650px] bg-orange-300/10 rounded-full blur-[180px] opacity-50" />
       </div>
 
       <div className="relative z-10 flex flex-col min-h-screen">
@@ -1163,42 +1299,42 @@ export default function StudioPage() {
             /* =====================================================================
                PHASE 1: BOOK CREATOR ASSISTANCE (DISCUSSION & BRAINSTORMING CANVAS)
                ===================================================================== */
-            <section className="rounded-3xl border-2 border-sky-400/80 bg-[#091122]/90 p-5 sm:p-7 shadow-2xl relative flex flex-col justify-between min-h-[480px] sm:min-h-[520px]">
+            <section className="rounded-3xl border-2 border-[#E8DFD3] bg-[#FAF6EE] p-5 sm:p-7 shadow-xl relative flex flex-col justify-between min-h-[480px] sm:min-h-[520px]">
               {/* Header: BOOK CREATOR ASSISTANCE */}
-              <div className="flex items-center justify-between border-b border-sky-400/20 pb-4">
+              <div className="flex items-center justify-between border-b border-[#E8DFD3] pb-4">
                 <div className="flex items-center gap-3">
-                  <h2 className="text-base sm:text-lg font-black tracking-wider text-sky-400 uppercase select-none">
+                  <h2 className="text-base sm:text-lg font-black tracking-wider text-amber-800 uppercase select-none font-serif">
                     BOOK CREATOR ASSISTANCE
                   </h2>
                 </div>
                 <div className="flex items-center gap-2">
                   <Link
                     href="/bookstore"
-                    className="text-[11px] font-bold px-3 py-1 rounded-full bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                    className="text-[11px] font-bold px-3 py-1 rounded-full bg-amber-100/70 hover:bg-amber-200/70 text-amber-900 border border-amber-300/60 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-xs"
                   >
-                    <BookOpen className="w-3.5 h-3.5 text-purple-300" />
+                    <BookOpen className="w-3.5 h-3.5 text-amber-700" />
                     <span>📚 Bookstore &amp; Vault</span>
                   </Link>
                   {messages.length > 0 && (
                     <button
                       type="button"
                       onClick={() => setIsDiscussionDone(true)}
-                      className="text-[11px] font-bold px-3 py-1 rounded-full bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                      className="text-[11px] font-bold px-3 py-1 rounded-full bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
                     >
                       <span>Review Book Setup</span>
-                      <ArrowRight className="w-3.5 h-3.5 text-sky-400" />
+                      <ArrowRight className="w-3.5 h-3.5 text-white" />
                     </button>
                   )}
                   <button
                     type="button"
                     onClick={() => setOrderTrackingOpen(true)}
-                    className="text-[11px] font-bold px-3 py-1 rounded-full glacier-glass hover:bg-slate-800 text-sky-200 border border-sky-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                    className="text-[11px] font-bold px-3 py-1 rounded-full bg-white hover:bg-[#F5EFE6] text-[#1E2530] border border-[#E8DFD3] flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-xs"
                   >
-                    <Package className="w-3.5 h-3.5 text-sky-400" />
+                    <Package className="w-3.5 h-3.5 text-amber-600" />
                     <span className="hidden sm:inline">My Orders</span>
                   </button>
-                  <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300/60 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                     Copilot Online
                   </span>
                 </div>
@@ -1211,11 +1347,11 @@ export default function StudioPage() {
                   /* Initial Clean Canvas: Consumer-grade inspiration starters */
                   <div className="flex-1 flex flex-col justify-center items-center py-6 px-2 sm:px-6 space-y-4">
                     <div className="text-center space-y-1">
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-400/20 text-sky-300 text-[11px] font-medium">
-                        <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-300/40 text-amber-900 text-[11px] font-semibold">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-600" />
                         <span>AI Book Co-Creation Studio</span>
                       </div>
-                      <p className="text-xs text-slate-400 max-w-sm pt-1">
+                      <p className="text-xs text-slate-600 max-w-sm pt-1">
                         Pick an inspiration starter below or type any book idea into the chat:
                       </p>
                     </div>
@@ -1229,15 +1365,15 @@ export default function StudioPage() {
                           )
                         }
                         disabled={isChatting}
-                        className="p-3 rounded-xl border border-sky-400/25 bg-[#0c1c38]/70 hover:bg-[#11274e] hover:border-sky-400/60 text-left transition-all group cursor-pointer shadow-sm active:scale-98"
+                        className="p-3 rounded-xl border border-[#E8DFD3] bg-white hover:bg-[#F5EFE6] hover:border-amber-400 text-left transition-all group cursor-pointer shadow-xs active:scale-98"
                       >
                         <div className="flex items-center gap-2">
                           <span className="text-base">🎨</span>
-                          <span className="text-xs font-semibold text-slate-200 group-hover:text-white">
+                          <span className="text-xs font-bold text-[#1E2530] group-hover:text-amber-900">
                             Barnaby&apos;s Bakery
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-400 mt-1">8.5×8.5 Square Coloring Book</p>
+                        <p className="text-[11px] text-slate-600 mt-1">8.5×8.5 Square Coloring Book</p>
                       </button>
 
                       <button
@@ -1248,15 +1384,15 @@ export default function StudioPage() {
                           )
                         }
                         disabled={isChatting}
-                        className="p-3 rounded-xl border border-sky-400/25 bg-[#0c1c38]/70 hover:bg-[#11274e] hover:border-sky-400/60 text-left transition-all group cursor-pointer shadow-sm active:scale-98"
+                        className="p-3 rounded-xl border border-[#E8DFD3] bg-white hover:bg-[#F5EFE6] hover:border-amber-400 text-left transition-all group cursor-pointer shadow-xs active:scale-98"
                       >
                         <div className="flex items-center gap-2">
                           <span className="text-base">🚀</span>
-                          <span className="text-xs font-semibold text-slate-200 group-hover:text-white">
+                          <span className="text-xs font-bold text-[#1E2530] group-hover:text-amber-900">
                             Space Science Quest
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-400 mt-1">8.5×11 Full Color Activity Book</p>
+                        <p className="text-[11px] text-slate-600 mt-1">8.5×11 Full Color Activity Book</p>
                       </button>
 
                       <button
@@ -1267,30 +1403,30 @@ export default function StudioPage() {
                           )
                         }
                         disabled={isChatting}
-                        className="p-3 rounded-xl border border-sky-400/25 bg-[#0c1c38]/70 hover:bg-[#11274e] hover:border-sky-400/60 text-left transition-all group cursor-pointer shadow-sm active:scale-98"
+                        className="p-3 rounded-xl border border-[#E8DFD3] bg-white hover:bg-[#F5EFE6] hover:border-amber-400 text-left transition-all group cursor-pointer shadow-xs active:scale-98"
                       >
                         <div className="flex items-center gap-2">
                           <span className="text-base">📔</span>
-                          <span className="text-xs font-semibold text-slate-200 group-hover:text-white">
+                          <span className="text-xs font-bold text-[#1E2530] group-hover:text-amber-900">
                             Content Creator Journal
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-400 mt-1">8.5×8.5 Minimalist Prompt Journal</p>
+                        <p className="text-[11px] text-slate-600 mt-1">8.5×8.5 Minimalist Prompt Journal</p>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => handleSendMessage("hey papertales, what can you do")}
                         disabled={isChatting}
-                        className="p-3 rounded-xl border border-sky-400/25 bg-[#0c1c38]/70 hover:bg-[#11274e] hover:border-sky-400/60 text-left transition-all group cursor-pointer shadow-sm active:scale-98"
+                        className="p-3 rounded-xl border border-[#E8DFD3] bg-white hover:bg-[#F5EFE6] hover:border-amber-400 text-left transition-all group cursor-pointer shadow-xs active:scale-98"
                       >
                         <div className="flex items-center gap-2">
                           <span className="text-base">✨</span>
-                          <span className="text-xs font-semibold text-slate-200 group-hover:text-white">
+                          <span className="text-xs font-bold text-[#1E2530] group-hover:text-amber-900">
                             Ask Anything
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-400 mt-1">&quot;Hey PaperTales, what can you do?&quot;</p>
+                        <p className="text-[11px] text-slate-600 mt-1">&quot;Hey PaperTales, what can you do?&quot;</p>
                       </button>
                     </div>
                   </div>
@@ -1305,30 +1441,30 @@ export default function StudioPage() {
                       return (
                         <div key={msg.id} className={`flex items-start gap-2.5 ${isUser ? "justify-end" : "justify-start"}`}>
                           {!isUser && (
-                            <div className="w-8 h-8 rounded-full bg-sky-400/20 border border-sky-400/40 flex items-center justify-center text-sky-300 shrink-0 mt-1">
-                              <Sparkles className="w-4 h-4" />
+                            <div className="w-8 h-8 rounded-full bg-amber-100 border border-amber-300 text-amber-800 flex items-center justify-center shrink-0 mt-1">
+                              <Sparkles className="w-4 h-4 text-amber-600" />
                             </div>
                           )}
 
                           <div
-                            className={`max-w-xl rounded-2xl p-4 text-xs sm:text-sm leading-relaxed shadow-lg ${
+                            className={`max-w-xl rounded-2xl p-4 text-xs sm:text-sm leading-relaxed shadow-sm ${
                               isUser
-                                ? "bg-sky-500/20 border-2 border-sky-400/80 text-white rounded-tr-xs"
-                                : "bg-slate-900/90 border border-sky-400/30 text-white rounded-tl-xs space-y-3"
+                                ? "bg-amber-600 text-white rounded-tr-xs"
+                                : "bg-white border border-[#E8DFD3] text-[#1E2530] rounded-tl-xs space-y-3"
                             }`}
                           >
                             <p className="whitespace-pre-wrap">{msg.content}</p>
 
                             {/* Print-Safe & Copyright Advisory Card */}
                             {!isUser && msg.printAdvisory?.hasRisk && (
-                              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-400/40 text-xs space-y-2.5 animate-in fade-in">
-                                <div className="flex items-center gap-2 text-amber-300 font-bold">
-                                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-xs space-y-2.5 animate-in fade-in">
+                                <div className="flex items-center gap-2 text-amber-900 font-bold">
+                                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                                   <span>
                                     Physical Print Notice ({msg.printAdvisory.franchiseName || "Trademark Detected"})
                                   </span>
                                 </div>
-                                <p className="text-[11px] text-slate-300 leading-relaxed">
+                                <p className="text-[11px] text-slate-700 leading-relaxed">
                                   Personal digital PDF downloads have zero restrictions! If you later decide to order physical softcover copies through Lulu POD, commercial facilities may flag trademarked names. You can adopt a print-safe homage title or keep your original choice for personal designing.
                                 </p>
                                 <div className="flex flex-wrap gap-2 pt-1">
@@ -1413,12 +1549,12 @@ export default function StudioPage() {
                                         disabled={isChatting}
                                         className={`w-full text-left text-xs font-semibold px-3 py-2 rounded-xl border transition-all flex items-center justify-between gap-2 cursor-pointer ${
                                           isSelected
-                                            ? "bg-sky-500/25 border-sky-400 text-sky-200 ring-1 ring-sky-400/50 shadow-sm"
-                                            : "bg-slate-950/70 border-sky-400/20 hover:border-sky-400/60 hover:bg-sky-400/10 text-slate-200"
+                                            ? "bg-amber-100 border-amber-500 text-amber-950 ring-1 ring-amber-400/50 shadow-xs"
+                                            : "bg-white border-[#E8DFD3] hover:border-amber-400 hover:bg-[#FAF6EE] text-[#1E2530]"
                                         }`}
                                       >
                                         <span className="truncate">{titleOpt}</span>
-                                        <span className="text-[10px] text-sky-400 shrink-0 font-bold px-2 py-0.5 rounded-full bg-sky-400/15 border border-sky-400/30">
+                                        <span className="text-[10px] text-amber-800 shrink-0 font-bold px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300">
                                           {isSelected ? "Selected ✓" : "Pick Title →"}
                                         </span>
                                       </button>
@@ -1440,8 +1576,8 @@ export default function StudioPage() {
                               if (cleanReplies.length === 0) return null;
 
                               return (
-                                <div className="pt-2 border-t border-white/10 space-y-1.5">
-                                  <span className="text-[10px] uppercase font-bold text-sky-400 tracking-wider block">
+                                <div className="pt-2 border-t border-[#E8DFD3] space-y-1.5">
+                                  <span className="text-[10px] uppercase font-bold text-amber-800 tracking-wider block">
                                     Suggested Next Steps:
                                   </span>
                                   <div className="flex flex-wrap gap-1.5">
@@ -1451,7 +1587,7 @@ export default function StudioPage() {
                                         type="button"
                                         onClick={() => handleSendMessage(reply)}
                                         disabled={isChatting}
-                                        className="text-[11px] font-semibold bg-slate-950/80 hover:bg-sky-400/20 text-sky-200 border border-sky-400/25 px-2.5 py-1 rounded-lg transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                                        className="text-[11px] font-semibold bg-white hover:bg-amber-50 text-[#1E2530] border border-[#E8DFD3] px-2.5 py-1 rounded-lg transition-all active:scale-95 disabled:opacity-50 cursor-pointer shadow-2xs"
                                       >
                                         {reply}
                                       </button>
@@ -1469,12 +1605,12 @@ export default function StudioPage() {
                                 msg.isReadyForProof ||
                                 msg.requiresNewProof ||
                                 hasProof) && (
-                                <div className="pt-2.5 border-t border-sky-400/20 flex flex-wrap items-center justify-between gap-2 animate-in fade-in">
+                                <div className="pt-2.5 border-t border-[#E8DFD3] flex flex-wrap items-center justify-between gap-2 animate-in fade-in">
                                   {hasFullBook ||
                                   msg.discussionStage === "cover_design" ||
                                   Boolean(msg.coverDraft?.isReadyForCover) ? (
                                     <>
-                                      <span className="text-[11px] text-sky-300 font-medium">
+                                      <span className="text-[11px] text-amber-900 font-medium">
                                         {hasCover
                                           ? "✨ Cover updated in chat! Regenerate your Front Book Cover to see changes."
                                           : "🎨 Interior pages complete! Generate your Front Book Cover from our chat now."}
@@ -1484,7 +1620,7 @@ export default function StudioPage() {
                                           type="button"
                                           onClick={() => handleDesignBookCover(msg.coverDraft)}
                                           disabled={isGeneratingCover}
-                                          className="px-3.5 py-1.5 rounded-xl bg-sky-400 text-slate-950 font-bold text-xs hover:bg-sky-300 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow disabled:opacity-50"
+                                          className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow disabled:opacity-50"
                                         >
                                           {isGeneratingCover ? (
                                             <>
@@ -1504,7 +1640,7 @@ export default function StudioPage() {
                                   ) : hasProof && !msg.requiresNewProof && !isProofStale ? (
                                     msg.isPagePlanConfirmed || isPagePlanConfirmed ? (
                                       <>
-                                        <span className="text-[11px] text-emerald-300 font-medium">
+                                        <span className="text-[11px] text-emerald-800 font-medium">
                                           ✅ Page plan confirmed! Generate your book now (First 5 pages 100% Free).
                                         </span>
                                         <div className="flex items-center gap-2">
@@ -1515,7 +1651,7 @@ export default function StudioPage() {
                                               handleExpandFullSpread();
                                             }}
                                             disabled={isGenerating}
-                                            className="px-3.5 py-1.5 rounded-xl bg-sky-400 text-slate-950 font-bold text-xs hover:bg-sky-300 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow disabled:opacity-50"
+                                            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow disabled:opacity-50"
                                           >
                                             {isGenerating ? (
                                               <>
@@ -1532,7 +1668,7 @@ export default function StudioPage() {
                                       </>
                                     ) : hasPlannedPages || msg.discussionStage === "page_planning" ? (
                                       <>
-                                        <span className="text-[11px] text-sky-300 font-medium">
+                                        <span className="text-[11px] text-amber-900 font-medium">
                                           📋 Review the page plan above — reply to customize any page, or confirm to generate:
                                         </span>
                                         <div className="flex items-center gap-2">
@@ -1544,7 +1680,7 @@ export default function StudioPage() {
                                               )
                                             }
                                             disabled={isChatting || isGenerating}
-                                            className="px-3.5 py-1.5 rounded-xl bg-emerald-400 text-slate-950 font-bold text-xs hover:bg-emerald-300 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow disabled:opacity-50"
+                                            className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow disabled:opacity-50"
                                           >
                                             <span>✅ Confirm Page Plan in Chat →</span>
                                           </button>
@@ -1552,7 +1688,7 @@ export default function StudioPage() {
                                       </>
                                     ) : (
                                       <>
-                                        <span className="text-[11px] text-emerald-300 font-medium">
+                                        <span className="text-[11px] text-emerald-800 font-medium">
                                           ✨ Master Page 1 proof is ready! Let&apos;s plan what Pages 2–{pageCount} will have and look like.
                                         </span>
                                         <div className="flex items-center gap-2">
@@ -1560,7 +1696,7 @@ export default function StudioPage() {
                                             type="button"
                                             onClick={handleStartPagePlanning}
                                             disabled={isChatting || isGenerating}
-                                            className="px-3.5 py-1.5 rounded-xl bg-sky-400 text-slate-950 font-bold text-xs hover:bg-sky-300 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow disabled:opacity-50"
+                                            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow disabled:opacity-50"
                                           >
                                             <span>✨ Looks Great! Plan Remaining ({pageCount}) Pages →</span>
                                           </button>
@@ -1569,7 +1705,7 @@ export default function StudioPage() {
                                     )
                                   ) : (
                                     <>
-                                      <span className="text-[11px] text-sky-300 font-medium">
+                                      <span className="text-[11px] text-amber-900 font-medium">
                                         {msg.requiresNewProof || isProofStale
                                           ? "✏️ Edits applied! Redesign your Master Page 1 proof to see them."
                                           : "✨ Concept ready! Design your free Master Page 1 proof now with OpenAI."}
@@ -1581,7 +1717,7 @@ export default function StudioPage() {
                                           handleDesignHeroPage();
                                         }}
                                         disabled={isGenerating}
-                                        className="px-3.5 py-1.5 rounded-xl bg-sky-400 text-slate-950 font-bold text-xs hover:bg-sky-300 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow disabled:opacity-50"
+                                        className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow disabled:opacity-50"
                                       >
                                         {isGenerating ? (
                                           <>
@@ -1603,7 +1739,7 @@ export default function StudioPage() {
                           </div>
 
                           {isUser && (
-                            <div className="w-8 h-8 rounded-full bg-slate-800 border border-sky-400/30 flex items-center justify-center text-sky-300 shrink-0 mt-1">
+                            <div className="w-8 h-8 rounded-full bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-800 shrink-0 mt-1">
                               <User className="w-4 h-4" />
                             </div>
                           )}
@@ -1622,12 +1758,33 @@ export default function StudioPage() {
                 )}
 
                 {/* Bottom Input Bar: Matches wireframe sketch with rounded blue border, att button & send button */}
+                {activePageReference && (
+                  <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-sky-500/15 border border-sky-400/30 text-xs text-sky-200 mb-2">
+                    <div className="flex items-center gap-2 truncate">
+                      <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                      <span className="font-bold">
+                        {activePageReference.isCover ? "Editing Cover Reference:" : `Editing Page ${activePageReference.pageIndex} Reference:`}
+                      </span>
+                      <span className="truncate text-slate-300">
+                        &ldquo;{activePageReference.title || activePageReference.storyText?.slice(0, 35) || activePageReference.imagePrompt?.slice(0, 35) || "Active Page"}&rdquo;
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActivePageReference(null)}
+                      className="p-1 hover:text-white text-slate-400 rounded-lg cursor-pointer ml-2"
+                      title="Remove page reference"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
                     handleSendMessage(inputMessage);
                   }}
-                  className="mt-4 flex items-end gap-2 border-2 border-sky-400/80 bg-[#070e1c] rounded-2xl p-1.5 sm:p-2 shadow-inner"
+                  className="mt-4 flex items-end gap-2 border-2 border-[#E8DFD3] focus-within:border-amber-500 bg-white rounded-2xl p-1.5 sm:p-2 shadow-xs transition-colors"
                 >
                   <textarea
                     rows={1}
@@ -1644,18 +1801,18 @@ export default function StudioPage() {
                       }
                     }}
                     placeholder="Ask papertales, suggest a new story arc or describe a child ..."
-                    className="flex-1 bg-transparent px-3 py-1.5 text-xs sm:text-sm text-white placeholder-sky-300/40 focus:outline-none resize-none max-h-32 leading-relaxed glacier-scrollbar"
+                    className="flex-1 bg-transparent px-3 py-1.5 text-xs sm:text-sm text-[#1E2530] placeholder-slate-400 focus:outline-none resize-none max-h-32 leading-relaxed"
                   />
 
                   {/* Attached photo indicator */}
                   {referenceImageUrl && (
-                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-sky-500/20 border border-sky-400/40 text-[10px] text-sky-200">
-                      <ImageIcon className="w-3 h-3 text-sky-400" />
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-50 border border-amber-300 text-[10px] text-amber-900">
+                      <ImageIcon className="w-3 h-3 text-amber-600" />
                       <span className="max-w-[70px] truncate">Photo</span>
                       <button
                         type="button"
                         onClick={() => setReferenceImageUrl(null)}
-                        className="text-red-400 hover:text-red-300 ml-0.5 cursor-pointer"
+                        className="text-red-500 hover:text-red-700 ml-0.5 cursor-pointer"
                         title="Remove photo"
                       >
                         &times;
@@ -1663,12 +1820,12 @@ export default function StudioPage() {
                     </div>
                   )}
 
-                  {/* Attachment button (Just the clean paperclip symbol, no "att" text) */}
+                  {/* Attachment button */}
                   <label
                     title="Upload reference photo or sketch"
-                    className="border-2 border-sky-400/80 hover:bg-sky-400/20 text-sky-300 p-2 rounded-xl cursor-pointer transition-all active:scale-95 flex items-center justify-center shrink-0"
+                    className="border-2 border-[#E8DFD3] hover:bg-[#FAF6EE] text-amber-800 p-2 rounded-xl cursor-pointer transition-all active:scale-95 flex items-center justify-center shrink-0"
                   >
-                    <Paperclip className="w-4 h-4 text-sky-400" />
+                    <Paperclip className="w-4 h-4 text-amber-700" />
                     <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
                   </label>
 
@@ -1676,7 +1833,7 @@ export default function StudioPage() {
                   <button
                     type="submit"
                     disabled={!inputMessage.trim() || isChatting}
-                    className="border-2 border-sky-400/80 bg-sky-500/20 hover:bg-sky-400 hover:text-slate-950 text-sky-300 font-bold px-4 py-1 rounded-xl text-xs sm:text-sm transition-all active:scale-95 disabled:opacity-40 cursor-pointer shrink-0"
+                    className="border-2 border-amber-600 bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-1 rounded-xl text-xs sm:text-sm transition-all active:scale-95 disabled:opacity-40 cursor-pointer shrink-0 shadow-xs"
                   >
                     send
                   </button>
@@ -1686,15 +1843,14 @@ export default function StudioPage() {
           ) : (
             /* =====================================================================
                PHASE 2: BOOK CONFIRMATION CARD (POST-DISCUSSION VIEW)
-               Matches exact layout and styling of user's second screenshot
                ===================================================================== */
-            <section className="rounded-2xl border-2 border-sky-500/60 bg-[#091122]/95 p-5 sm:p-7 shadow-2xl relative space-y-4 sm:space-y-5 animate-in fade-in">
+            <section className="rounded-2xl border-2 border-[#E8DFD3] bg-[#FAF6EE] p-5 sm:p-7 shadow-xl relative space-y-4 sm:space-y-5 animate-in fade-in">
               {/* Top Navigation bar */}
-              <div className="flex items-center justify-between border-b border-sky-400/20 pb-3">
+              <div className="flex items-center justify-between border-b border-[#E8DFD3] pb-3">
                 <button
                   type="button"
                   onClick={() => setIsDiscussionDone(false)}
-                  className="text-xs text-sky-300 hover:text-white flex items-center gap-1.5 font-semibold px-2.5 py-1 rounded-lg hover:bg-sky-400/10 transition-all cursor-pointer"
+                  className="text-xs text-amber-800 hover:text-amber-950 flex items-center gap-1.5 font-bold px-2.5 py-1 rounded-lg hover:bg-amber-100/50 transition-all cursor-pointer"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
                   <span>Back to Discussion</span>
@@ -1702,21 +1858,21 @@ export default function StudioPage() {
                 <div className="flex items-center gap-2">
                   <Link
                     href="/bookstore"
-                    className="text-[11px] font-bold px-3 py-1 rounded-full bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                    className="text-[11px] font-bold px-3 py-1 rounded-full bg-amber-100/70 hover:bg-amber-200/70 text-amber-900 border border-amber-300/60 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-xs"
                   >
-                    <BookOpen className="w-3.5 h-3.5 text-purple-300" />
+                    <BookOpen className="w-3.5 h-3.5 text-amber-700" />
                     <span>📚 Bookstore &amp; Vault</span>
                   </Link>
                   <button
                     type="button"
                     onClick={() => setOrderTrackingOpen(true)}
-                    className="text-[11px] font-bold px-3 py-1 rounded-full glacier-glass hover:bg-slate-800 text-sky-200 border border-sky-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                    className="text-[11px] font-bold px-3 py-1 rounded-full bg-white hover:bg-[#F5EFE6] text-[#1E2530] border border-[#E8DFD3] flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-xs"
                   >
-                    <Package className="w-3.5 h-3.5 text-sky-400" />
+                    <Package className="w-3.5 h-3.5 text-amber-600" />
                     <span>My Orders</span>
                   </button>
-                  <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300/60 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
                     {hasFullBook && hasCover
                       ? "Book & Cover Complete"
                       : hasFullBook
@@ -1732,14 +1888,14 @@ export default function StudioPage() {
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2.5 flex-wrap">
-                    <h2 className="text-base sm:text-xl font-black text-white tracking-tight">
+                    <h2 className="text-base sm:text-xl font-black text-[#1E2530] font-serif tracking-tight">
                       {book.title || "Barnaby's Ice Cream Adventure"}
                     </h2>
-                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#122840] text-[#38bdf8] border border-[#1e486d]">
+                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
                       {activeGenreConfig.label}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 text-xs sm:text-sm text-[#94a3b8] flex-wrap">
+                  <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-600 flex-wrap">
                     <span>Protagonist:</span>
                     {isEditingCharacterName ? (
                       <div className="flex items-center gap-1.5">
@@ -1747,7 +1903,7 @@ export default function StudioPage() {
                           type="text"
                           value={character.name}
                           onChange={(e) => setCharacter((prev) => ({ ...prev, name: e.target.value }))}
-                          className="bg-[#0b1324] border border-sky-400 text-white px-2.5 py-0.5 rounded-lg text-xs font-bold focus:outline-none focus:ring-1 focus:ring-sky-400"
+                          className="bg-white border-2 border-amber-500 text-[#1E2530] px-2.5 py-0.5 rounded-lg text-xs font-bold focus:outline-none"
                           placeholder="Child's name"
                           autoFocus
                           onKeyDown={(e) => {
@@ -1757,20 +1913,20 @@ export default function StudioPage() {
                         <button
                           type="button"
                           onClick={() => setIsEditingCharacterName(false)}
-                          className="text-[10px] bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 px-2 py-0.5 rounded-md border border-sky-400/40 font-bold cursor-pointer"
+                          className="text-[10px] bg-amber-600 hover:bg-amber-700 text-white px-2 py-0.5 rounded-md font-bold cursor-pointer"
                         >
                           Save
                         </button>
                       </div>
                     ) : (
                       <span className="flex items-center gap-1.5">
-                        <strong className="text-white font-bold">
+                        <strong className="text-[#1E2530] font-bold">
                           {character.name || "Custom Theme (No Fixed Protagonist)"}
                         </strong>
                         <button
                           type="button"
                           onClick={() => setIsEditingCharacterName(true)}
-                          className="text-[10px] text-sky-400 hover:text-sky-300 underline font-semibold cursor-pointer"
+                          className="text-[10px] text-amber-700 hover:text-amber-900 underline font-semibold cursor-pointer"
                         >
                           {character.name ? "(Change Name)" : "(Add Protagonist Name)"}
                         </button>
@@ -1781,10 +1937,10 @@ export default function StudioPage() {
                 </div>
 
                 <div className="text-right shrink-0">
-                  <span className="text-base sm:text-lg font-black text-white block">
+                  <span className="text-base sm:text-lg font-black text-[#1E2530] block">
                     {pageCount} Pages
                   </span>
-                  <span className="text-xs text-[#34d399] font-bold block">
+                  <span className="text-xs text-emerald-700 font-bold block">
                     {quote.tokensRequired === 0 ? "100% Free Gift" : `${quote.tokensRequired} Tokens`}
                   </span>
                 </div>
@@ -1792,7 +1948,7 @@ export default function StudioPage() {
 
               {/* LANE Selector: Coloring Book | Family Keepsake | Math & Logic Quest | Science Explorer */}
               <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none pt-1">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#94a3b8] shrink-0 mr-1">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 shrink-0 mr-1">
                   LANE:
                 </span>
                 {GENRE_LANES.map((lane) => {
@@ -1804,8 +1960,8 @@ export default function StudioPage() {
                       onClick={() => handleSelectGenre(lane.id)}
                       className={`text-xs font-bold px-3.5 py-1.5 rounded-xl border transition-all shrink-0 cursor-pointer ${
                         isSel
-                          ? "bg-[#0c2842] border-[#38bdf8] text-[#38bdf8] ring-1 ring-[#38bdf8]/40 shadow-sm"
-                          : "bg-[#101a2e] border-white/10 text-[#94a3b8] hover:text-white hover:border-sky-400/30"
+                          ? "bg-amber-600 border-amber-600 text-white shadow-xs"
+                          : "bg-white border-[#E8DFD3] text-slate-700 hover:text-[#1E2530] hover:border-amber-400"
                       }`}
                     >
                       {lane.label}
@@ -1815,16 +1971,16 @@ export default function StudioPage() {
               </div>
 
               {/* Reference Photo / Sketch (Optional) Box */}
-              <div className="p-3 rounded-xl bg-[#0e182a] border border-[#1e3450] flex items-center justify-between gap-3">
+              <div className="p-3 rounded-xl bg-white border border-[#E8DFD3] flex items-center justify-between gap-3 shadow-2xs">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-lg bg-[#14233c] border border-[#1f375c] text-[#38bdf8] flex items-center justify-center shrink-0">
+                  <div className="w-9 h-9 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center shrink-0">
                     <ImageIcon className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-xs sm:text-sm font-bold text-white truncate">
+                    <p className="text-xs sm:text-sm font-bold text-[#1E2530] truncate">
                       Reference Photo / Sketch (Optional)
                     </p>
-                    <p className="text-[11px] text-[#94a3b8] truncate">
+                    <p className="text-[11px] text-slate-500 truncate">
                       {referenceImageUrl ? "Grounding character visual likeness" : "Upload photo or pet drawing"}
                     </p>
                   </div>
@@ -1836,20 +1992,20 @@ export default function StudioPage() {
                     <img
                       src={referenceImageUrl}
                       alt="Reference"
-                      className="w-8 h-8 object-cover rounded-lg border border-sky-400/40"
+                      className="w-8 h-8 object-cover rounded-lg border border-amber-300"
                     />
                     <button
                       type="button"
                       onClick={() => setReferenceImageUrl(null)}
-                      className="text-red-400 hover:text-red-300 p-1 cursor-pointer"
+                      className="text-red-500 hover:text-red-700 p-1 cursor-pointer"
                       title="Remove reference photo"
                     >
                       <X className="w-4 h-4" />
                     </button>
                   </div>
                 ) : (
-                  <label className="cursor-pointer px-3.5 py-1.5 rounded-lg border border-[#1f3d67] hover:border-sky-400 bg-[#11223b] hover:bg-sky-400/10 text-xs text-sky-200 font-semibold flex items-center gap-2 transition-all shrink-0">
-                    <UploadCloud className="w-3.5 h-3.5 text-sky-400" />
+                  <label className="cursor-pointer px-3.5 py-1.5 rounded-lg border border-[#E8DFD3] hover:border-amber-400 bg-[#FAF6EE] hover:bg-amber-50 text-xs text-[#1E2530] font-semibold flex items-center gap-2 transition-all shrink-0">
+                    <UploadCloud className="w-3.5 h-3.5 text-amber-700" />
                     <span>Upload Image</span>
                     <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
                   </label>
@@ -1896,17 +2052,17 @@ export default function StudioPage() {
                         }}
                         className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
                           isSel
-                            ? "bg-[#0c2842] border-[#38bdf8] text-white shadow-sm ring-1 ring-[#38bdf8]/40"
-                            : "bg-[#101a2e] border-white/10 hover:border-sky-400/30 text-slate-300"
+                            ? "bg-amber-50 border-amber-500 text-amber-950 shadow-xs ring-1 ring-amber-400/40"
+                            : "bg-white border-[#E8DFD3] hover:border-amber-400 text-slate-700"
                         }`}
                       >
                         <div className="text-xs sm:text-sm font-bold flex items-center justify-between">
                           <span>{dim.name}</span>
-                          {isSel && <span className="text-sky-300 text-[10px] font-bold">✓ Active</span>}
+                          {isSel && <span className="text-amber-700 text-[10px] font-bold">✓ Active</span>}
                         </div>
                         <div
                           className={`text-[10px] mt-0.5 truncate ${
-                            isSel ? "text-sky-300 font-semibold" : "text-slate-400"
+                            isSel ? "text-amber-800 font-semibold" : "text-slate-500"
                           }`}
                         >
                           {dim.desc}
@@ -1920,8 +2076,8 @@ export default function StudioPage() {
               {/* Book Length: 4 Preset Grid & Slider */}
               <div className="space-y-2 pt-1">
                 <div className="flex items-center justify-between text-xs sm:text-sm">
-                  <span className="font-bold text-white">Book Length:</span>
-                  <span className="text-xs font-bold text-sky-300">
+                  <span className="font-bold text-[#1E2530]">Book Length:</span>
+                  <span className="text-xs font-bold text-amber-700">
                     🎁 5 Free Pages Included
                   </span>
                 </div>
@@ -1941,12 +2097,12 @@ export default function StudioPage() {
                         onClick={() => setPageCount(preset.pages)}
                         className={`py-2.5 px-3 rounded-xl border text-center transition-all cursor-pointer ${
                           isSel
-                            ? "bg-[#0c2842] border-[#38bdf8] text-white shadow-sm ring-1 ring-[#38bdf8]/40"
-                            : "bg-[#101a2e] border-white/10 hover:border-sky-400/30 text-slate-300"
+                            ? "bg-amber-600 border-amber-600 text-white shadow-xs"
+                            : "bg-white border-[#E8DFD3] hover:border-amber-400 text-slate-700"
                         }`}
                       >
                         <div className="text-xs sm:text-sm font-bold">{preset.label}</div>
-                        <div className={`text-[10px] mt-0.5 ${isSel ? "text-sky-300 font-semibold" : "text-slate-400"}`}>
+                        <div className={`text-[10px] mt-0.5 ${isSel ? "text-amber-100 font-semibold" : "text-slate-500"}`}>
                           {preset.tag}
                         </div>
                       </button>
@@ -1963,43 +2119,43 @@ export default function StudioPage() {
                     step={1}
                     value={pageCount}
                     onChange={(e) => setPageCount(parseInt(e.target.value, 10))}
-                    className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-[#38bdf8]"
+                    className="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-600"
                   />
-                  <span className="text-xs font-bold text-sky-300 w-14 text-right">
+                  <span className="text-xs font-bold text-amber-800 w-14 text-right">
                     {pageCount} pgs
                   </span>
                 </div>
               </div>
 
               {/* Dynamic Stage Recommendation Banner */}
-              <div className="p-3 rounded-xl bg-[#0b1c30] border border-[#1a385c] flex items-start gap-2.5 text-xs text-sky-200">
-                <Sparkles className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
-                <p className="leading-relaxed text-slate-200">
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-2.5 text-xs text-amber-950">
+                <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <p className="leading-relaxed text-slate-700">
                   {hasFullBook && !hasCover ? (
                     <>
-                      <strong className="text-white">Final Step — Front Book Cover:</strong> All {book.pages.length} interior pages are ready! Now let&apos;s design your custom Front Book Cover using our same AI chat or generate it right below.
+                      <strong className="text-[#1E2530]">Final Step — Front Book Cover:</strong> All {book.pages.length} interior pages are ready! Now let&apos;s design your custom Front Book Cover using our same AI chat or generate it right below.
                     </>
                   ) : hasFullBook && hasCover ? (
                     <>
-                      <strong className="text-emerald-300">Book &amp; Front Cover Complete:</strong> Your {book.pages.length}-page book and custom Front Cover are ready! Preview the spreads below, tweak any page or cover in chat, or export your 300 DPI PDF.
+                      <strong className="text-emerald-800">Book &amp; Front Cover Complete:</strong> Your {book.pages.length}-page book and custom Front Cover are ready! Preview the spreads below, tweak any page or cover in chat, or export your 300 DPI PDF.
                     </>
                   ) : hasProof && !isProofStale ? (
                     isPagePlanConfirmed ? (
                       <>
-                        <strong className="text-emerald-300">Page Plan Confirmed:</strong> Click below to generate your{" "}
-                        {pageCount}-page book! Your <strong className="text-white">first 5 pages are 100% free</strong>,
+                        <strong className="text-emerald-800">Page Plan Confirmed:</strong> Click below to generate your{" "}
+                        {pageCount}-page book! Your <strong className="text-[#1E2530]">first 5 pages are 100% free</strong>,
                         and pages 6–{pageCount} will appear in a blurred preview ready to unlock anytime.
                       </>
                     ) : (
                       <>
-                        <strong className="text-white">Master Page 1 Proof Ready:</strong> Check Page 1 below! Next,
+                        <strong className="text-[#1E2530]">Master Page 1 Proof Ready:</strong> Check Page 1 below! Next,
                         let&apos;s plan &amp; confirm what Pages 2–{pageCount} will have and look like in our AI chat
                          before generating your first 5 free pages.
                       </>
                     )
                   ) : (
                     <>
-                      <strong className="text-white">Designer Recommendation:</strong> Let&apos;s design your Master Page 1 Proof first for free to check layout and visual style before creating all {pageCount} pages.
+                      <strong className="text-[#1E2530]">Designer Recommendation:</strong> Let&apos;s design your Master Page 1 Proof first for free to check layout and visual style before creating all {pageCount} pages.
                     </>
                   )}
                 </p>
@@ -2007,10 +2163,10 @@ export default function StudioPage() {
 
               {/* Stale proof warning: edits from the discussion aren't in the current proof yet */}
               {hasProof && !hasFullBook && isProofStale && (
-                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-400/40 flex items-start gap-2.5 text-xs animate-in fade-in">
-                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                  <p className="leading-relaxed text-amber-100">
-                    <strong className="text-amber-200">Your recent edits aren&apos;t in this proof yet.</strong> Redesign
+                <div className="p-3 rounded-xl bg-amber-100 border border-amber-300 flex items-start gap-2.5 text-xs animate-in fade-in">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="leading-relaxed text-amber-950">
+                    <strong className="text-amber-900">Your recent edits aren&apos;t in this proof yet.</strong> Redesign
                     Master Page 1 to apply them before expanding the full book.
                   </p>
                 </div>
@@ -2023,9 +2179,9 @@ export default function StudioPage() {
                     <button
                       type="button"
                       onClick={handleDesignCoverInChat}
-                      className="py-3 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 border-2 border-sky-400/80 text-sky-200 font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                      className="py-3 px-4 rounded-2xl bg-white hover:bg-[#FAF6EE] border-2 border-[#E8DFD3] text-[#1E2530] font-bold text-xs sm:text-sm shadow-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
                     >
-                      <MessageSquare className="w-4 h-4 text-sky-400" />
+                      <MessageSquare className="w-4 h-4 text-amber-600" />
                       <span>💬 Customize Cover in Same AI Chat</span>
                     </button>
 
@@ -2033,16 +2189,16 @@ export default function StudioPage() {
                       type="button"
                       onClick={() => handleDesignBookCover()}
                       disabled={isGeneratingCover || isGenerating}
-                      className="py-3 px-4 rounded-2xl bg-[#7dd3fc] hover:bg-[#a0e3ff] text-[#001f2e] font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 transition-all hover:brightness-105 active:scale-95 disabled:opacity-50 cursor-pointer"
+                      className="py-3 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                     >
                       {isGeneratingCover ? (
                         <>
-                          <RefreshCw className="w-4 h-4 animate-spin text-[#001f2e]" />
+                          <RefreshCw className="w-4 h-4 animate-spin text-white" />
                           <span>Designing Front Cover...</span>
                         </>
                       ) : (
                         <>
-                          <Palette className="w-4 h-4 text-[#001f2e]" />
+                          <Palette className="w-4 h-4 text-white" />
                           <span>🎨 Generate Front Book Cover Now</span>
                         </>
                       )}
@@ -2055,7 +2211,7 @@ export default function StudioPage() {
                         type="button"
                         onClick={handleExpandFullSpread}
                         disabled={isGenerating}
-                        className="text-xs text-sky-300 hover:text-sky-200 underline font-semibold cursor-pointer"
+                        className="text-xs text-amber-700 hover:text-amber-900 underline font-semibold cursor-pointer"
                       >
                         ✨ Update Interior to {pageCount} Pages
                       </button>
@@ -2068,9 +2224,9 @@ export default function StudioPage() {
                     <button
                       type="button"
                       onClick={handleDesignCoverInChat}
-                      className="py-3 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 border-2 border-sky-400/80 text-sky-200 font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                      className="py-3 px-4 rounded-2xl bg-white hover:bg-[#FAF6EE] border-2 border-[#E8DFD3] text-[#1E2530] font-bold text-xs sm:text-sm shadow-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
                     >
-                      <MessageSquare className="w-4 h-4 text-sky-400" />
+                      <MessageSquare className="w-4 h-4 text-amber-600" />
                       <span>💬 Tweak Cover or Pages in AI Chat</span>
                     </button>
 
@@ -2078,16 +2234,16 @@ export default function StudioPage() {
                       type="button"
                       onClick={() => handleDesignBookCover()}
                       disabled={isGeneratingCover || isGenerating}
-                      className="py-3 px-4 rounded-2xl bg-[#7dd3fc] hover:bg-[#a0e3ff] text-[#001f2e] font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 transition-all hover:brightness-105 active:scale-95 disabled:opacity-50 cursor-pointer"
+                      className="py-3 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                     >
                       {isGeneratingCover ? (
                         <>
-                          <RefreshCw className="w-4 h-4 animate-spin text-[#001f2e]" />
+                          <RefreshCw className="w-4 h-4 animate-spin text-white" />
                           <span>Regenerating Front Cover...</span>
                         </>
                       ) : (
                         <>
-                          <RefreshCw className="w-4 h-4 text-[#001f2e]" />
+                          <RefreshCw className="w-4 h-4 text-white" />
                           <span>🔄 Regenerate Front Book Cover</span>
                         </>
                       )}
@@ -2100,7 +2256,7 @@ export default function StudioPage() {
                         type="button"
                         onClick={handleExpandFullSpread}
                         disabled={isGenerating}
-                        className="text-xs text-sky-300 hover:text-sky-200 underline font-semibold cursor-pointer"
+                        className="text-xs text-amber-700 hover:text-amber-900 underline font-semibold cursor-pointer"
                       >
                         ✨ Expand / Update Interior ({pageCount} Pgs)
                       </button>
@@ -2119,9 +2275,9 @@ export default function StudioPage() {
                           chatInput.focus();
                         }
                       }}
-                      className="py-3 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 border-2 border-sky-400/80 text-sky-200 font-bold text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                      className="py-3 px-4 rounded-2xl bg-white hover:bg-[#FAF6EE] border-2 border-[#E8DFD3] text-[#1E2530] font-bold text-xs sm:text-sm shadow-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
                     >
-                      <MessageSquare className="w-4 h-4 text-sky-400" />
+                      <MessageSquare className="w-4 h-4 text-amber-600" />
                       <span>💬 Continue in Chat to Make Changes</span>
                     </button>
 
@@ -2129,21 +2285,21 @@ export default function StudioPage() {
                       type="button"
                       onClick={isPagePlanConfirmed ? handleExpandFullSpread : handleStartPagePlanning}
                       disabled={isGenerating || isChatting}
-                      className="py-3 px-4 rounded-2xl bg-[#7dd3fc] hover:bg-[#a0e3ff] text-[#001f2e] font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 transition-all hover:brightness-105 active:scale-95 disabled:opacity-50 cursor-pointer"
+                      className="py-3 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                     >
                       {isGenerating ? (
                         <>
-                          <RefreshCw className="w-4 h-4 animate-spin text-[#001f2e]" />
+                          <RefreshCw className="w-4 h-4 animate-spin text-white" />
                           <span>Generating Pages (First 5 Free)...</span>
                         </>
                       ) : isPagePlanConfirmed ? (
                         <>
-                          <Sparkles className="w-4 h-4 text-[#001f2e]" />
+                          <Sparkles className="w-4 h-4 text-white" />
                           <span>✨ Confirm &amp; Generate ({pageCount} Pgs &bull; First 5 Free)</span>
                         </>
                       ) : (
                         <>
-                          <Sparkles className="w-4 h-4 text-[#001f2e]" />
+                          <Sparkles className="w-4 h-4 text-white" />
                           <span>✨ Looks Great! Plan &amp; Expand ({pageCount} Pgs)</span>
                         </>
                       )}
@@ -2155,7 +2311,7 @@ export default function StudioPage() {
                       type="button"
                       onClick={handleDesignHeroPage}
                       disabled={isGenerating}
-                      className="text-xs text-[#a0b4c4] hover:text-sky-300 underline font-medium cursor-pointer"
+                      className="text-xs text-slate-500 hover:text-amber-800 underline font-medium cursor-pointer"
                     >
                       🔄 Redesign Master Page 1 Proof
                     </button>
@@ -2166,16 +2322,16 @@ export default function StudioPage() {
                   type="button"
                   onClick={handleDesignHeroPage}
                   disabled={isGenerating}
-                  className="w-full py-3.5 px-5 rounded-2xl bg-[#7dd3fc] hover:bg-[#a0e3ff] text-[#001f2e] font-black text-sm sm:text-base shadow-xl flex items-center justify-center gap-2.5 transition-all hover:brightness-105 active:scale-98 disabled:opacity-50 cursor-pointer"
+                  className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-sm sm:text-base shadow-md flex items-center justify-center gap-2.5 transition-all active:scale-98 disabled:opacity-50 cursor-pointer"
                 >
                   {isGenerating ? (
                     <>
-                      <RefreshCw className="w-4 h-4 animate-spin text-[#001f2e]" />
+                      <RefreshCw className="w-4 h-4 animate-spin text-white" />
                       <span>Designing Master Page 1 Proof...</span>
                     </>
                   ) : (
                     <>
-                      <Palette className="w-4 h-4 text-[#001f2e]" />
+                      <Palette className="w-4 h-4 text-white" />
                       <span>
                         {isProofStale
                           ? "🎨 Redesign Master Page 1 with Your Edits (Free)"
@@ -2195,14 +2351,14 @@ export default function StudioPage() {
           <section id="book-display-section" className="space-y-4">
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-sky-400/20 border border-sky-400/30 text-sky-300 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-amber-100 border border-amber-300 text-amber-800 flex items-center justify-center">
                   <BookOpen className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-base sm:text-lg font-black text-white tracking-tight">
+                  <h3 className="text-base sm:text-lg font-black text-[#1E2530] font-serif tracking-tight">
                     Book Display
                   </h3>
-                  <p className="text-xs text-[#a0b4c4]">
+                  <p className="text-xs text-slate-600">
                     Interactive two-page spread preview &bull;{" "}
                     {book.format?.trimSize === "6x9"
                       ? "6\" × 9\" US Trade Digest Journal"
@@ -2220,6 +2376,7 @@ export default function StudioPage() {
               onPageUpdate={handlePageUpdate}
               onCoverUpdate={handleCoverUpdate}
               onDesignCoverInChat={handleDesignCoverInChat}
+              onEditPageInChat={handleEditPageInChat}
               activePageIndex={activeViewerPageIndex}
               onPageIndexChange={setActiveViewerPageIndex}
               onDownloadPdf={handleDownloadFullPdf}
@@ -2227,6 +2384,7 @@ export default function StudioPage() {
               onOpenBookDetails={() => setBookDetailsOpen(true)}
               onOrderPhysical={() => setOrderModalOpen(true)}
               onOpenTokenModal={() => setTokenModalOpen(true)}
+              onOpenUnlockChoice={() => setUnlockChoiceOpen(true)}
               onUnlockRemainingPages={handleUnlockRemainingPages}
               isUnlockingPages={isUnlockingPages}
               isDownloading={isDownloadingPdf || isPrintingPageOne}
@@ -2239,20 +2397,20 @@ export default function StudioPage() {
                 CHANNEL3 AGENTIC COMMERCE COMPANION SUPPLIES (MATCHED BY AI HELPER)
                 ========================================================================= */}
             {companionProducts.length > 0 && (
-              <div className="glacier-glass rounded-2xl border border-sky-400/25 p-4 sm:p-5 shadow-xl space-y-3">
+              <div className="rounded-2xl border border-[#E8DFD3] bg-[#FAF6EE] p-4 sm:p-5 shadow-sm space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <ShoppingBag className="w-4 h-4 text-sky-400" />
+                    <ShoppingBag className="w-4 h-4 text-amber-700" />
                     <div>
-                      <h4 className="text-xs sm:text-sm font-extrabold text-white">
+                      <h4 className="text-xs sm:text-sm font-extrabold text-[#1E2530]">
                         AI-Matched Physical Art Supplies (Channel3 Agentic Commerce)
                       </h4>
-                      <p className="text-[11px] text-[#a0b4c4]">
+                      <p className="text-[11px] text-slate-600">
                         Curated supplies matching {book.title} &bull; Ships with your book
                       </p>
                     </div>
                   </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-400/20 text-sky-300 border border-sky-400/30">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
                     Live Merchant Catalog
                   </span>
                 </div>
@@ -2266,21 +2424,21 @@ export default function StudioPage() {
                         onClick={() => setSelectedCompanion(isSelected ? null : item)}
                         className={`cursor-pointer p-3 rounded-xl border text-xs flex items-center gap-3 transition-all ${
                           isSelected
-                            ? "bg-sky-500/20 border-sky-400 shadow-md ring-1 ring-sky-400/30"
-                            : "bg-slate-900/60 border-white/10 hover:border-sky-400/30"
+                            ? "bg-amber-50 border-amber-500 shadow-sm ring-1 ring-amber-400/30"
+                            : "bg-white border-[#E8DFD3] hover:border-amber-400 shadow-2xs"
                         }`}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={item.imageUrl}
                           alt={item.title}
-                          className="w-12 h-12 object-cover rounded-lg border border-white/10 shrink-0"
+                          className="w-12 h-12 object-cover rounded-lg border border-[#E8DFD3] shrink-0"
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="font-bold text-white truncate text-xs">{item.title}</p>
-                          <p className="text-[11px] text-sky-300 font-semibold mt-0.5">
+                          <p className="font-bold text-[#1E2530] truncate text-xs">{item.title}</p>
+                          <p className="text-[11px] text-amber-800 font-bold mt-0.5">
                             ${item.price.toFixed(2)}{" "}
-                            <span className="text-[#a0b4c4] font-normal text-[10px]">
+                            <span className="text-slate-500 font-normal text-[10px]">
                               via {item.retailerDomain || item.brand}
                             </span>
                           </p>
@@ -2288,7 +2446,7 @@ export default function StudioPage() {
                         <button
                           type="button"
                           className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-all ${
-                            isSelected ? "bg-sky-400 text-slate-950 font-bold" : "border border-slate-600 text-slate-400"
+                            isSelected ? "bg-amber-600 text-white font-bold" : "border border-slate-300 text-slate-500"
                           }`}
                         >
                           {isSelected ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
@@ -2314,10 +2472,35 @@ export default function StudioPage() {
           onClose={() => setTokenModalOpen(false)}
         />
 
+        <UnlockChoiceModal
+          isOpen={unlockChoiceOpen}
+          onClose={() => setUnlockChoiceOpen(false)}
+          book={book}
+          currentTokens={userTokens}
+          onDirectUnlockSuccess={handleDirectUnlockSuccess}
+          onTokenUnlockSuccess={() => {
+            setIsBookUnlocked(true);
+            setBook((prev) => ({
+              ...prev,
+              pages: prev.pages.map((p) => ({ ...p, isLocked: false })),
+            }));
+            setUnlockChoiceOpen(false);
+          }}
+          onBuyTokens={() => {
+            setUnlockChoiceOpen(false);
+            setTokenModalOpen(true);
+          }}
+          onOrderPhysical={() => {
+            setUnlockChoiceOpen(false);
+            setOrderModalOpen(true);
+          }}
+        />
+
         <OrderSummaryModal
           isOpen={orderModalOpen}
           onClose={() => setOrderModalOpen(false)}
           book={book}
+          isDigitalUnlocked={isBookUnlocked}
           onOrderCompleted={() => {
             setIsBookUnlocked(true);
           }}

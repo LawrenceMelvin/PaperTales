@@ -14,6 +14,7 @@ import {
   PenTool,
   Info,
   FileCheck,
+  ShieldCheck,
   Smile,
   Baby,
   Eye,
@@ -32,6 +33,7 @@ interface BookViewerProps {
   onPageUpdate: (updatedPage: BookPage) => void;
   onCoverUpdate?: (updatedCover: BookCoverDesign) => void;
   onDesignCoverInChat?: () => void;
+  onEditPageInChat?: (pageIndex: number) => void;
   activePageIndex?: number;
   onPageIndexChange?: (idx: number) => void;
   onDownloadPdf: () => void;
@@ -39,6 +41,7 @@ interface BookViewerProps {
   onPrintFirstPage?: () => void;
   onOpenBookDetails?: () => void;
   onOpenTokenModal?: () => void;
+  onOpenUnlockChoice?: () => void;
   onUnlockRemainingPages?: () => void;
   isUnlockingPages?: boolean;
   isDownloading?: boolean;
@@ -51,6 +54,7 @@ export default function BookViewer({
   onPageUpdate,
   onCoverUpdate,
   onDesignCoverInChat,
+  onEditPageInChat,
   activePageIndex,
   onPageIndexChange,
   onDownloadPdf,
@@ -58,6 +62,7 @@ export default function BookViewer({
   onPrintFirstPage,
   onOpenBookDetails,
   onOpenTokenModal,
+  onOpenUnlockChoice,
   onUnlockRemainingPages,
   isUnlockingPages = false,
   isDownloading,
@@ -92,12 +97,6 @@ export default function BookViewer({
   const [previousStoryText, setPreviousStoryText] = useState<string | null>(null);
   const [refineFeedback, setRefineFeedback] = useState<string | null>(null);
 
-  // Art tweak states
-  const [artModalOpen, setArtModalOpen] = useState<boolean>(false);
-  const [artPrompt, setArtPrompt] = useState<string>("");
-  const [isGeneratingArt, setIsGeneratingArt] = useState<boolean>(false);
-  const [artFeedback, setArtFeedback] = useState<string | null>(null);
-
   const totalPages = book.pages.length;
   const isCover = currentPageIndex === 0;
   const activePage = !isCover ? book.pages[currentPageIndex - 1] : null;
@@ -107,7 +106,6 @@ export default function BookViewer({
       updatePageIndex(currentPageIndex + 1);
       setEditingStory(false);
       setTextSelection(null);
-      setArtModalOpen(false);
     }
   };
 
@@ -116,7 +114,6 @@ export default function BookViewer({
       updatePageIndex(currentPageIndex - 1);
       setEditingStory(false);
       setTextSelection(null);
-      setArtModalOpen(false);
     }
   };
 
@@ -217,72 +214,6 @@ export default function BookViewer({
       setPreviousStoryText(null);
       setRefineFeedback("Restored previous text");
       setTimeout(() => setRefineFeedback(null), 3000);
-    }
-  };
-
-  const handleTweakArt = async (customInstruction?: string) => {
-    if (!isCover && !activePage) return;
-    const balance = getClientTokenBalance();
-    if (balance < 2) {
-      setArtModalOpen(false);
-      if (onOpenTokenModal) onOpenTokenModal();
-      return;
-    }
-
-    setIsGeneratingArt(true);
-    try {
-      const basePrompt = isCover
-        ? book.cover?.coverPrompt || `Book cover artwork for "${book.title}" starring ${book.character?.name || "the protagonist"}`
-        : activePage?.imagePrompt || (isColorBook ? "children's illustration" : "coloring page illustration");
-
-      const fullPrompt = customInstruction
-        ? `${basePrompt}, modification: ${customInstruction}`
-        : `${basePrompt}, fresh alternative composition`;
-
-      const res = await fetch("/api/ai/image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: fullPrompt,
-          characterTraits: book.character?.traits?.join(", ") || "",
-          pageNumber: isCover ? 0 : activePage?.pageNumber,
-          artStyle: book.cover?.artStyle || book.artStyle,
-          interiorColor: isCover
-            ? book.cover?.colorScheme === "minimal_monochrome"
-              ? "black_and_white"
-              : "standard_color"
-            : book.format?.interiorColor,
-        }),
-      });
-
-      const data = await res.json();
-      if (data.success) {
-        deductClientTokens(2);
-        if (isCover && onCoverUpdate) {
-          onCoverUpdate({
-            ...book.cover,
-            title: book.cover?.title || book.title,
-            subtitle: book.cover?.subtitle || book.subtitle,
-            coverPrompt: fullPrompt,
-            imageUrl: data.imageUrl || book.cover?.imageUrl,
-            isDesigned: true,
-          });
-        } else if (activePage) {
-          if (data.imageUrl) {
-            onPageUpdate({ ...activePage, imageUrl: data.imageUrl, svgData: undefined });
-          } else if (data.svg) {
-            onPageUpdate({ ...activePage, svgData: data.svg, imageUrl: undefined });
-          }
-        }
-        setArtFeedback(isCover ? "Cover artwork updated!" : "Artwork updated!");
-        setTimeout(() => setArtFeedback(null), 4000);
-      }
-    } catch (err) {
-      console.error("Failed to tweak art:", err);
-    } finally {
-      setIsGeneratingArt(false);
-      setArtModalOpen(false);
-      setArtPrompt("");
     }
   };
 
@@ -614,18 +545,7 @@ export default function BookViewer({
                     alt={page.imagePrompt || `Day ${pNum} illustration`}
                     className="w-full h-full object-contain filter contrast-125"
                   />
-                  {/* Quick button to tweak art */}
-                  {!isRightPage && (
-                    <button
-                      type="button"
-                      onClick={() => setArtModalOpen(true)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-2 -right-2 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-slate-900 text-sky-300 border border-sky-400/50 shadow flex items-center gap-1 cursor-pointer"
-                      title="Tweak this day's illustration (2 🪙)"
-                    >
-                      <Palette className="w-2.5 h-2.5 text-sky-400" />
-                      <span>Tweak</span>
-                    </button>
-                  )}
+                  
                 </div>
                 <span className="text-[8.5px] font-mono text-slate-500 font-semibold mt-0.5 tracking-tight">
                   Day {pNum} Motif
@@ -662,7 +582,14 @@ export default function BookViewer({
           )}
 
           {/* Page Footer (Opt-in via chat: book.showPageNumbers) */}
-          {book.showPageNumbers && (
+          {book.singleSidedColoring && (
+                          <div className="mt-3 p-2 rounded-lg bg-sky-50 border border-sky-200/60 flex items-center gap-2 text-[11px] text-sky-800">
+                            <ShieldCheck className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                            <span>Bleed Guard: Back of this page is preserved blank for markers & paints.</span>
+                          </div>
+                        )}
+
+                        {book.showPageNumbers && (
             <div className="flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-200/70 pt-2">
               <span className="truncate max-w-[160px] font-medium">{book.title}</span>
               <span className="font-mono font-bold">Page {pNum}</span>
@@ -673,34 +600,34 @@ export default function BookViewer({
         {/* Locked Overlay for Journal Pages > 5 */}
         {isJournalPageLocked && (
           <div className="absolute inset-0 z-30 bg-slate-950/60 backdrop-blur-xs flex flex-col items-center justify-center p-4 text-center">
-            <div className="glacier-glass rounded-2xl border border-sky-400/50 p-4 max-w-[260px] shadow-2xl space-y-2.5">
-              <div className="w-9 h-9 rounded-full bg-sky-400/20 border border-sky-400/40 text-sky-300 flex items-center justify-center mx-auto">
-                <Lock className="w-4 h-4 text-sky-300" />
+            <div className="bg-[#FFFDF9]/95 rounded-2xl border border-amber-300/80 p-4 max-w-[280px] shadow-2xl space-y-2.5">
+              <div className="w-9 h-9 rounded-full bg-amber-100 border border-amber-300 text-amber-800 flex items-center justify-center mx-auto">
+                <Lock className="w-4 h-4 text-amber-700" />
               </div>
-              <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+              <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300">
                 First 5 Pages Free
               </span>
-              <h4 className="text-xs sm:text-sm font-black text-white">
+              <h4 className="text-xs sm:text-sm font-black text-[#1E2530]">
                 Day {pNum} Preview Locked
               </h4>
-              <p className="text-[11px] text-slate-300 leading-relaxed">
+              <p className="text-[11px] text-slate-600 leading-relaxed">
                 Unlock all remaining pages (Pages 6–{totalPages}) to view and export your complete {totalPages}-page journal.
               </p>
               <button
                 type="button"
-                onClick={onUnlockRemainingPages || onOpenTokenModal}
+                onClick={onOpenUnlockChoice || onUnlockRemainingPages || onOpenTokenModal}
                 disabled={isUnlockingPages}
-                className="w-full py-2 px-3 rounded-xl bg-[#7dd3fc] hover:bg-[#a0e3ff] text-[#001f2e] font-black text-xs shadow-lg flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-bold text-xs shadow-md shadow-amber-600/20 flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
               >
                 {isUnlockingPages ? (
                   <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#001f2e]" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
                     <span>Unlocking Pages...</span>
                   </>
                 ) : (
                   <>
-                    <Lock className="w-3.5 h-3.5 text-[#001f2e]" />
-                    <span>Unlock Pages 6–{totalPages} ({Math.max(1, totalPages - 5)} Tokens)</span>
+                    <Lock className="w-3.5 h-3.5 text-white" />
+                    <span>Unlock Pages 6–{totalPages}</span>
                   </>
                 )}
               </button>
@@ -717,10 +644,10 @@ export default function BookViewer({
       <div className="w-full flex flex-col sm:flex-row items-start sm:items-center justify-between mb-3 px-1 sm:px-2 gap-2">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-base sm:text-xl font-extrabold text-white tracking-tight">
+            <h2 className="text-base sm:text-xl font-black font-serif text-[#1E2530] tracking-tight">
               {book.title}
             </h2>
-            <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-sky-400/20 text-sky-300 font-bold border border-sky-400/30">
+            <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold border border-amber-300">
               {is6x9
                 ? '6" × 9" Digest Journal'
                 : is85x11
@@ -728,14 +655,14 @@ export default function BookViewer({
                 : '8.5" × 8.5" Square'}
             </span>
             {isConfirmed && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 flex items-center gap-1">
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 font-bold border border-emerald-300 flex items-center gap-1">
                 <FileCheck className="w-3 h-3" /> Confirmed Proof
               </span>
             )}
           </div>
-          <p className="text-xs text-[#a0b4c4] mt-0.5">
+          <p className="text-xs text-slate-600 mt-0.5">
             {book.authorName && book.authorName.trim() !== "" && book.authorName !== "Lawrence & Leo" ? (
-              <>By <strong className="text-white">{book.authorName}</strong> &bull; </>
+              <>By <strong className="text-[#1E2530]">{book.authorName}</strong> &bull; </>
             ) : (
               <>Personal Keepsake Edition &bull; </>
             )}
@@ -748,10 +675,10 @@ export default function BookViewer({
           <button
             onClick={onDownloadPdf}
             disabled={isDownloading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold glacier-glass-subtle hover:bg-slate-800 text-sky-300 border border-sky-400/30 rounded-xl shadow-sm transition-all active:scale-95 cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-white hover:bg-[#FAF6EE] text-[#1E2530] border border-[#E8DFD3] hover:border-amber-400 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
             title="Download Full PDF"
           >
-            <Download className="w-3.5 h-3.5 text-sky-400" />
+            <Download className="w-3.5 h-3.5 text-amber-700" />
             <span className="hidden sm:inline">{isDownloading ? "Compiling..." : "Download Full PDF"}</span>
             <span className="sm:hidden">PDF</span>
           </button>
@@ -759,21 +686,21 @@ export default function BookViewer({
       </div>
 
       {/* Book Spread Viewport */}
-      <div className="relative w-full min-h-[460px] sm:min-h-[520px] lg:min-h-[560px] glacier-glass rounded-2xl p-3 sm:p-6 lg:p-7 flex items-center justify-center border border-sky-400/25 shadow-2xl">
+      <div className="relative w-full min-h-[460px] sm:min-h-[520px] lg:min-h-[560px] bg-[#FAF6EE] rounded-2xl p-3 sm:p-6 lg:p-7 flex items-center justify-center border border-[#E8DFD3] shadow-xl">
         {isCover ? (
-          /* Cover Spread */
+          /* Cover 2-Page Wraparound Spread (Matching physical book & preventing viewport expansion) */
           (() => {
             const coverImage = book.cover?.imageUrl;
-            const coverScheme = book.cover?.colorScheme || "midnight_glacier";
+            const coverScheme = book.cover?.colorScheme || "warm_cream";
             const isLightCover = coverScheme === "warm_cream" || coverScheme === "minimal_monochrome";
             const coverBgClass =
               coverScheme === "warm_cream"
-                ? "bg-[#fffcf5] text-slate-900 border-amber-300/80"
+                ? "bg-[#FAF6EE] text-[#1E2530] border-[#E8DFD3]"
                 : coverScheme === "minimal_monochrome"
                 ? "bg-white text-slate-950 border-slate-900 border-2"
                 : coverScheme === "storybook_vibrant"
-                ? "bg-gradient-to-br from-sky-900 via-indigo-950 to-purple-950 text-white border-sky-300/60"
-                : "bg-[#0f1524] text-white border-sky-400/40";
+                ? "bg-gradient-to-br from-amber-700 via-amber-800 to-amber-950 text-white border-amber-300/60"
+                : "bg-[#2A1D13] text-[#FAF6EE] border-amber-500/40";
 
             const coverTitle = book.cover?.title || book.title;
             const coverSubtitle = book.cover?.subtitle || book.subtitle;
@@ -785,150 +712,157 @@ export default function BookViewer({
 
             return (
               <div
-                className={`w-full ${coverAspectClass} ${coverBgClass} rounded-r-2xl border book-shadow flex flex-col justify-between p-6 sm:p-8 relative overflow-hidden transition-all duration-300`}
+                className={`w-full h-full ${spreadAspectClass} flex flex-col sm:flex-row ${coverBgClass} rounded-2xl border-2 book-shadow overflow-hidden transition-all duration-300 relative`}
               >
-                <div
-                  className={`absolute top-0 bottom-0 left-0 w-3 ${
-                    isLightCover
-                      ? "bg-gradient-to-r from-slate-900/20 to-transparent"
-                      : "bg-gradient-to-r from-sky-400/40 to-sky-400/10"
-                  }`}
-                />
+                {/* Left Leaf: Back Cover */}
+                <div className={`flex-1 p-6 sm:p-8 lg:p-10 flex flex-col justify-between border-b sm:border-b-0 sm:border-r ${isLightCover ? "bg-[#FAF6EE] border-[#E8DFD3]" : "border-amber-400/20"} relative`}>
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${isLightCover ? "bg-amber-100 text-amber-900 border border-amber-300" : "bg-amber-400/20 text-amber-300 border border-amber-400/30"}`}>
+                        Back Cover
+                      </span>
+                      <span className={`text-[10px] ${isLightCover ? "text-slate-500" : "text-slate-400"}`}>
+                        Personal Keepsake Edition
+                      </span>
+                    </div>
 
-                {/* Top Cover Action Buttons */}
-                <div className="flex items-center justify-between gap-1.5 z-10 -mt-1 mb-1">
-                  {book.cover?.isDesigned ? (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
-                      <Check className="w-3 h-3" /> Custom AI Cover
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-400 border border-sky-400/30">
-                      Front Cover Preview
-                    </span>
-                  )}
+                    <div className="space-y-2">
+                      <h3 className={`text-lg sm:text-xl font-black font-serif ${isLightCover ? "text-[#1E2530]" : "text-white"}`}>
+                        {coverTitle}
+                      </h3>
+                      <p className={`text-xs sm:text-sm leading-relaxed ${isLightCover ? "text-slate-700" : "text-slate-300"}`}>
+                        {book.cover?.backCoverText ||
+                          `Step into the magical journey of ${coverTitle}. Featuring ${book.character?.name || "our hero"}, this personalized keepsake edition preserves cherished moments, sparks boundless creativity, and inspires young artists.`}
+                      </p>
+                    </div>
 
-                  <div className="flex items-center gap-1.5">
-                    {onDesignCoverInChat && (
-                      <button
-                        type="button"
-                        onClick={onDesignCoverInChat}
-                        className="px-2 py-1 rounded-lg text-[10px] font-bold bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-400/40 flex items-center gap-1 transition-all cursor-pointer"
-                        title="Use the AI Chat to customize the cover"
-                      >
-                        <Sparkles className="w-3 h-3 text-sky-400" />
-                        <span>Design in Chat</span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setArtModalOpen(true)}
-                      disabled={isGeneratingArt}
-                      className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-900/90 hover:bg-slate-950 text-sky-300 border border-sky-400/40 flex items-center gap-1 transition-all cursor-pointer"
-                    >
-                      {isGeneratingArt ? (
-                        <Loader2 className="w-3 h-3 animate-spin text-sky-400" />
-                      ) : (
-                        <Palette className="w-3 h-3 text-sky-400" />
-                      )}
-                      <span>Tweak Cover</span>
-                    </button>
+                    <div className={`text-xs p-3.5 rounded-xl ${isLightCover ? "bg-white border border-[#E8DFD3] text-slate-700 shadow-2xs" : "bg-slate-900/70 text-slate-300 border border-amber-400/20"}`}>
+                      <p className={`font-bold ${isLightCover ? "text-amber-800" : "text-amber-300"}`}>Archival Softcover Keepsake</p>
+                      <p className={`text-[11px] ${isLightCover ? "text-slate-500" : "text-slate-400"} mt-1`}>
+                        Printed on 60# uncoated white paper &bull; Archival Saddle-Stitch POD &bull; PaperTales AI Studio
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Back Cover Barcode & Lulu imprint */}
+                  <div className={`pt-4 border-t ${isLightCover ? "border-[#E8DFD3]" : "border-amber-400/20"} flex items-center justify-between`}>
+                    <div className={`text-[10px] ${isLightCover ? "text-slate-500" : "text-slate-400"} font-mono`}>
+                      <div>Lulu Direct 300 DPI</div>
+                      <div>ISBN 978-0-PT-AI-2026</div>
+                    </div>
+                    <div className={`bg-white p-1.5 rounded-md flex flex-col items-center ${isLightCover ? "border border-[#E8DFD3] shadow-xs" : "shadow-xs"}`}>
+                      <div className="flex items-center gap-[2px] h-7">
+                        {[3, 1, 2, 1, 4, 1, 2, 3, 1, 2, 4, 2, 1, 3].map((w, i) => (
+                          <div key={i} className="bg-slate-950 h-full" style={{ width: `${w * 1.5}px` }} />
+                        ))}
+                      </div>
+                      <span className="text-[7px] font-mono text-slate-900 font-bold tracking-widest mt-0.5">
+                        PAPER-TALES-AI
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="text-center pt-1">
-                  <span
-                    className={`text-[10px] sm:text-xs uppercase tracking-widest font-extrabold ${
-                      isLightCover ? "text-slate-600" : "text-sky-300"
-                    }`}
-                  >
-                    {isJournal
-                      ? "Personalized Reflection Journal"
-                      : isActivityBook
-                      ? isColorBook
-                        ? "Personalized Science & Activity Book"
-                        : "Science & Activity Book"
-                      : isColorBook
-                      ? "Personalized Storybook"
-                      : "Personalized Story & Coloring"}
-                  </span>
-                  <h1
-                    className={`text-xl sm:text-2xl font-black tracking-tight mt-1 mb-1 font-serif ${
-                      isLightCover ? "text-slate-950" : "text-white"
-                    }`}
-                  >
-                    {coverTitle}
-                  </h1>
-                  {coverSubtitle && (
-                    <p className={`text-xs font-medium ${isLightCover ? "text-slate-600" : "text-[#a0b4c4]"}`}>
-                      {coverSubtitle}
-                    </p>
-                  )}
-                </div>
+                {/* Center Spine Divider */}
+                <div className="hidden sm:block absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-3 bg-gradient-to-r from-amber-700/20 via-amber-200/40 to-amber-700/20 border-x border-amber-300/40 pointer-events-none z-10" />
 
-                {/* Cover Graphic Frame */}
-                <div
-                  className={`w-full flex-1 my-3 sm:my-4 rounded-xl flex flex-col items-center justify-center p-2.5 relative overflow-hidden ${
-                    coverImage
-                      ? isLightCover
-                        ? "border-2 border-slate-800 bg-white shadow-inner"
-                        : "border border-sky-400/40 bg-slate-950/60 shadow-inner"
-                      : isLightCover
-                      ? "border-2 border-dashed border-slate-300 bg-slate-50"
-                      : "border-2 border-dashed border-sky-400/30 bg-slate-900/60"
-                  }`}
-                >
-                  {coverImage ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={coverImage}
-                      alt={`${coverTitle} Front Cover`}
-                      className="w-full h-full max-h-[210px] sm:max-h-[240px] object-contain rounded-lg"
-                    />
-                  ) : (
-                    <>
-                      <div
-                        className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 flex items-center justify-center mb-2 ${
-                          isLightCover ? "border-slate-400 bg-white" : "border-sky-400/60 bg-slate-950"
-                        }`}
-                      >
-                        <Sparkles className={`w-6 h-6 sm:w-7 sm:h-7 ${isLightCover ? "text-slate-700" : "text-sky-400"}`} />
-                      </div>
-                      <p className={`text-xs sm:text-sm font-bold ${isLightCover ? "text-slate-900" : "text-white"}`}>
-                        {isJournal ? "Custom Edition" : `Featuring ${book.character.name}`}
-                      </p>
-                      <p
-                        className={`text-[11px] text-center max-w-[220px] mt-0.5 ${
-                          isLightCover ? "text-slate-600" : "text-[#a0b4c4]"
-                        }`}
-                      >
-                        {book.cover?.coverPrompt
-                          ? book.cover.coverPrompt
-                          : `${book.character.type} • ${book.character.traits.join(", ")}`}
-                      </p>
-                    </>
-                  )}
-                </div>
+                {/* Right Leaf: Front Cover */}
+                <div className={`flex-1 p-5 sm:p-7 lg:p-8 flex flex-col justify-between relative overflow-hidden ${isLightCover ? "bg-[#FFFDF8]" : ""}`}>
+                  <div
+                    className={`absolute top-0 bottom-0 left-0 w-3 pointer-events-none ${
+                      isLightCover
+                        ? "bg-gradient-to-r from-amber-900/10 to-transparent"
+                        : "bg-gradient-to-r from-amber-400/40 to-amber-400/10"
+                    }`}
+                  />
 
-                <div
-                  className={`flex items-center justify-between border-t pt-3 text-xs ${
-                    isLightCover ? "border-slate-200 text-slate-600" : "border-white/10 text-[#a0b4c4]"
-                  }`}
-                >
-                  <span>
-                    {coverAuthor ? (
-                      <>
-                        Author:{" "}
-                        <strong className={isLightCover ? "text-slate-950" : "text-white"}>{coverAuthor}</strong>
-                      </>
-                    ) : (
-                      <strong className={isLightCover ? "text-slate-950" : "text-white"}>
-                        Personal Keepsake Edition
-                      </strong>
+                  {/* Front Cover Header */}
+                  <div className="text-center pt-1 z-10">
+                    <span
+                      className={`text-[10px] sm:text-xs uppercase tracking-widest font-extrabold ${
+                        isLightCover ? "text-amber-800" : "text-amber-300"
+                      }`}
+                    >
+                      {isJournal
+                        ? "Personalized Reflection Journal"
+                        : isActivityBook
+                        ? isColorBook
+                          ? "Personalized Science & Activity Book"
+                          : "Science & Activity Book"
+                        : isColorBook
+                        ? "Personalized Storybook"
+                        : "Personalized Story & Coloring"}
+                    </span>
+                    <h1
+                      className={`text-xl sm:text-2xl font-black tracking-tight mt-1 mb-0.5 font-serif ${
+                        isLightCover ? "text-[#1E2530]" : "text-white"
+                      }`}
+                    >
+                      {coverTitle}
+                    </h1>
+                    {coverSubtitle && (
+                      <p className={`text-xs font-medium ${isLightCover ? "text-amber-900/80" : "text-amber-200/80"}`}>
+                        {coverSubtitle}
+                      </p>
                     )}
-                  </span>
-                  <span className={`text-[10px] font-mono ${isLightCover ? "text-slate-700 font-bold" : "text-sky-300"}`}>
-                    {is6x9 ? '6" × 9" Lulu POD' : is85x11 ? '8.5" × 11" Lulu POD' : '8.5" × 8.5" Lulu POD'}
-                  </span>
+                  </div>
+
+                  {/* Front Cover Full Artwork Frame (Edge-to-Edge) */}
+                  <div className="w-full flex-1 my-2.5 rounded-xl flex items-center justify-center relative overflow-hidden">
+                    {coverImage ? (
+                      <img
+                        src={coverImage}
+                        alt={`${coverTitle} Front Cover`}
+                        className="w-full h-full object-contain sm:object-cover rounded-xl shadow-lg"
+                      />
+                    ) : (
+                      <div className={`w-full h-full rounded-xl border-2 border-dashed flex flex-col items-center justify-center p-4 ${
+                        isLightCover ? "border-amber-300/80 bg-amber-50/50" : "border-amber-400/30 bg-slate-900/60"
+                      }`}>
+                        <div
+                          className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 flex items-center justify-center mb-2 ${
+                            isLightCover ? "border-amber-300 bg-white shadow-xs" : "border-amber-400/60 bg-slate-950"
+                          }`}
+                        >
+                          <Sparkles className={`w-6 h-6 sm:w-7 sm:h-7 ${isLightCover ? "text-amber-600" : "text-amber-400"}`} />
+                        </div>
+                        <p className={`text-xs sm:text-sm font-bold ${isLightCover ? "text-[#1E2530]" : "text-white"}`}>
+                          {isJournal ? "Custom Edition" : `Featuring ${book.character.name}`}
+                        </p>
+                        <p
+                          className={`text-[11px] text-center max-w-[240px] mt-0.5 ${
+                            isLightCover ? "text-slate-600" : "text-[#a0b4c4]"
+                          }`}
+                        >
+                          {book.cover?.coverPrompt
+                            ? book.cover.coverPrompt
+                            : `${book.character.type} • ${book.character.traits.join(", ")}`}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Front Cover Footer */}
+                  <div
+                    className={`flex items-center justify-between border-t pt-2 text-xs z-10 ${
+                      isLightCover ? "border-[#E8DFD3] text-slate-600" : "border-white/10 text-[#a0b4c4]"
+                    }`}
+                  >
+                    <span>
+                      {coverAuthor ? (
+                        <>
+                          Author: <strong className={isLightCover ? "text-[#1E2530]" : "text-white"}>{coverAuthor}</strong>
+                        </>
+                      ) : (
+                        <strong className={isLightCover ? "text-[#1E2530]" : "text-white"}>
+                          Personal Keepsake Edition
+                        </strong>
+                      )}
+                    </span>
+                    <span className={`text-[10px] font-mono ${isLightCover ? "text-amber-800 font-bold" : "text-amber-300"}`}>
+                      {is6x9 ? '6" × 9" Lulu POD' : is85x11 ? '8.5" × 11" Lulu POD' : '8.5" × 8.5" Lulu POD'}
+                    </span>
+                  </div>
                 </div>
               </div>
             );
@@ -1089,34 +1023,12 @@ export default function BookViewer({
                           isColorBook ? "bg-slate-50/40" : "bg-white"
                         }`}
                       >
-                        {/* Tweak art trigger button in top-right */}
-                        {!isSpreadLocked && (
-                          <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setArtModalOpen(true)}
-                              disabled={isGeneratingArt}
-                              className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-900/90 hover:bg-slate-950 text-sky-300 border border-sky-400/40 shadow-md flex items-center gap-1.5 transition-all hover:scale-102 active:scale-95 cursor-pointer"
-                            >
-                              {isGeneratingArt ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
-                              ) : (
-                                <Palette className="w-3.5 h-3.5 text-sky-400" />
-                              )}
-                              <span>Tweak Art</span>
-                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-400/20 text-sky-300 font-mono">
-                                2 🪙
-                              </span>
-                            </button>
-                          </div>
-                        )}
-
                         {/* Render customized illustration if generated, else fall back to theme template */}
                         {activePage?.imageUrl ? (
                           <img
                             src={activePage.imageUrl}
                             alt={activePage.title}
-                            className="w-full h-full max-h-[360px] object-contain"
+                            className="w-full h-full object-contain sm:object-cover rounded-lg"
                           />
                         ) : activePage?.svgData ? (
                           <div
@@ -1302,38 +1214,37 @@ export default function BookViewer({
             {/* Frosted Blur Lock Overlay for Spreads > Page 5 */}
             {isSpreadLocked && (
               <div className="absolute inset-0 z-30 bg-slate-950/65 backdrop-blur-xs flex flex-col items-center justify-center p-4 sm:p-6 text-center animate-in fade-in">
-                <div className="glacier-glass rounded-2xl border-2 border-sky-400/60 p-5 sm:p-7 max-w-md w-full shadow-2xl space-y-3.5">
-                  <div className="w-11 h-11 rounded-full bg-sky-400/20 border border-sky-400/40 text-sky-300 flex items-center justify-center mx-auto">
-                    <Lock className="w-5 h-5 text-sky-300" />
+                <div className="bg-[#FFFDF9]/95 rounded-3xl border-2 border-amber-300/80 p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-100 border border-amber-300 text-amber-800 flex items-center justify-center mx-auto">
+                    <Lock className="w-5 h-5 text-amber-700" />
                   </div>
-                  <div className="space-y-1">
-                    <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-3 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                  <div className="space-y-1.5">
+                    <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-3 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300">
                       🎁 First 5 Pages Are 100% Free &bull; Page {activePage?.pageNumber} of {totalPages}
                     </span>
-                    <h4 className="text-base sm:text-lg font-black text-white pt-1">
+                    <h4 className="text-base sm:text-lg font-black font-serif text-[#1E2530] pt-1">
                       Unlock Remaining {lockedPagesCount} Pages (Pages 6–{totalPages})
                     </h4>
-                    <p className="text-xs text-slate-300 leading-relaxed">
-                      Pages 1–5 are yours for free! Unlock Pages 6–{totalPages} to reveal and generate all{" "}
-                      {lockedPagesCount} remaining pages ({lockedPagesCount} Tokens).
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Pages 1–5 are ready! Unlock Pages 6–{totalPages} to instantly unblur, review in AI chat, and export your 300 DPI vector PDF.
                     </p>
                   </div>
                   <button
                     type="button"
-                    onClick={onUnlockRemainingPages || onOpenTokenModal}
+                    onClick={onOpenUnlockChoice || onUnlockRemainingPages || onOpenTokenModal}
                     disabled={isUnlockingPages}
-                    className="w-full py-3 px-4 rounded-xl bg-[#7dd3fc] hover:bg-[#a0e3ff] text-[#001f2e] font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 transition-all hover:brightness-105 active:scale-95 disabled:opacity-50 cursor-pointer"
+                    className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-black text-xs sm:text-sm shadow-md shadow-amber-600/20 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                   >
                     {isUnlockingPages ? (
                       <>
-                        <Loader2 className="w-4 h-4 animate-spin text-[#001f2e]" />
+                        <Loader2 className="w-4 h-4 animate-spin text-white" />
                         <span>Unlocking &amp; Illustrating Pages 6–{totalPages}...</span>
                       </>
                     ) : (
                       <>
-                        <Lock className="w-4 h-4 text-[#001f2e]" />
+                        <Lock className="w-4 h-4 text-white" />
                         <span>
-                          🔓 Unlock Pages 6–{totalPages} ({lockedPagesCount} Tokens / PayPal) →
+                          🔓 Unlock Pages 6–{totalPages} (Digital / Tokens) →
                         </span>
                       </>
                     )}
@@ -1350,23 +1261,37 @@ export default function BookViewer({
   </div>
 
       {/* Pagination Controls */}
-      <div className="flex items-center justify-between w-full max-w-md my-4 px-2">
+      <div className="flex items-center justify-between w-full max-w-lg my-4 px-2 gap-2">
         <button
           onClick={handlePrev}
           disabled={currentPageIndex === 0}
-          className="flex items-center gap-1 px-3.5 py-2 text-xs font-semibold rounded-xl glacier-glass-subtle border border-sky-400/20 hover:border-sky-400/40 disabled:opacity-40 disabled:cursor-not-allowed text-[#a0b4c4] hover:text-white shadow-sm transition-all active:scale-95"
+          className="flex items-center gap-1 px-3.5 py-2 text-xs font-semibold rounded-xl bg-white border border-[#E8DFD3] hover:border-amber-400 disabled:opacity-40 disabled:cursor-not-allowed text-[#1E2530] shadow-xs transition-all active:scale-95 cursor-pointer"
         >
           <ChevronLeft className="w-4 h-4" /> Previous
         </button>
 
-        <span className="text-xs sm:text-sm font-bold text-sky-300 font-mono">
-          {isCover ? "Book Cover" : `Spread ${currentPageIndex} of ${totalPages}`}
-        </span>
+        <div className="flex items-center gap-2.5">
+          <span className="text-xs sm:text-sm font-bold text-amber-900 font-mono">
+            {isCover ? "Book Cover" : `Spread ${currentPageIndex} of ${totalPages}`}
+          </span>
+
+          {onEditPageInChat && (
+            <button
+              type="button"
+              onClick={() => onEditPageInChat(currentPageIndex)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-100/70 hover:bg-amber-200/70 text-amber-900 border border-amber-300/60 hover:border-amber-400 text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer"
+              title={isCover ? "Edit Front/Back Cover in AI Chat" : `Edit Page ${currentPageIndex} in AI Chat`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-700" />
+              <span>{isCover ? "Edit Cover in Chat" : "Edit This Page in Chat"}</span>
+            </button>
+          )}
+        </div>
 
         <button
           onClick={handleNext}
           disabled={currentPageIndex === totalPages}
-          className="flex items-center gap-1 px-3.5 py-2 text-xs font-semibold rounded-xl glacier-glass-subtle border border-sky-400/20 hover:border-sky-400/40 disabled:opacity-40 disabled:cursor-not-allowed text-[#a0b4c4] hover:text-white shadow-sm transition-all active:scale-95"
+          className="flex items-center gap-1 px-3.5 py-2 text-xs font-semibold rounded-xl bg-white border border-[#E8DFD3] hover:border-amber-400 disabled:opacity-40 disabled:cursor-not-allowed text-[#1E2530] shadow-xs transition-all active:scale-95 cursor-pointer"
         >
           Next <ChevronRight className="w-4 h-4" />
         </button>
@@ -1377,9 +1302,9 @@ export default function BookViewer({
         {/* Left: Book details button */}
         <button
           onClick={onOpenBookDetails}
-          className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 text-xs sm:text-sm font-bold rounded-xl glacier-glass-subtle hover:bg-slate-800 text-sky-200 border border-sky-400/30 shadow-md transition-all active:scale-95 cursor-pointer"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 text-xs sm:text-sm font-bold rounded-xl bg-white hover:bg-[#FAF6EE] text-[#1E2530] border border-[#E8DFD3] hover:border-amber-400 shadow-xs transition-all active:scale-95 cursor-pointer"
         >
-          <Info className="w-4 h-4 text-sky-400" />
+          <Info className="w-4 h-4 text-amber-700" />
           <span>Book Details</span>
         </button>
 
@@ -1387,9 +1312,9 @@ export default function BookViewer({
         {isConfirmed && onPrintFirstPage && (
           <button
             onClick={onPrintFirstPage}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl bg-slate-900/80 hover:bg-slate-800 text-emerald-300 border border-emerald-500/40 shadow-sm transition-all active:scale-95 cursor-pointer"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-xs transition-all active:scale-95 cursor-pointer"
           >
-            <Printer className="w-4 h-4 text-emerald-400" />
+            <Printer className="w-4 h-4 text-emerald-700" />
             <span>Print First Page (Free Proof)</span>
           </button>
         )}
@@ -1399,20 +1324,16 @@ export default function BookViewer({
           <button
             onClick={onDownloadPdf}
             disabled={isDownloading}
-            className={`w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 text-xs sm:text-sm font-bold rounded-xl shadow-md transition-all active:scale-95 cursor-pointer ${
-              isBookUnlocked
-                ? "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/40"
-                : "bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-400/40"
-            }`}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 text-xs sm:text-sm font-bold rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer bg-amber-600 hover:bg-amber-700 text-white"
           >
             {isDownloading ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
                 <span>Preparing PDF...</span>
               </>
             ) : (
               <>
-                <Download className="w-4 h-4 text-current" />
+                <Download className="w-4 h-4 text-white" />
                 <span>{isBookUnlocked ? "Download Full PDF" : "Unlock & Download Full PDF"}</span>
               </>
             )}
@@ -1422,9 +1343,9 @@ export default function BookViewer({
         {/* Right: Order Physical Print */}
         <button
           onClick={onOrderPhysical}
-          className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 text-xs sm:text-sm font-extrabold glacier-btn text-[#001f2e] rounded-xl shadow-xl transition-all active:scale-95 cursor-pointer"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 text-xs sm:text-sm font-extrabold bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl shadow-md shadow-amber-500/20 transition-all active:scale-95 cursor-pointer"
         >
-          <Printer className="w-4 h-4 text-[#001f2e]" />
+          <Printer className="w-4 h-4 text-white" />
           <span>Order Physical Print</span>
         </button>
       </div>
@@ -1524,81 +1445,6 @@ export default function BookViewer({
         </div>
       )}
 
-      {/* Art Tweak Modal */}
-      {artModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="glacier-glass rounded-2xl border border-sky-400/40 p-5 sm:p-6 max-w-md w-full shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-sky-400/20 text-sky-300 flex items-center justify-center border border-sky-400/30">
-                  <Palette className="w-4 h-4 text-sky-400" />
-                </div>
-                <div>
-                  <h4 className="text-sm sm:text-base font-extrabold text-white">
-                    {isCover ? "Tweak Cover Illustration" : "Tweak Illustration"}
-                  </h4>
-                  <p className="text-[11px] text-[#a0b4c4]">
-                    {isCover ? "Front Book Cover" : `Page ${activePage?.pageNumber} Artwork`} &bull; 2 Tokens
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setArtModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-300">
-              Tell the AI Helper what visual elements you want added, removed, or modified for this page.
-            </p>
-
-            <div className="space-y-2">
-              <input
-                type="text"
-                value={artPrompt}
-                onChange={(e) => setArtPrompt(e.target.value)}
-                placeholder="e.g. Add butterflies in background, make puppy wear a crown..."
-                disabled={isGeneratingArt}
-                className="w-full bg-slate-900/90 text-xs text-white placeholder-slate-400 p-3 rounded-xl border border-sky-400/30 focus:outline-none focus:ring-2 focus:ring-sky-400 font-sans"
-              />
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
-              <button
-                type="button"
-                disabled={isGeneratingArt}
-                onClick={() => handleTweakArt()}
-                className="w-full sm:w-1/2 py-2.5 px-3 text-xs font-bold rounded-xl glacier-glass-subtle hover:bg-slate-800 text-sky-200 border border-sky-400/30 flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5 text-sky-400" />
-                <span>Re-roll Scene (2 🪙)</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={isGeneratingArt || !artPrompt.trim()}
-                onClick={() => handleTweakArt(artPrompt.trim())}
-                className="w-full sm:w-1/2 py-2.5 px-3 text-xs font-extrabold rounded-xl glacier-btn text-[#001f2e] flex items-center justify-center gap-1.5 shadow-lg transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-              >
-                {isGeneratingArt ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Drawing...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Apply Tweak (2 🪙)</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      </div>
   );
 }

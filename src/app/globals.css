@@ -1,142 +1,181 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:ital,wght@0,500;0,600;0,700;0,800;1,500;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --background: #0a0e1a;
-  --foreground: #e0e8f0;
-  --primary-ice: #7dd3fc;
-  --primary-glow: rgba(125, 211, 252, 0.25);
-  --secondary-frost: #88b4cc;
-  --tertiary-lavender: #c8a0f0;
-  --surface-void: #0a0e1a;
-  --surface-dim: #0f1524;
-  --surface-container: #141c2e;
-  --surface-high: #1a2438;
+  --background: #FFFDF9;
+  --foreground: #1E2530;
+  --atelier-cream: #FFFDF9;
+  --atelier-linen: #FAF6EE;
+  --atelier-vellum: #F4EFEA;
+  --atelier-card: #FFFFFF;
+  --atelier-charcoal: #1E2530;
+  --atelier-muted: #64748B;
+  --atelier-border: #E8DFD3;
+  --atelier-gold: #D97706;
+  --atelier-sage: #059669;
+
+  /* Legacy Glacier Compatibility variables */
+  --primary-ice: #D97706;
+  --primary-glow: rgba(217, 119, 6, 0.25);
+  --secondary-frost: #FAF6EE;
+  --tertiary-lavender: #059669;
+  --surface-void: #FFFDF9;
+  --surface-dim: #FAF6EE;
+  --surface-container: #FFFFFF;
+  --surface-high: #F4EFEA;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* ============================================================== */
-/* GLACIER GLASSMORPHISM DESIGN SYSTEM (From Stitch MCP)          */
-/* North Star: "Frozen Light"                                      */
+/* WARM SUNLIT ATELIER DESIGN SYSTEM                               */
 /* ============================================================== */
 
-/* Layer 1: Standard Frosted Glacier Glass */
-.glacier-card {
-  background: rgba(15, 21, 36, 0.6);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(125, 211, 252, 0.12);
-  box-shadow: 0 0 30px rgba(125, 211, 252, 0.04);
+.paper-texture {
+  background-color: #FAF6EE;
+  background-image: radial-gradient(rgba(180, 150, 110, 0.08) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.book-spine-crease {
+  background: linear-gradient(90deg, 
+    rgba(0,0,0,0.06) 0%, 
+    rgba(0,0,0,0.01) 25%, 
+    rgba(0,0,0,0.08) 48%, 
+    rgba(0,0,0,0.14) 50%, 
+    rgba(0,0,0,0.08) 52%, 
+    rgba(0,0,0,0.01) 75%, 
+    rgba(0,0,0,0.06) 100%
+  );
+}
+
+.warm-badge {
+  background: rgba(254, 243, 199, 0.85);
+  border: 1px solid rgba(217, 119, 6, 0.28);
+  color: #92400E;
+}
+
+.custom-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #D97706;
+  border: 3px solid #FFF;
+  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.4);
+  cursor: pointer;
+}
+
+.custom-slider::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #D97706;
+  border: 3px solid #FFF;
+  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.4);
+  cursor: pointer;
+}
+
+/* Layer 1: Standard Warm Card / Frosted Glass */
+.glacier-card, .atelier-card {
+  background: #FFFFFF;
+  border: 1px solid #E8DFD3;
+  box-shadow: 0 10px 30px -5px rgba(180, 140, 90, 0.10), 0 4px 10px -2px rgba(180, 140, 90, 0.05);
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.glacier-card:hover {
-  background: rgba(20, 28, 46, 0.72);
-  border-color: rgba(125, 211, 252, 0.28);
-  box-shadow: 0 12px 36px -8px rgba(0, 0, 0, 0.5), 0 0 25px rgba(125, 211, 252, 0.08);
+.glacier-card:hover, .atelier-card:hover {
+  background: #FFFFFF;
+  border-color: rgba(217, 119, 6, 0.35);
+  box-shadow: 0 16px 36px -8px rgba(180, 140, 90, 0.18);
 }
 
-/* Layer 2: Elevated Interactive Glacier Glass */
+/* Layer 2: Elevated Interactive Card */
 .glacier-card-elevated {
-  background: rgba(15, 21, 36, 0.78);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(125, 211, 252, 0.22);
-  box-shadow: 0 16px 44px -8px rgba(0, 0, 0, 0.65), 0 0 28px rgba(125, 211, 252, 0.1);
+  background: #FFFFFF;
+  border: 1px solid #E8DFD3;
+  box-shadow: 0 16px 44px -8px rgba(180, 140, 90, 0.15);
 }
 
-/* Glacier Primary Kinetic Button */
-.glacier-button-primary {
-  background: linear-gradient(135deg, rgba(125, 211, 252, 0.9) 0%, rgba(56, 189, 248, 0.95) 100%);
-  color: #001f2e;
+/* Primary Kinetic Button */
+.glacier-button-primary, .glacier-btn, .atelier-btn-primary {
+  background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+  color: #FFFFFF;
   font-weight: 700;
   border: 1px solid rgba(255, 255, 255, 0.4);
-  box-shadow: 0 4px 20px -2px rgba(125, 211, 252, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.5);
+  box-shadow: 0 4px 18px rgba(217, 119, 6, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.5);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.glacier-button-primary:hover {
+.glacier-button-primary:hover, .glacier-btn:hover, .atelier-btn-primary:hover {
   transform: translateY(-1px) scale(1.02);
-  background: linear-gradient(135deg, #a5e3ff 0%, #38bdf8 100%);
-  box-shadow: 0 6px 28px 0 rgba(125, 211, 252, 0.55), inset 0 1px 1px rgba(255, 255, 255, 0.7);
+  background: linear-gradient(135deg, #fbbf24 0%, #b45309 100%);
+  box-shadow: 0 6px 24px rgba(217, 119, 6, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.7);
 }
 
-/* Glacier Ghost Glass Button */
+/* Ghost Button */
 .glacier-button-ghost {
-  background: rgba(125, 211, 252, 0.06);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  color: #e0e8f0;
-  border: 1px solid rgba(125, 211, 252, 0.18);
+  background: #FAF6EE;
+  color: #1E2530;
+  border: 1px solid #E8DFD3;
   transition: all 0.2s ease-out;
 }
 
 .glacier-button-ghost:hover {
-  background: rgba(125, 211, 252, 0.14);
-  border-color: rgba(125, 211, 252, 0.4);
-  color: #7dd3fc;
-  box-shadow: 0 0 20px rgba(125, 211, 252, 0.18);
+  background: #F4EFEA;
+  border-color: #D97706;
+  color: #D97706;
+  box-shadow: 0 0 15px rgba(217, 119, 6, 0.15);
 }
 
-/* Subtle Crystalline Glow */
+/* Subtle Amber Glow */
 .glacier-glow {
-  box-shadow: 0 0 36px 0 rgba(125, 211, 252, 0.22), 0 0 1px 1px rgba(125, 211, 252, 0.35);
+  box-shadow: 0 0 25px rgba(217, 119, 6, 0.22);
 }
 
-/* Glacier Glass - Stitch Exact Specification */
+/* Warm Translucent Surface */
 .glacier-glass {
-  background: rgba(16, 24, 44, 0.65);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(125, 211, 252, 0.16);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  background: rgba(255, 253, 249, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid #E8DFD3;
+  box-shadow: 0 8px 30px rgba(180, 140, 90, 0.08);
 }
 
 .glacier-glass-subtle {
-  background: rgba(15, 23, 42, 0.45);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(250, 246, 238, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid #E8DFD3;
 }
 
-.glacier-btn {
-  background: linear-gradient(135deg, #38bdf8 0%, #7dd3fc 60%, #bae6fd 100%);
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.6), 0 4px 20px rgba(56, 189, 248, 0.35);
-  color: #001f2e;
-}
-
-.glacier-btn:hover {
-  background: linear-gradient(135deg, #7dd3fc 0%, #a5f3fc 100%);
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.8), 0 0 28px rgba(125, 211, 252, 0.6);
-}
-
-/* Glacier Slider Control Thumb */
+/* Slider Control Thumb */
 .slider-thumb::-webkit-slider-thumb {
   appearance: none;
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: #7dd3fc;
-  border: 3px solid #0a0e1a;
-  box-shadow: 0 0 14px #38bdf8;
+  background: #D97706;
+  border: 3px solid #FFFDF9;
+  box-shadow: 0 0 14px rgba(217, 119, 6, 0.4);
   cursor: pointer;
 }
 .slider-thumb::-moz-range-thumb {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: #7dd3fc;
-  border: 3px solid #0a0e1a;
-  box-shadow: 0 0 14px #38bdf8;
+  background: #D97706;
+  border: 3px solid #FFFDF9;
+  box-shadow: 0 0 14px rgba(217, 119, 6, 0.4);
   cursor: pointer;
 }
 

@@ -14,10 +14,10 @@ function getCleanIllustrationPrompt(
 
   if (isColor) {
     const styleDesc = artStyle || "playful, colorful digital children's book illustration";
-    return `Children's book illustration, vibrant full color, ${styleDesc}, high detail, rich palette, delightful character expression, cinematic lighting, ${base}${traits}.`;
+    return `Children's book illustration, square 1:1 full-bleed composition filling the entire frame edge-to-edge with no outer margins or letterboxing, vibrant full color, ${styleDesc}, high detail, rich palette, delightful character expression, cinematic lighting, ${base}${traits}.`;
   }
 
-  return `Children's coloring book page outline, thick continuous bold black outlines, zero shading, pure white background, no gradients, ${base}${traits}. Strict monochrome black and white line art, ready for coloring with crayons.`;
+  return `Children's coloring book page outline, square 1:1 full-bleed composition filling the entire frame edge-to-edge, thick continuous bold black outlines, zero shading, pure white background, no gradients, no borders or letterboxing, ${base}${traits}. Strict monochrome black and white line art, ready for coloring with crayons.`;
 }
 
 // Keep backward compatibility
@@ -65,6 +65,9 @@ export async function POST(req: NextRequest) {
                 contents: [{ parts: [{ text: enhancedPrompt }] }],
                 generationConfig: {
                   responseModalities: ["IMAGE"],
+                  imageConfig: {
+                    aspectRatio: "1:1",
+                  },
                 },
               }),
               signal: AbortSignal.timeout(35000),

@@ -44,7 +44,35 @@ export const AVAILABLE_TOKEN_PACKS: TokenPack[] = [
 
 // In-memory / client-safe token balance management
 const TOKEN_STORAGE_KEY = "papertales_user_tokens";
+const FIRST_BOOK_CLAIMED_KEY = "papertales_first_book_claimed";
+const ORDERS_STORAGE_KEY = "papertales_orders";
 const DEFAULT_INITIAL_TOKENS = 0; // First 5 pages are 100% free; pages 6+ unlock via tokens/PayPal
+
+export function isFirstTimeCustomer(): boolean {
+  if (typeof window === "undefined") return true;
+  const claimed = localStorage.getItem(FIRST_BOOK_CLAIMED_KEY);
+  if (claimed === "true") return false;
+
+  const ordersRaw = localStorage.getItem(ORDERS_STORAGE_KEY);
+  if (ordersRaw) {
+    try {
+      const orders = JSON.parse(ordersRaw);
+      if (Array.isArray(orders) && orders.length > 0) {
+        return false;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return true;
+}
+
+export function markFirstBookClaimed(): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(FIRST_BOOK_CLAIMED_KEY, "true");
+  window.dispatchEvent(new Event("customer_status_updated"));
+}
 
 export function getClientTokenBalance(): number {
   if (typeof window === "undefined") return DEFAULT_INITIAL_TOKENS;

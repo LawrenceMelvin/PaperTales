@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { EditingPageReference } from "@/types/book";
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -34,6 +35,7 @@ interface ProjectState {
   interiorColor?: "black_and_white" | "standard_color";
   artStyle?: string;
   showPageNumbers?: boolean;
+  singleSidedColoring?: boolean;
   coverPrompt?: string;
   coverColorScheme?: "midnight_glacier" | "warm_cream" | "storybook_vibrant" | "minimal_monochrome";
 }
@@ -82,6 +84,11 @@ GENERAL RULES:
 4. Always respond directly to the creator's LATEST message first. If they asked a question, answer it. If they asked for a change, apply it.
 5. Keep replies concise and warm (2-5 short sentences, or a clear bulleted breakdown when in brief_review or page_planning). Ask at most 2 questions per turn.
 6. Page numbers are hidden by default (bookDraft.showPageNumbers = false). Set bookDraft.showPageNumbers = true ONLY if the creator explicitly asks to include or show page numbers on the pages.
+7. Single-Sided Coloring Bleed-Guard: For coloring_book lane, proactively ask during designing or page planning whether the creator wants Single-Sided Coloring Pages (leaving the reverse side of each coloring sheet blank/bleed-guard so watercolor, paint, and markers never bleed through to the next drawing). If they say yes, set bookDraft.singleSidedColoring = true. Provide quickReplies: ["Yes, single-sided (marker & paint safe)", "Double-sided with story/titles on left"].
+8. Attached Page Reference Editing: If the creator attached a specific page or cover to edit (see CURRENT PROJECT STATE: Editing Attached Reference), prioritize fulfilling their requested change for that specific page or cover.
+   - If they request text changes or illustration changes to that page, return "pageEdit": { "pageNumber": number, "title"?: string, "storyText"?: string, "imagePrompt"?: string, "regenerateArt"?: boolean }.
+   - If the attached reference is the Front Cover (pageNumber === 0), update "coverDraft".
+   - Acknowledge the update directly and set discussionStage = "revising".
 
 COLOR & PRINT GUIDELINES:
 - interiorColor: If the creator requested colorful illustrations, vibrant colors, watercolors, digital painting, or full color, ALWAYS set interiorColor to "standard_color". If the book is a coloring book, monochrome journal, sketch, or black & white line art, set interiorColor to "black_and_white".
@@ -154,11 +161,19 @@ OUTPUT: a single flat JSON object with exactly these keys:
     "cornerDecorations": "tech_brackets" | "gears" | "minimal" | "none",
     "interiorColor": "black_and_white" | "standard_color",
     "showPageNumbers": boolean,
+    "singleSidedColoring": boolean,
     "pageCount": number, "trimSize": "6x9" | "8.5x8.5" | "8.5x11",
     "recommendedAction": "design_hero_page" | "plan_remaining_pages" | "expand_full_spread" | "design_book_cover",
     "designerNote": string,
     "channel3Query": "search query for companion supplies"
   },
+  "pageEdit": {
+    "pageNumber": number,
+    "title"?: string,
+    "storyText"?: string,
+    "imagePrompt"?: string,
+    "regenerateArt"?: boolean
+  } | null,
   "coverDraft": {
     "title": string | null,
     "subtitle": string | null,
@@ -178,7 +193,8 @@ function buildStateMessage(
   hasProof: boolean,
   hasFullBook: boolean,
   hasCover: boolean,
-  hasPlannedPages: boolean
+  hasPlannedPages: boolean,
+  editingPageReference?: EditingPageReference
 ): string {
   const lines = [
     "CURRENT PROJECT STATE (source of truth for the studio; apply the creator's edits on top of this):",
@@ -188,6 +204,13 @@ function buildStateMessage(
     `- Full interior pages generated: ${hasFullBook ? "YES (all interior pages are generated! Guide the creator to design/refine the Front Book Cover in stage 'cover_design')" : "no"}`,
     `- Front Book Cover already generated: ${hasCover ? "YES (creator can tweak the cover or interior)" : "no"}`,
   ];
+  if (editingPageReference) {
+    lines.push(
+      `- Editing Attached Reference: ${editingPageReference.isCover ? "Front Book Cover (Index 0)" : `Page ${editingPageReference.pageNumber} ("${editingPageReference.title}")`}`
+    );
+    if (editingPageReference.storyText) lines.push(`- Attached page story text: "${editingPageReference.storyText}"`);
+    if (editingPageReference.imagePrompt) lines.push(`- Attached page illustration prompt: "${editingPageReference.imagePrompt}"`);
+  }
   if (state) {
     if (state.genre) lines.push(`- Lane/genre: ${state.genre}`);
     if (state.pageCount) lines.push(`- Page count: ${state.pageCount}`);
@@ -203,6 +226,7 @@ function buildStateMessage(
     if (state.cornerDecorations) lines.push(`- Corner decorations: ${state.cornerDecorations}`);
     if (state.interiorColor) lines.push(`- Interior print color: ${state.interiorColor}`);
     if (state.showPageNumbers !== undefined) lines.push(`- Show page numbers on pages: ${state.showPageNumbers ? "YES" : "NO"}`);
+    if (state.singleSidedColoring !== undefined) lines.push(`- Single-sided coloring pages (bleed-guard): ${state.singleSidedColoring ? "YES" : "NO"}`);
     if (state.prompt) lines.push(`- Current book description: ${state.prompt}`);
     if (state.coverPrompt) lines.push(`- Current cover artwork prompt: ${state.coverPrompt}`);
     if (state.coverColorScheme) lines.push(`- Current cover color scheme: ${state.coverColorScheme}`);
@@ -296,6 +320,7 @@ export async function POST(req: NextRequest) {
     const hasFullBook = Boolean(body.hasFullBook);
     const hasCover = Boolean(body.hasCover);
     const hasPlannedPages = Boolean(body.hasPlannedPages);
+    const editingPageReference: EditingPageReference | undefined = body.editingPageReference;
 
     const geminiKey = process.env.GEMINI_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY;
@@ -345,7 +370,15 @@ export async function POST(req: NextRequest) {
       { role: "system", content: SYSTEM_PROMPT },
       {
         role: "system",
-        content: buildStateMessage(sanitizedState, lockedTitle, hasProof, hasFullBook, hasCover, hasPlannedPages),
+        content: buildStateMessage(
+          sanitizedState,
+          lockedTitle,
+          hasProof,
+          hasFullBook,
+          hasCover,
+          hasPlannedPages,
+          editingPageReference
+        ),
       },
       ...messages.map((m) => ({ role: m.role, content: m.content })),
     ];
@@ -362,7 +395,8 @@ export async function POST(req: NextRequest) {
         hasProof,
         hasFullBook,
         hasCover,
-        hasPlannedPages
+        hasPlannedPages,
+        editingPageReference
       )}`;
       try {
         parsed = await callGeminiChat(geminiKey!, geminiModel, combinedSystem, messages);
@@ -498,6 +532,17 @@ export async function POST(req: NextRequest) {
       } else if (bookDraft.showPageNumbers === undefined) {
         bookDraft.showPageNumbers = false;
       }
+
+      // Detect single-sided coloring bleed-guard preferences
+      const wantsSingleSided = /\b(single[- ]sided|bleed[- ]guard|marker[- ]safe|paint[- ]safe|leave\s+back\s+blank)\b/i.test(allUserText);
+      const wantsDoubleSided = /\b(double[- ]sided|both\s+sides|no\s+blank\s+pages)\b/i.test(latestUser);
+      if (wantsDoubleSided) {
+        bookDraft.singleSidedColoring = false;
+      } else if (wantsSingleSided || sanitizedState?.singleSidedColoring || parsed.bookDraft?.singleSidedColoring) {
+        bookDraft.singleSidedColoring = true;
+      } else if (bookDraft.singleSidedColoring === undefined) {
+        bookDraft.singleSidedColoring = false;
+      }
     }
 
     const changes = Array.isArray(parsed.changes) ? parsed.changes : [];
@@ -584,6 +629,7 @@ export async function POST(req: NextRequest) {
       lockedTitle,
       bookDraft,
       coverDraft,
+      pageEdit: parsed.pageEdit || null,
       quickReplies: Array.isArray(parsed.quickReplies) ? parsed.quickReplies : [],
       printAdvisory: parsed.printAdvisory || { hasRisk: false },
       engine: engineUsed,

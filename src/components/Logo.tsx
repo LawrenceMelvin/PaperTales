@@ -30,7 +30,7 @@ export default function Logo({
     <div className={`flex items-center gap-2.5 group select-none ${className}`}>
       {/* Visual Logo Mark Icon */}
       <div
-        className={`${iconDimensions} rounded-xl p-1.5 bg-gradient-to-br from-sky-400/15 via-slate-900/60 to-purple-500/15 border border-sky-400/30 group-hover:border-sky-400/60 transition-all duration-300 flex items-center justify-center shadow-lg shadow-sky-500/10 group-hover:shadow-sky-400/20 group-hover:scale-105 shrink-0`}
+        className={`${iconDimensions} rounded-xl p-1.5 bg-gradient-to-br from-amber-400/20 via-amber-100/40 to-orange-400/20 border border-amber-500/30 group-hover:border-amber-500/60 transition-all duration-300 flex items-center justify-center shadow-md shadow-amber-500/10 group-hover:shadow-amber-500/25 group-hover:scale-105 shrink-0`}
       >
         <svg
           viewBox="0 0 40 40"
@@ -40,16 +40,16 @@ export default function Logo({
         >
           <defs>
             <linearGradient id="logoPageLeft" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#38bdf8" />
-              <stop offset="100%" stopColor="#0284c7" />
+              <stop offset="0%" stopColor="#F59E0B" />
+              <stop offset="100%" stopColor="#D97706" />
             </linearGradient>
             <linearGradient id="logoPageRight" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#c084fc" />
-              <stop offset="100%" stopColor="#7c3aed" />
+              <stop offset="0%" stopColor="#FCD34D" />
+              <stop offset="100%" stopColor="#F59E0B" />
             </linearGradient>
             <linearGradient id="logoStar" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#ffffff" />
-              <stop offset="100%" stopColor="#67e8f9" />
+              <stop offset="0%" stopColor="#FFF" />
+              <stop offset="100%" stopColor="#FEF3C7" />
             </linearGradient>
           </defs>
 
@@ -60,10 +60,10 @@ export default function Logo({
           />
           <path
             d="M6 13 C10 11.5 15 12 19 14.5"
-            stroke="#bae6fd"
+            stroke="#FEF3C7"
             strokeWidth="1"
             strokeLinecap="round"
-            opacity="0.8"
+            opacity="0.9"
           />
 
           {/* Right Book Page (Coloring Wing) */}
@@ -73,10 +73,10 @@ export default function Logo({
           />
           <path
             d="M34 13 C30 11.5 25 12 21 14.5"
-            stroke="#f3e8ff"
+            stroke="#FEF3C7"
             strokeWidth="1"
             strokeLinecap="round"
-            opacity="0.8"
+            opacity="0.9"
           />
 
           {/* Spine Center Fold */}
@@ -85,7 +85,7 @@ export default function Logo({
             stroke="#ffffff"
             strokeWidth="1.4"
             strokeLinecap="round"
-            opacity="0.8"
+            opacity="0.9"
           />
 
           {/* Sparkle Star Rising from Spine */}
@@ -102,18 +102,18 @@ export default function Logo({
         <div className="flex flex-col">
           <div className="flex items-center gap-1.5 leading-none">
             <span
-              className={`${textSize} font-extrabold tracking-tight text-white group-hover:text-sky-200 transition-colors`}
+              className={`${textSize} font-extrabold tracking-tight text-[#1E2530] group-hover:text-amber-700 transition-colors font-serif`}
             >
-              Paper<span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-cyan-300 to-sky-300">Tales</span>
+              Paper<span className="text-amber-600">Tales</span>
             </span>
-            <span className="text-[10px] font-mono font-black px-1.5 py-0.5 rounded-md bg-gradient-to-r from-sky-500/20 to-purple-500/20 text-sky-300 border border-sky-400/35 tracking-wider uppercase shadow-sm">
+            <span className="text-[10px] font-mono font-black px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300 tracking-wider uppercase shadow-sm">
               AI
             </span>
           </div>
 
           {showSubtitle && (
-            <p className="text-[10px] text-[#a0b4c4] font-medium tracking-wide mt-0.5 hidden sm:block">
-              Story &amp; Coloring Studio
+            <p className="text-[10px] text-slate-500 font-medium tracking-wide mt-0.5 hidden sm:block">
+              Personal Story &amp; Coloring Atelier
             </p>
           )}
         </div>

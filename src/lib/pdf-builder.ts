@@ -1,6 +1,12 @@
 import { PDFDocument, rgb, StandardFonts, PDFImage, degrees } from "pdf-lib";
 import { BookProject } from "@/types/book";
 
+export type PdfCompileMode = "wysiwyg_full" | "lulu_cover" | "lulu_interior";
+
+export interface PdfCompileOptions {
+  mode?: PdfCompileMode;
+}
+
 /**
  * Helper to safely embed an image from either a Data URL or external HTTP/HTTPS URL
  */
@@ -33,13 +39,28 @@ async function tryEmbedImage(pdfDoc: PDFDocument, url?: string): Promise<PDFImag
 }
 
 /**
- * Assembles high-resolution print-ready PDFs formatted for Lulu POD:
- * - 6" x 9" US Trade Digest (432 x 648 pt) for Personal Guided Journals & Planners
- * - 8.5" x 8.5" Square (612 x 612 pt) for Personalized Bedtime Storybooks & Coloring
- * - 8.5" x 11" Letter (612 x 792 pt) for Activity & Workbooks
+ * Calculates Lulu POD spine width in inches and points based on page count & paper stock (60# Uncoated)
  */
-export async function compileBookPdf(book: BookProject): Promise<Uint8Array> {
+export function calculateLuluSpineWidth(pageCount: number): { spineInches: number; spinePoints: number } {
+  if (pageCount < 32) {
+    // Saddle-stitch binding: no spine thickness
+    return { spineInches: 0, spinePoints: 0 };
+  }
+  // Perfect-bound formula for 60# White paper (PPI = 444)
+  const spineInches = Number(((pageCount / 444) + 0.06).toFixed(3));
+  return { spineInches, spinePoints: spineInches * 72 };
+}
+
+/**
+ * Assembles high-resolution print-ready PDFs:
+ * - mode === "wysiwyg_full": Exact 2-page spread parity with the Studio BookViewer (Spread 0 = Wraparound Cover, Spread 1..N = Story + Edge-to-Edge illustration)
+ * - mode === "lulu_cover": Single-page [Back Cover | Spine | Front Cover] wraparound cover PDF with 0.125" (9 pt) outer bleed
+ * - mode === "lulu_interior": Interior-only PDF with 0.125" bleed, inserting blank backing pages if singleSidedColoring is true
+ */
+export async function compileBookPdf(book: BookProject, options?: PdfCompileOptions): Promise<Uint8Array> {
+  const mode = options?.mode || "wysiwyg_full";
   const pdfDoc = await PDFDocument.create();
+
   const timesBold = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
   const timesNormal = await pdfDoc.embedFont(StandardFonts.TimesRoman);
   const timesItalic = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
@@ -48,548 +69,399 @@ export async function compileBookPdf(book: BookProject): Promise<Uint8Array> {
   const courier = await pdfDoc.embedFont(StandardFonts.Courier);
   const courierBold = await pdfDoc.embedFont(StandardFonts.CourierBold);
 
-  // Determine trim size dimensions in standard 72 pt/in
+  // Base trim dimensions (72 pt / inch)
   const trimSize = book.format?.trimSize || "8.5x8.5";
-  let PAGE_WIDTH = 612;
-  let PAGE_HEIGHT = 612;
+  let TRIM_WIDTH = 612; // 8.5"
+  let TRIM_HEIGHT = 612; // 8.5"
 
   if (trimSize === "6x9") {
-    PAGE_WIDTH = 432;  // 6.00 inches
-    PAGE_HEIGHT = 648; // 9.00 inches
+    TRIM_WIDTH = 432;  // 6.00 inches
+    TRIM_HEIGHT = 648; // 9.00 inches
   } else if (trimSize === "8.5x11") {
-    PAGE_WIDTH = 612;  // 8.50 inches
-    PAGE_HEIGHT = 792; // 11.00 inches
+    TRIM_WIDTH = 612;  // 8.50 inches
+    TRIM_HEIGHT = 792; // 11.00 inches
   }
 
-  const isJournal =
-    trimSize === "6x9" ||
-    book.genre === "memory_book" ||
-    Boolean(book.pages.some((p) => p.journalData)) ||
-    /\b(journal|diary|planner|reflection|gratitude|notes)\b/i.test(book.title || "");
+  const BLEED_PT = 9; // 0.125 inches (Lulu POD bleed standard)
+  const pageCount = book.pageCount || book.pages.length || 6;
+  const { spinePoints } = calculateLuluSpineWidth(pageCount);
 
-  const isColor =
-    book.format?.interiorColor === "standard_color" ||
-    Boolean(book.artStyle && /\b(color|colorful|vibrant|watercolor|pastel|painted|digital art)\b/i.test(book.artStyle));
-
-  const isActivityBook =
-    book.genre === "activity_book" ||
-    book.genre === "science_book" ||
-    /\b(activity|activities|fact|facts|puzzle|maze|quiz)\b/i.test(`${book.title} ${book.pageStructure || ""}`);
-
-  const coverCategory = isJournal
-    ? "PERSONAL REFLECTION JOURNAL"
-    : isActivityBook
-    ? (isColor ? "PERSONALIZED SCIENCE & ACTIVITY BOOK" : "SCIENCE ACTIVITY BOOK")
-    : (isColor ? "PERSONALIZED PICTURE STORYBOOK" : "PERSONALIZED COLORING & STORYBOOK");
-
-  const safeMargin = 36; // 0.5 inches safe margin for Lulu POD
+  const coverTitle = book.cover?.title || book.title;
+  const coverSubtitle = book.cover?.subtitle || book.subtitle;
+  const coverAuthor = book.cover?.authorByline || book.authorName || "Personal Keepsake Edition";
 
   // =========================================================================
-  // 1. FRONT COVER SPREAD
+  // MODE 1: LULU COVER PDF (Single Wraparound Page: Back + Spine + Front)
   // =========================================================================
-  const coverPage = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-  const { width: cWidth, height: cHeight } = coverPage.getSize();
+  if (mode === "lulu_cover") {
+    const totalCoverWidth = (TRIM_WIDTH * 2) + spinePoints + (BLEED_PT * 2);
+    const totalCoverHeight = TRIM_HEIGHT + (BLEED_PT * 2);
+    const coverPage = pdfDoc.addPage([totalCoverWidth, totalCoverHeight]);
 
-  // Double decorative border
-  coverPage.drawRectangle({
-    x: 20,
-    y: 20,
-    width: cWidth - 40,
-    height: cHeight - 40,
-    borderColor: rgb(0.15, 0.15, 0.15),
-    borderWidth: 2,
-  });
-
-  coverPage.drawRectangle({
-    x: 24,
-    y: 24,
-    width: cWidth - 48,
-    height: cHeight - 48,
-    borderColor: rgb(0.4, 0.4, 0.4),
-    borderWidth: 0.75,
-  });
-
-  // Top Category Pill
-  coverPage.drawText(coverCategory, {
-    x: safeMargin,
-    y: cHeight - 55,
-    size: 9,
-    font: helveticaBold,
-    color: rgb(0.35, 0.35, 0.35),
-  });
-
-  // Book Title
-  const coverTitleText = book.cover?.title || book.title;
-  const coverSubtitleText = book.cover?.subtitle || book.subtitle;
-  const coverAuthorText = book.cover?.authorByline || book.authorName || "Personal Keepsake Edition";
-  const titleFontSize = trimSize === "6x9" ? 22 : 26;
-  coverPage.drawText(coverTitleText, {
-    x: safeMargin,
-    y: cHeight - 85,
-    size: titleFontSize,
-    font: timesBold,
-    color: rgb(0.08, 0.08, 0.08),
-    maxWidth: cWidth - safeMargin * 2,
-  });
-
-  // Subtitle
-  if (coverSubtitleText) {
-    coverPage.drawText(coverSubtitleText, {
-      x: safeMargin,
-      y: cHeight - 110,
-      size: 11,
-      font: timesItalic,
-      color: rgb(0.3, 0.3, 0.3),
-      maxWidth: cWidth - safeMargin * 2,
-    });
-  }
-
-  // Cover Graphic Frame / Embedded Illustration
-  const coverBoxY = 125;
-  const coverBoxHeight = cHeight - 250;
-  const coverBoxWidth = cWidth - safeMargin * 2;
-
-  coverPage.drawRectangle({
-    x: safeMargin,
-    y: coverBoxY,
-    width: coverBoxWidth,
-    height: coverBoxHeight,
-    borderColor: rgb(0.2, 0.2, 0.2),
-    borderWidth: 1.5,
-  });
-
-  // Prefer dedicated AI cover artwork, falling back to first page image
-  const featuredImage = await tryEmbedImage(pdfDoc, book.cover?.imageUrl || book.pages[0]?.imageUrl);
-  if (featuredImage) {
-    const imgDims = featuredImage.scaleToFit(coverBoxWidth - 10, coverBoxHeight - 10);
-    coverPage.drawImage(featuredImage, {
-      x: safeMargin + (coverBoxWidth - imgDims.width) / 2,
-      y: coverBoxY + (coverBoxHeight - imgDims.height) / 2,
-      width: imgDims.width,
-      height: imgDims.height,
-    });
-  } else {
-    // Vector cover placeholder
-    coverPage.drawText(
-      isJournal ? "[ Guided Reflection & Creativity Edition ]" : `[ Featuring ${book.character.name} ]`,
-      {
-        x: cWidth / 2 - (isJournal ? 95 : 65),
-        y: coverBoxY + coverBoxHeight / 2,
-        size: 13,
-        font: helvetica,
-        color: rgb(0.45, 0.45, 0.45),
-      }
-    );
-  }
-
-  // Author byline & Lulu POD print marks
-  coverPage.drawText(`Created by: ${coverAuthorText}`, {
-    x: safeMargin,
-    y: 55,
-    size: 11,
-    font: timesNormal,
-    color: rgb(0.2, 0.2, 0.2),
-  });
-
-  coverPage.drawText(
-    trimSize === "6x9" ? "Lulu POD 6\" × 9\" US Trade" : "Lulu POD 8.5\" × 8.5\" Square",
-    {
-      x: cWidth - safeMargin - 120,
-      y: 55,
-      size: 9,
-      font: helvetica,
-      color: rgb(0.5, 0.5, 0.5),
+    // Background color (e.g. Midnight Glacier)
+    const isDark = book.cover?.colorScheme !== "warm_cream" && book.cover?.colorScheme !== "minimal_monochrome";
+    if (isDark) {
+      coverPage.drawRectangle({
+        x: 0,
+        y: 0,
+        width: totalCoverWidth,
+        height: totalCoverHeight,
+        color: rgb(0.06, 0.09, 0.14), // #0f1524
+      });
     }
-  );
 
-  // =========================================================================
-  // 2. INTERIOR PAGES
-  // =========================================================================
-  for (const page of book.pages) {
-    const p = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-    const { width, height } = p.getSize();
+    // 1. Back Cover Area: x = BLEED_PT, width = TRIM_WIDTH
+    const backX = BLEED_PT;
+    const backY = BLEED_PT;
+    coverPage.drawText("BACK COVER • KEEPSAKE EDITION", {
+      x: backX + 36,
+      y: backY + TRIM_HEIGHT - 54,
+      size: 9,
+      font: helveticaBold,
+      color: rgb(0.49, 0.83, 0.99),
+    });
 
-    if (isJournal) {
-      // ---------------------------------------------------------------------
-      // DUAL-ENGINE JOURNAL LAYOUT: College-Ruled + Guided Reflection
-      // ---------------------------------------------------------------------
-      const isBlackAndWhite = book.format?.interiorColor === "black_and_white";
-      const rawBorder = page.journalData?.borderText;
-      const borderText =
-        rawBorder && typeof rawBorder === "string" && rawBorder.trim().length <= 30 && !rawBorder.includes(".")
-          ? rawBorder.trim()
-          : undefined;
-      const borderStyle = page.journalData?.borderStyle || "none";
-      const cornerDecorations = page.journalData?.cornerDecorations || "none";
-      const isRobotic = borderStyle === "robotic" || cornerDecorations === "tech_brackets";
-      const layoutType = page.journalData?.layoutType;
-      const isEmptyLined = layoutType === "empty_lined";
-      const bFont = isRobotic ? courierBold : helveticaBold;
+    coverPage.drawText(coverTitle, {
+      x: backX + 36,
+      y: backY + TRIM_HEIGHT - 90,
+      size: 18,
+      font: timesBold,
+      color: isDark ? rgb(1, 1, 1) : rgb(0.1, 0.1, 0.1),
+      maxWidth: TRIM_WIDTH - 72,
+    });
 
-      // Draw Perimeter Border Text & Corner Brackets (if requested)
-      if (borderText) {
-        const bSize = 6.5;
-        const bColor = rgb(0.35, 0.35, 0.35);
-        const topBottomRepeat = Array(6).fill(borderText).join("  --  ");
-        const leftRightRepeat = Array(5).fill(borderText).join("  --  ");
+    const backText = book.cover?.backCoverText ||
+      `Step inside a personalized bedtime journey crafted with love. Starring ${book.character?.name || "our hero"}, this archival edition preserves precious memories and sparks boundless imagination.`;
 
-        // Top perimeter
-        const topW = bFont.widthOfTextAtSize(topBottomRepeat, bSize);
-        p.drawText(topBottomRepeat, {
-          x: Math.max(16, (width - topW) / 2),
-          y: height - 16,
-          size: bSize,
-          font: bFont,
-          color: bColor,
-        });
+    coverPage.drawText(backText, {
+      x: backX + 36,
+      y: backY + TRIM_HEIGHT - 130,
+      size: 11,
+      font: timesNormal,
+      color: isDark ? rgb(0.8, 0.85, 0.9) : rgb(0.2, 0.2, 0.2),
+      maxWidth: TRIM_WIDTH - 72,
+      lineHeight: 16,
+    });
 
-        // Bottom perimeter
-        const botW = bFont.widthOfTextAtSize(topBottomRepeat, bSize);
-        p.drawText(topBottomRepeat, {
-          x: Math.max(16, (width - botW) / 2),
-          y: 12,
-          size: bSize,
-          font: bFont,
-          color: bColor,
-        });
+    // Back Cover Barcode placeholder
+    coverPage.drawText("ISBN 978-0-PT-AI-2026 • Lulu Direct POD", {
+      x: backX + 36,
+      y: backY + 45,
+      size: 9,
+      font: courier,
+      color: rgb(0.5, 0.5, 0.5),
+    });
 
-        // Left perimeter (rotated 90 degrees)
-        const leftW = bFont.widthOfTextAtSize(leftRightRepeat, bSize);
-        p.drawText(leftRightRepeat, {
-          x: 15,
-          y: Math.max(20, (height - leftW) / 2),
-          size: bSize,
-          font: bFont,
-          color: bColor,
-          rotate: degrees(90),
-        });
-
-        // Right perimeter (rotated 270 degrees)
-        const rightW = bFont.widthOfTextAtSize(leftRightRepeat, bSize);
-        p.drawText(leftRightRepeat, {
-          x: width - 11,
-          y: Math.min(height - 20, (height + rightW) / 2),
-          size: bSize,
-          font: bFont,
-          color: bColor,
-          rotate: degrees(270),
-        });
-      }
-
-      // Corner Tech Decorations (e.g. <code_day_1> and </code_day_1>)
-      if (cornerDecorations === "tech_brackets") {
-        const tagSize = 7.5;
-        const tagColor = rgb(0.2, 0.2, 0.2);
-        p.drawText(`<code_day_${page.pageNumber}>`, {
-          x: safeMargin,
-          y: height - 28,
-          size: tagSize,
-          font: courierBold,
-          color: tagColor,
-        });
-        p.drawText(`</code_day_${page.pageNumber}>`, {
-          x: width - safeMargin - 65,
-          y: height - 28,
-          size: tagSize,
-          font: courierBold,
-          color: tagColor,
-        });
-        p.drawText(`[0x${page.pageNumber.toString(16).padStart(2, "0")}]`, {
-          x: safeMargin,
-          y: 22,
-          size: tagSize,
-          font: courierBold,
-          color: tagColor,
-        });
-        p.drawText(`_EOF`, {
-          x: width - safeMargin - 25,
-          y: 22,
-          size: tagSize,
-          font: courierBold,
-          color: tagColor,
-        });
-      }
-
-      // Top Header Row: Day & Date
-      p.drawText(`DAY ${page.pageNumber}`, {
-        x: safeMargin,
-        y: height - 48,
-        size: 13,
-        font: isRobotic ? courierBold : helveticaBold,
-        color: rgb(0.1, 0.1, 0.1),
+    // 2. Spine Area (if perfect bound with thickness)
+    const spineX = BLEED_PT + TRIM_WIDTH;
+    if (spinePoints > 14) {
+      coverPage.drawText(coverTitle, {
+        x: spineX + (spinePoints / 2) - 4,
+        y: backY + TRIM_HEIGHT / 2,
+        size: 8,
+        font: helveticaBold,
+        color: isDark ? rgb(1, 1, 1) : rgb(0.1, 0.1, 0.1),
+        rotate: degrees(270),
       });
+    }
 
-      // Header Row Category/Title
-      const dayHeader =
-        page.journalData?.headerCategory ||
-        book.title ||
-        `Day ${page.journalData?.dayNumber || page.pageNumber}`;
+    // 3. Front Cover Area: x = BLEED_PT + TRIM_WIDTH + spinePoints
+    const frontX = BLEED_PT + TRIM_WIDTH + spinePoints;
+    const frontY = BLEED_PT;
 
-      p.drawText(dayHeader, {
-        x: safeMargin + 54,
-        y: height - 48,
+    // Header
+    coverPage.drawText(coverTitle, {
+      x: frontX + 36,
+      y: frontY + TRIM_HEIGHT - 54,
+      size: 20,
+      font: timesBold,
+      color: isDark ? rgb(1, 1, 1) : rgb(0.1, 0.1, 0.1),
+    });
+
+    if (coverSubtitle) {
+      coverPage.drawText(coverSubtitle, {
+        x: frontX + 36,
+        y: frontY + TRIM_HEIGHT - 74,
         size: 11,
-        font: isRobotic ? courierBold : helveticaBold,
-        color: rgb(0.1, 0.1, 0.1),
-        maxWidth: width - safeMargin * 2 - 200,
+        font: timesItalic,
+        color: isDark ? rgb(0.7, 0.8, 0.9) : rgb(0.3, 0.3, 0.3),
       });
+    }
 
-      p.drawText(page.journalData?.datePlaceholder || "Date: ________________________", {
-        x: width - safeMargin - 150,
-        y: height - 48,
-        size: 10,
-        font: isRobotic ? courier : helvetica,
-        color: rgb(0.4, 0.4, 0.4),
+    // Embed Front Cover Image edge-to-edge
+    const coverImg = await tryEmbedImage(pdfDoc, book.cover?.imageUrl || book.pages[0]?.imageUrl);
+    if (coverImg) {
+      const imgWidth = TRIM_WIDTH - 72;
+      const imgHeight = TRIM_HEIGHT - 160;
+      const dims = coverImg.scaleToFit(imgWidth, imgHeight);
+      coverPage.drawImage(coverImg, {
+        x: frontX + 36 + (imgWidth - dims.width) / 2,
+        y: frontY + 70 + (imgHeight - dims.height) / 2,
+        width: dims.width,
+        height: dims.height,
       });
+    }
 
-      let currentY = height - 60;
+    // Footer
+    coverPage.drawText(`By: ${coverAuthor}`, {
+      x: frontX + 36,
+      y: frontY + 40,
+      size: 11,
+      font: timesNormal,
+      color: isDark ? rgb(0.9, 0.9, 0.9) : rgb(0.2, 0.2, 0.2),
+    });
 
-      // Mood Tracker Checkboxes (Rendered only if requested and NOT empty lined)
-      if (page.journalData?.moodTracker && !isEmptyLined) {
-        p.drawText("Today's Mood:  [ ] Radiant   [ ] Joyful   [ ] Calm   [ ] Pensive   [ ] Inspired", {
-          x: safeMargin,
-          y: currentY,
-          size: 8.5,
-          font: helvetica,
-          color: rgb(0.35, 0.35, 0.35),
-        });
-        currentY -= 12;
-      }
+    return await pdfDoc.save();
+  }
 
-      // Divider
-      p.drawLine({
-        start: { x: safeMargin, y: currentY },
-        end: { x: width - safeMargin, y: currentY },
-        thickness: 0.75,
-        color: rgb(0.7, 0.7, 0.7),
-      });
-      currentY -= 18;
+  // =========================================================================
+  // MODE 2: LULU INTERIOR PDF (Interior Pages Only with 0.125" Bleed)
+  // =========================================================================
+  if (mode === "lulu_interior") {
+    const pageWidthWithBleed = TRIM_WIDTH + (BLEED_PT * 2);
+    const pageHeightWithBleed = TRIM_HEIGHT + (BLEED_PT * 2);
 
-      // Optional Daily Inspiration Quote Box
-      const hasQuote = Boolean(page.journalData?.quote && page.journalData.quote.trim() !== "");
-
-      if (hasQuote && !isEmptyLined) {
-        const quoteText = page.journalData!.quote!;
-        p.drawRectangle({
-          x: safeMargin,
-          y: currentY - 32,
-          width: width - safeMargin * 2,
-          height: 38,
-          borderColor: rgb(0.8, 0.8, 0.8),
-          borderWidth: 0.75,
-          color: rgb(0.97, 0.98, 0.99),
-        });
-
-        p.drawText("DAILY INSPIRATION:", {
-          x: safeMargin + 8,
-          y: currentY - 10,
-          size: 7.5,
-          font: helveticaBold,
-          color: isBlackAndWhite ? rgb(0.2, 0.2, 0.2) : rgb(0.2, 0.45, 0.65),
-        });
-
-        p.drawText(`"${quoteText}"`, {
-          x: safeMargin + 8,
-          y: currentY - 24,
-          size: 9,
-          font: timesItalic,
-          color: rgb(0.2, 0.2, 0.2),
-          maxWidth: width - safeMargin * 2 - 16,
-        });
-
-        currentY -= 50;
-      }
-
-      const sections = page.journalData?.sections;
-      const hasSections = Boolean(sections && sections.length > 0);
-
-      if (isEmptyLined) {
-        // 1. EMPTY LINED LAYOUT: Continuous ruled lines with zero unsolicited prompts
-        const bottomLimit = 46;
-        while (currentY >= bottomLimit) {
-          p.drawLine({
-            start: { x: safeMargin, y: currentY },
-            end: { x: width - safeMargin, y: currentY },
-            thickness: 0.6,
-            color: rgb(0.82, 0.82, 0.82),
-          });
-          currentY -= 22;
-        }
-      } else if (hasSections) {
-        // 2. Multi-section layout (e.g. Upper "I will do", Lower "What I did")
-        for (let sIdx = 0; sIdx < sections!.length; sIdx++) {
-          const sec = sections![sIdx];
-          // Section Title
-          p.drawText(sec.title.toUpperCase(), {
-            x: safeMargin,
-            y: currentY,
-            size: 10,
-            font: isRobotic ? courierBold : helveticaBold,
-            color: isBlackAndWhite ? rgb(0.1, 0.1, 0.1) : rgb(0.12, 0.35, 0.6),
-          });
-
-          // Optional prompt
-          if (sec.prompt) {
-            p.drawText(sec.prompt, {
-              x: safeMargin + Math.min(sec.title.length * 6.5 + 8, 140),
-              y: currentY,
-              size: 8.5,
-              font: timesItalic,
-              color: rgb(0.4, 0.4, 0.4),
-              maxWidth: width - safeMargin * 2 - 150,
-            });
-          }
-
-          currentY -= 18;
-
-          // Ruled lines for this section
-          const secLines = sec.linesCount || 7;
-          for (let l = 0; l < secLines; l++) {
-            if (currentY < 46) break;
-            p.drawLine({
-              start: { x: safeMargin, y: currentY },
-              end: { x: width - safeMargin, y: currentY },
-              thickness: 0.6,
-              color: rgb(0.82, 0.82, 0.82),
-            });
-            currentY -= 20;
-          }
-
-          currentY -= 10; // Spacing before next section
-        }
-      } else {
-        // 3. Guided Reflection Question or Section Title
-        const reflectionText =
-          page.journalData?.reflectionPrompt ||
-          "Notes & Daily Reflection:";
-        p.drawText(reflectionText, {
-          x: safeMargin,
-          y: currentY,
-          size: 9.5,
-          font: timesBold,
-          color: rgb(0.15, 0.15, 0.15),
-          maxWidth: width - safeMargin * 2,
-        });
-
-        currentY -= 22;
-
-        // Authentic College-Ruled Lines for Pen & Pencil (Spacing = 22 pt)
-        const bottomLimit = 46;
-        while (currentY >= bottomLimit) {
-          p.drawLine({
-            start: { x: safeMargin, y: currentY },
-            end: { x: width - safeMargin, y: currentY },
-            thickness: 0.6,
-            color: rgb(0.82, 0.82, 0.82),
-          });
-          currentY -= 22;
-        }
-      }
-
-      // Embed daily themed spot illustration if present (Bottom-Right Corner)
-      if (page.imageUrl) {
-        const spotImg = await tryEmbedImage(pdfDoc, page.imageUrl);
-        if (spotImg) {
-          const imgSize = 75; // 75 pt x 75 pt spot illustration
-          const imgX = width - safeMargin - imgSize - 4;
-          const imgY = 46; // sits right above bottom margin
-
-          // Clean white box to cleanly mask lines behind the illustration
-          p.drawRectangle({
-            x: imgX - 4,
-            y: imgY - 4,
-            width: imgSize + 8,
-            height: imgSize + 8,
-            color: rgb(1, 1, 1),
-            borderColor: rgb(0.8, 0.8, 0.8),
-            borderWidth: 0.75,
-          });
-
-          p.drawImage(spotImg, {
-            x: imgX,
-            y: imgY,
-            width: imgSize,
-            height: imgSize,
-          });
-        }
-      }
-
-      // Page Number Footer
-      p.drawText(`Page ${page.pageNumber}`, {
-        x: width / 2 - 14,
-        y: 22,
-        size: 8.5,
-        font: isRobotic ? courier : helvetica,
-        color: rgb(0.45, 0.45, 0.45),
-      });
-    } else {
-      // ---------------------------------------------------------------------
-      // STANDARD STORYBOOK & COLORING ADVENTURE LAYOUT
-      // ---------------------------------------------------------------------
-
-      // Page Title
-      p.drawText(page.title, {
-        x: safeMargin,
-        y: height - 50,
+    for (const page of book.pages) {
+      // 1. Story / Text Leaf (Left page)
+      const pStory = pdfDoc.addPage([pageWidthWithBleed, pageHeightWithBleed]);
+      pStory.drawText(page.title, {
+        x: BLEED_PT + 36,
+        y: BLEED_PT + TRIM_HEIGHT - 54,
         size: 16,
         font: timesBold,
         color: rgb(0.1, 0.1, 0.1),
       });
 
-      // Story Text / Reading Prompt Caption
-      p.drawText(page.storyText, {
-        x: safeMargin,
-        y: height - 72,
-        size: 11,
+      pStory.drawText(page.storyText || "", {
+        x: BLEED_PT + 36,
+        y: BLEED_PT + TRIM_HEIGHT - 80,
+        size: 12,
         font: timesNormal,
         color: rgb(0.2, 0.2, 0.2),
-        maxWidth: width - safeMargin * 2,
-        lineHeight: 14,
+        maxWidth: TRIM_WIDTH - 72,
+        lineHeight: 18,
       });
 
-      // Coloring Vector Box / Frame
-      const artBoxY = 60;
-      const artBoxHeight = height - 150;
-      const artBoxWidth = width - safeMargin * 2;
-
-      p.drawRectangle({
-        x: safeMargin,
-        y: artBoxY,
-        width: artBoxWidth,
-        height: artBoxHeight,
-        borderColor: rgb(0.15, 0.15, 0.15),
-        borderWidth: 1.5,
-      });
-
-      // Embed illustration if generated
-      const pageImage = await tryEmbedImage(pdfDoc, page.imageUrl);
-      if (pageImage) {
-        const dims = pageImage.scaleToFit(artBoxWidth - 10, artBoxHeight - 10);
-        p.drawImage(pageImage, {
-          x: safeMargin + (artBoxWidth - dims.width) / 2,
-          y: artBoxY + (artBoxHeight - dims.height) / 2,
-          width: dims.width,
-          height: dims.height,
-        });
-      } else {
-        p.drawText(`[ Page ${page.pageNumber}: ${isColor ? "Full-Color Illustration" : "Vector Coloring Art"} ]`, {
-          x: width / 2 - 95,
-          y: artBoxY + artBoxHeight / 2,
-          size: 11,
+      if (book.singleSidedColoring) {
+        pStory.drawText("🛡️ Single-Sided Bleed Guard (Reverse side kept blank for paints & markers)", {
+          x: BLEED_PT + 36,
+          y: BLEED_PT + 36,
+          size: 9,
           font: helvetica,
-          color: rgb(0.45, 0.45, 0.45),
+          color: rgb(0.3, 0.6, 0.8),
         });
       }
 
-      // Page Number Footer
-      p.drawText(`Page ${page.pageNumber}`, {
-        x: width / 2 - 16,
-        y: 28,
-        size: 10,
+      // 2. Illustration Leaf (Right page)
+      const pArt = pdfDoc.addPage([pageWidthWithBleed, pageHeightWithBleed]);
+      const pageImage = await tryEmbedImage(pdfDoc, page.imageUrl);
+      if (pageImage) {
+        const maxWidth = TRIM_WIDTH - 40;
+        const maxHeight = TRIM_HEIGHT - 60;
+        const dims = pageImage.scaleToFit(maxWidth, maxHeight);
+        pArt.drawImage(pageImage, {
+          x: BLEED_PT + 20 + (maxWidth - dims.width) / 2,
+          y: BLEED_PT + 30 + (maxHeight - dims.height) / 2,
+          width: dims.width,
+          height: dims.height,
+        });
+      }
+
+      // If singleSidedColoring is enabled for physical POD, insert a blank backing page
+      if (book.singleSidedColoring) {
+        pdfDoc.addPage([pageWidthWithBleed, pageHeightWithBleed]);
+      }
+    }
+
+    return await pdfDoc.save();
+  }
+
+  // =========================================================================
+  // MODE 3: WYSIWYG FULL SPREAD PDF (Exact 2-Page Spread Matching BookViewer)
+  // =========================================================================
+  const SPREAD_WIDTH = TRIM_WIDTH * 2;
+  const SPREAD_HEIGHT = TRIM_HEIGHT;
+
+  // Spread 0: Wraparound Cover [Back Cover | Front Cover]
+  const coverSpread = pdfDoc.addPage([SPREAD_WIDTH, SPREAD_HEIGHT]);
+  const isDarkCover = book.cover?.colorScheme !== "warm_cream" && book.cover?.colorScheme !== "minimal_monochrome";
+  if (isDarkCover) {
+    coverSpread.drawRectangle({
+      x: 0,
+      y: 0,
+      width: SPREAD_WIDTH,
+      height: SPREAD_HEIGHT,
+      color: rgb(0.06, 0.09, 0.14),
+    });
+  }
+
+  // Left Leaf: Back Cover
+  coverSpread.drawText("BACK COVER • KEEPSAKE EDITION", {
+    x: 40,
+    y: SPREAD_HEIGHT - 54,
+    size: 9,
+    font: helveticaBold,
+    color: rgb(0.49, 0.83, 0.99),
+  });
+
+  coverSpread.drawText(coverTitle, {
+    x: 40,
+    y: SPREAD_HEIGHT - 90,
+    size: 20,
+    font: timesBold,
+    color: isDarkCover ? rgb(1, 1, 1) : rgb(0.1, 0.1, 0.1),
+    maxWidth: TRIM_WIDTH - 80,
+  });
+
+  const backBlurb = book.cover?.backCoverText ||
+    `Step into the magical world of ${coverTitle}. Starring ${book.character?.name || "our hero"}, this personalized keepsake edition preserves precious memories and sparks boundless imagination.`;
+
+  coverSpread.drawText(backBlurb, {
+    x: 40,
+    y: SPREAD_HEIGHT - 130,
+    size: 11,
+    font: timesNormal,
+    color: isDarkCover ? rgb(0.8, 0.85, 0.9) : rgb(0.2, 0.2, 0.2),
+    maxWidth: TRIM_WIDTH - 80,
+    lineHeight: 16,
+  });
+
+  coverSpread.drawText("ISBN 978-0-PT-AI-2026 • Lulu Direct 300 DPI", {
+    x: 40,
+    y: 40,
+    size: 9,
+    font: courier,
+    color: rgb(0.5, 0.5, 0.5),
+  });
+
+  // Center Spine Divider
+  coverSpread.drawLine({
+    start: { x: TRIM_WIDTH, y: 0 },
+    end: { x: TRIM_WIDTH, y: SPREAD_HEIGHT },
+    thickness: 1,
+    color: isDarkCover ? rgb(0.2, 0.3, 0.4) : rgb(0.8, 0.8, 0.8),
+  });
+
+  // Right Leaf: Front Cover
+  const frontStartX = TRIM_WIDTH;
+  coverSpread.drawText(coverTitle, {
+    x: frontStartX + 40,
+    y: SPREAD_HEIGHT - 54,
+    size: 22,
+    font: timesBold,
+    color: isDarkCover ? rgb(1, 1, 1) : rgb(0.1, 0.1, 0.1),
+  });
+
+  if (coverSubtitle) {
+    coverSpread.drawText(coverSubtitle, {
+      x: frontStartX + 40,
+      y: SPREAD_HEIGHT - 76,
+      size: 12,
+      font: timesItalic,
+      color: isDarkCover ? rgb(0.7, 0.8, 0.9) : rgb(0.3, 0.3, 0.3),
+    });
+  }
+
+  const coverImg = await tryEmbedImage(pdfDoc, book.cover?.imageUrl || book.pages[0]?.imageUrl);
+  if (coverImg) {
+    const imgWidth = TRIM_WIDTH - 80;
+    const imgHeight = SPREAD_HEIGHT - 160;
+    const dims = coverImg.scaleToFit(imgWidth, imgHeight);
+    coverSpread.drawImage(coverImg, {
+      x: frontStartX + 40 + (imgWidth - dims.width) / 2,
+      y: 70 + (imgHeight - dims.height) / 2,
+      width: dims.width,
+      height: dims.height,
+    });
+  }
+
+  coverSpread.drawText(`By: ${coverAuthor}`, {
+    x: frontStartX + 40,
+    y: 40,
+    size: 11,
+    font: timesNormal,
+    color: isDarkCover ? rgb(0.9, 0.9, 0.9) : rgb(0.2, 0.2, 0.2),
+  });
+
+  // Interior Spreads
+  for (const page of book.pages) {
+    const spread = pdfDoc.addPage([SPREAD_WIDTH, SPREAD_HEIGHT]);
+
+    // Center seam line
+    spread.drawLine({
+      start: { x: TRIM_WIDTH, y: 0 },
+      end: { x: TRIM_WIDTH, y: SPREAD_HEIGHT },
+      thickness: 0.75,
+      color: rgb(0.85, 0.85, 0.85),
+    });
+
+    // Left Leaf: Story Text & Title
+    spread.drawText(page.title, {
+      x: 40,
+      y: SPREAD_HEIGHT - 54,
+      size: 18,
+      font: timesBold,
+      color: rgb(0.1, 0.1, 0.1),
+    });
+
+    spread.drawText(page.storyText || "", {
+      x: 40,
+      y: SPREAD_HEIGHT - 85,
+      size: 12,
+      font: timesNormal,
+      color: rgb(0.2, 0.2, 0.2),
+      maxWidth: TRIM_WIDTH - 80,
+      lineHeight: 18,
+    });
+
+    if (book.singleSidedColoring) {
+      spread.drawText("🛡️ Single-Sided Bleed Guard (Back page protected for markers & watercolors)", {
+        x: 40,
+        y: 40,
+        size: 9,
         font: helvetica,
-        color: rgb(0.4, 0.4, 0.4),
+        color: rgb(0.2, 0.5, 0.7),
       });
     }
+
+    spread.drawText(`Page ${page.pageNumber}`, {
+      x: 40,
+      y: 24,
+      size: 9,
+      font: helvetica,
+      color: rgb(0.6, 0.6, 0.6),
+    });
+
+    // Right Leaf: Edge-to-Edge Illustration without any thick outer black border
+    const rightStartX = TRIM_WIDTH;
+    const pageImage = await tryEmbedImage(pdfDoc, page.imageUrl);
+    if (pageImage) {
+      const maxWidth = TRIM_WIDTH - 40;
+      const maxHeight = SPREAD_HEIGHT - 60;
+      const dims = pageImage.scaleToFit(maxWidth, maxHeight);
+      spread.drawImage(pageImage, {
+        x: rightStartX + 20 + (maxWidth - dims.width) / 2,
+        y: 30 + (maxHeight - dims.height) / 2,
+        width: dims.width,
+        height: dims.height,
+      });
+    } else {
+      spread.drawText(`[ Page ${page.pageNumber} Illustration ]`, {
+        x: rightStartX + TRIM_WIDTH / 2 - 60,
+        y: SPREAD_HEIGHT / 2,
+        size: 12,
+        font: helvetica,
+        color: rgb(0.5, 0.5, 0.5),
+      });
+    }
+
+    spread.drawText(`Page ${page.pageNumber} Art`, {
+      x: rightStartX + TRIM_WIDTH - 90,
+      y: 24,
+      size: 9,
+      font: helvetica,
+      color: rgb(0.6, 0.6, 0.6),
+    });
   }
 
   return await pdfDoc.save();

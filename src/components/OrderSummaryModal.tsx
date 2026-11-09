@@ -1,18 +1,20 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, Printer, Download, Sparkles, CheckCircle2, PackageCheck, Plus, Check, AlertTriangle, ShieldCheck } from "lucide-react";
+import { X, Printer, Download, Sparkles, CheckCircle2, PackageCheck, Plus, Check, AlertTriangle, ShieldCheck, Search } from "lucide-react";
 import { BookProject } from "@/types/book";
 import { CompanionProduct, LuluQuoteResponse, PaperTalesOrder } from "@/types/order";
 import { PayPalButtons } from "@paypal/react-paypal-js";
 import confetti from "canvas-confetti";
-import { calculateBookQuote } from "@/lib/pricing-calculator";
+import { calculateBookQuote, calculateLuluCommission } from "@/lib/pricing-calculator";
+import { isFirstTimeCustomer } from "@/lib/token-store";
 
 interface OrderSummaryModalProps {
   isOpen: boolean;
   onClose: () => void;
   book: BookProject;
   initialFulfillmentType?: "physical_print" | "digital_pdf";
+  isDigitalUnlocked?: boolean;
   onOrderCompleted?: (order: PaperTalesOrder) => void;
   onDownloadPdf?: () => void;
 }
@@ -22,6 +24,7 @@ export default function OrderSummaryModal({
   onClose,
   book,
   initialFulfillmentType = "physical_print",
+  isDigitalUnlocked = false,
   onOrderCompleted,
   onDownloadPdf,
 }: OrderSummaryModalProps) {
@@ -32,6 +35,23 @@ export default function OrderSummaryModal({
   const [selectedCompanion, setSelectedCompanion] = useState<CompanionProduct | null>(null);
   const [completedOrder, setCompletedOrder] = useState<PaperTalesOrder | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [channel3SearchQuery, setChannel3SearchQuery] = useState<string>("");
+  const [isSearchingChannel3, setIsSearchingChannel3] = useState<boolean>(false);
+
+  const handleChannel3Search = async (query: string) => {
+    setIsSearchingChannel3(true);
+    try {
+      const res = await fetch(`/api/channel3/suggest?genre=${encodeURIComponent(book.genre || "coloring_book")}&query=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      if (data.success && data.products) {
+        setCompanionProducts(data.products);
+      }
+    } catch (err) {
+      console.error("Channel3 search failed:", err);
+    } finally {
+      setIsSearchingChannel3(false);
+    }
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -83,14 +103,27 @@ export default function OrderSummaryModal({
 
   if (!isOpen) return null;
 
-  // Dynamic page-count pricing formula (First 5 pages free)
+  // Dynamic page-count pricing formula (First 5 pages free for first-time customers)
+  const isFirstTime = isFirstTimeCustomer();
   const effectivePages = book.pageCount || book.pages?.length || 12;
-  const dynamicQuote = calculateBookQuote(effectivePages);
-  const creationFee = dynamicQuote.priceUsd > 0 ? dynamicQuote.priceUsd : 0.99;
-  const printCost = fulfillmentType === "physical_print" ? luluQuote?.unitPrintCost || 4.5 : 0;
-  const shippingCost = fulfillmentType === "physical_print" ? luluQuote?.shippingCost || 3.99 : 0;
+  const dynamicQuote = calculateBookQuote(effectivePages, "illustrated", isFirstTime);
+  const baseCreationFee = dynamicQuote.priceUsd > 0 ? dynamicQuote.priceUsd : 0.99;
+  // If digital edition was already purchased/unlocked, credit 100% of creation fee
+  const creationFee = isDigitalUnlocked ? 0.0 : baseCreationFee;
+
+  const baseUnitPrintCost = luluQuote?.unitPrintCost || 4.5;
+  const baseShippingCost = luluQuote?.shippingCost || 3.99;
+  // 10% platform commission bundled into physical manufacturing fee
+  const commission = calculateLuluCommission(baseUnitPrintCost, baseShippingCost);
+  const printCost = fulfillmentType === "physical_print"
+    ? Number((baseUnitPrintCost + commission).toFixed(2))
+    : 0;
+  const shippingCost = fulfillmentType === "physical_print" ? baseShippingCost : 0;
   const companionCost = selectedCompanion ? selectedCompanion.price : 0;
   const grandTotal = Number((creationFee + printCost + shippingCost + companionCost).toFixed(2));
+
+  const isPhysicalBlocked = fulfillmentType === "physical_print" && !book.cover?.isDesigned;
+
 
   const handleOrderSuccess = (order: PaperTalesOrder) => {
     setCompletedOrder(order);
@@ -243,25 +276,55 @@ export default function OrderSummaryModal({
                       High-res vector 300 DPI PDF with bleed margins. Print at home or read on tablets.
                     </p>
                     <span className="text-xs font-bold text-purple-300 mt-2">
-                      ${creationFee.toFixed(2)} ({dynamicQuote.tokensRequired} Tokens)
+                      {isDigitalUnlocked ? "Included (Unlocked)" : `$${creationFee.toFixed(2)} (${dynamicQuote.tokensRequired} Tokens)`}
                     </span>
                   </div>
                 </div>
 
                 {fulfillmentType === "physical_print" && (
-                  <div className="mt-2.5 p-2.5 rounded-xl bg-amber-500/10 border border-amber-400/25 flex items-start gap-2 text-[11px] text-amber-200">
-                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="font-bold text-amber-300">Lulu Print Clearance Note:</span> If your book uses trademarked franchise names or logos, commercial print factories may flag the title for review. Digital PDF exports are unrestricted for personal use.
-                    </div>
+                  <div className="mt-2.5 space-y-2">
+                    {isPhysicalBlocked ? (
+                      <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 flex items-start gap-2 text-xs text-rose-200 animate-in fade-in">
+                        <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                        <div className="space-y-1">
+                          <p className="font-extrabold text-rose-300">Front Cover Required for Physical Print Orders</p>
+                          <p className="text-[11px] text-rose-200/90 leading-relaxed">
+                            Lulu POD factory machinery requires a designed wraparound cover spread to print physical softcovers. A physical order cannot be placed without a designed cover.
+                          </p>
+                          <div className="pt-1 flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={onClose}
+                              className="px-3 py-1 rounded-lg bg-rose-500/30 hover:bg-rose-500/40 text-white font-bold border border-rose-400/40 text-[11px] cursor-pointer"
+                            >
+                              🎨 Go to Studio & Design Cover
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setFulfillmentType("digital_pdf")}
+                              className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 text-[11px] font-bold border border-sky-400/30 cursor-pointer"
+                            >
+                              Switch to Instant Digital PDF
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-400/25 flex items-start gap-2 text-[11px] text-amber-200">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold text-amber-300">Lulu Print Clearance Note:</span> If your book uses trademarked franchise names or logos, commercial print factories may flag the title for review. Digital PDF exports are unrestricted for personal use.
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
               {/* Channel3 Agentic Commerce Companion Bundling */}
               {companionProducts.length > 0 && (
-                <div className="glacier-glass-subtle border border-sky-400/25 rounded-xl p-3.5">
-                  <div className="flex items-center justify-between mb-2">
+                <div className="glacier-glass-subtle border border-sky-400/25 rounded-xl p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-sky-400" />
                       <span className="text-xs font-bold text-white">
@@ -273,8 +336,38 @@ export default function OrderSummaryModal({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {companionProducts.slice(0, 2).map((item) => {
+                  {/* Channel3 Live Search Bar */}
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (channel3SearchQuery.trim()) {
+                        handleChannel3Search(channel3SearchQuery.trim());
+                      }
+                    }}
+                    className="flex items-center gap-1.5"
+                  >
+                    <div className="relative flex-1">
+                      <Search className="w-3.5 h-3.5 text-sky-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Search art supplies, markers, paints (Channel3)..."
+                        value={channel3SearchQuery}
+                        onChange={(e) => setChannel3SearchQuery(e.target.value)}
+                        className="w-full bg-slate-900/90 text-xs text-white placeholder-slate-400 pl-8 pr-2.5 py-1.5 rounded-lg border border-sky-400/30 focus:outline-none focus:ring-1 focus:ring-sky-400"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={isSearchingChannel3 || !channel3SearchQuery.trim()}
+                      className="px-3 py-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-400/30 text-xs font-bold transition-all disabled:opacity-40 cursor-pointer"
+                    >
+                      {isSearchingChannel3 ? "..." : "Search"}
+                    </button>
+                  </form>
+
+                  {/* Scrollable Grid of up to 6 Channel3 recommendations */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto glacier-scrollbar pr-1">
+                    {companionProducts.slice(0, 6).map((item) => {
                       const isAdded = selectedCompanion?.id === item.id;
                       return (
                         <div
@@ -318,13 +411,17 @@ export default function OrderSummaryModal({
               <div className="glacier-glass-subtle rounded-xl p-4 border border-sky-400/20 text-xs space-y-2">
                 <div className="flex justify-between text-[#a0b4c4]">
                   <span>Custom AI Generation &amp; 300 DPI PDF License:</span>
-                  <span className="font-mono font-medium text-white">${creationFee.toFixed(2)}</span>
+                  {isDigitalUnlocked ? (
+                    <span className="font-semibold text-emerald-400">$0.00 (Included)</span>
+                  ) : (
+                    <span className="font-mono font-medium text-white">${creationFee.toFixed(2)}</span>
+                  )}
                 </div>
 
                 {fulfillmentType === "physical_print" && (
                   <>
                     <div className="flex justify-between text-[#a0b4c4]">
-                      <span>Lulu Physical Printing &amp; Binding (8.5x8.5):</span>
+                      <span>Archival Softcover Print &amp; Binding (8.5x8.5):</span>
                       <span className="font-mono font-medium text-white">${printCost.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-[#a0b4c4]">
@@ -350,7 +447,13 @@ export default function OrderSummaryModal({
               {/* PayPal Smart Buttons */}
               <div className="pt-1">
                 <div className="min-h-[45px]">
-                  <PayPalButtons
+                  {isPhysicalBlocked ? (
+                    <div className="p-3.5 rounded-xl bg-slate-900/90 border border-rose-500/30 text-center space-y-1">
+                      <p className="text-xs font-bold text-rose-300">Physical Print Checkout Blocked</p>
+                      <p className="text-[11px] text-slate-400">Please design a front cover in the Studio before ordering a physical copy, or select Instant Digital PDF above.</p>
+                    </div>
+                  ) : (
+                    <PayPalButtons
                     style={{ layout: "horizontal", height: 42, label: "checkout" }}
                     forceReRender={[
                       fulfillmentType,
@@ -486,6 +589,7 @@ export default function OrderSummaryModal({
                       );
                     }}
                   />
+                  )}
                 </div>
                 {checkoutError && (
                   <div className="mt-2.5 p-2.5 rounded-lg bg-rose-500/15 border border-rose-400/30 text-[11px] text-rose-200 text-center">

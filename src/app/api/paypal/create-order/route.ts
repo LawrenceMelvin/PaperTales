@@ -42,17 +42,19 @@ export async function POST(req: NextRequest) {
         companionItem,
       } = bookCheckout;
 
-      const items: any[] = [
-        {
+      const items: any[] = [];
+
+      if (creationFee > 0) {
+        items.push({
           name: `Custom Book License: "${bookTitle}"`,
           description: "High-resolution AI story & vector line-art compilation license",
           unitAmount: creationFee,
           quantity: 1,
           category: "DIGITAL_GOODS",
-        },
-      ];
+        });
+      }
 
-      if (fulfillmentType === "physical_print") {
+      if (fulfillmentType === "physical_print" && printCost > 0) {
         items.push({
           name: "Lulu Softcover Print & Saddle-Stitch Binding",
           description: "8.5x8.5 Square Softcover 60# Uncoated White Interior (Lulu POD)",

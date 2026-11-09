@@ -23,9 +23,12 @@ export async function POST(req: NextRequest) {
     let luluJobId: string | undefined;
     let luluTracking: string | undefined;
 
-    // If this is a physical print order, trigger the Lulu print job
+    // If this is a physical print order, trigger the Lulu print job with dedicated interior and cover URLs
     if (orderDetails?.fulfillmentType === "physical_print") {
-      const luluRes = await submitLuluPrintJob(orderDetails, "dummy_interior.pdf", "dummy_cover.pdf");
+      const baseUrl = req.nextUrl.origin || "https://papertales.ai";
+      const interiorUrl = `${baseUrl}/api/pdf/compile?bookId=${encodeURIComponent(orderDetails.bookId)}&mode=lulu_interior`;
+      const coverUrl = `${baseUrl}/api/pdf/compile?bookId=${encodeURIComponent(orderDetails.bookId)}&mode=lulu_cover`;
+      const luluRes = await submitLuluPrintJob(orderDetails, interiorUrl, coverUrl);
       luluJobId = luluRes.jobId;
       luluTracking = luluRes.trackingNumber;
     }

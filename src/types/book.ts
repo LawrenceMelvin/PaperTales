@@ -45,6 +45,7 @@ export interface BookCoverDesign {
   subtitle?: string;
   authorByline?: string;
   coverPrompt?: string;
+  backCoverText?: string;
   artStyle?: string;
   colorScheme?: BookCoverColorScheme;
   imageUrl?: string;
@@ -83,6 +84,7 @@ export interface BookProject {
   artStyle?: string;
   pageStructure?: string;
   showPageNumbers?: boolean;
+  singleSidedColoring?: boolean;
   cover?: BookCoverDesign;
   pages: BookPage[];
   pageCount: number;
@@ -94,3 +96,14 @@ export interface BookProject {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface EditingPageReference {
+  pageIndex: number; // 0 = Cover, 1..N = Page 1..N
+  pageNumber?: number; // 0 for cover, 1..N for interior pages
+  title?: string;
+  storyText?: string;
+  imagePrompt?: string;
+  imageUrl?: string;
+  isCover?: boolean;
+}
+
