@@ -92,7 +92,7 @@ export async function createPayPalOrder(params: PayPalCreateOrderParams) {
                 description: it.description?.slice(0, 127),
                 unit_amount: { currency_code: "USD", value: Number(it.unitAmount).toFixed(2) },
                 quantity: it.quantity.toString(),
-                category: params.requireShippingAddress ? "PHYSICAL_GOODS" : it.category || "DIGITAL_GOODS",
+                category: it.category || (params.requireShippingAddress ? "PHYSICAL_GOODS" : "DIGITAL_GOODS"),
               })),
             },
           ],
@@ -100,7 +100,7 @@ export async function createPayPalOrder(params: PayPalCreateOrderParams) {
             brand_name: "PaperTales AI Studio",
             landing_page: "NO_PREFERENCE",
             user_action: "PAY_NOW",
-            shipping_preference: params.requireShippingAddress ? "GET_FROM_FILE" : "NO_SHIPPING",
+            shipping_preference: "NO_SHIPPING",
           },
         };
 

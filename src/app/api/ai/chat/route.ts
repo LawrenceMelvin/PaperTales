@@ -37,7 +37,8 @@ interface ProjectState {
   showPageNumbers?: boolean;
   singleSidedColoring?: boolean;
   coverPrompt?: string;
-  coverColorScheme?: "midnight_glacier" | "warm_cream" | "storybook_vibrant" | "minimal_monochrome";
+  backCoverText?: string;
+  coverColorScheme?: "midnight_black" | "midnight_glacier" | "warm_cream" | "storybook_vibrant" | "minimal_monochrome";
 }
 
 const VALID_STAGES: DiscussionStage[] = [
@@ -123,9 +124,13 @@ STAGES ("discussionStage"):
    - Remind them that the first 5 pages will be generated 100% free right now (and any pages beyond 5 will appear as a blurred preview ready to unlock anytime).
 7. "revising": Page 1 proof already exists and the creator asks to change the visual layout, border, page number visibility, or art style of Page 1 itself. Apply the change to bookDraft/designBrief, confirm ONLY what changed, list the edits in "changes", and set requiresNewProof = true so they can redesign Page 1 proof.
 8. "cover_design": All interior pages are ALREADY generated (see CURRENT PROJECT STATE: Full interior pages generated = YES), OR the creator asks to design/customize the Front Book Cover in this same conversation.
-   - Reference the book's title, character/theme, and style from earlier in the conversation!
-   - Help the creator shape their Front Book Cover: cover illustration scene ("coverPrompt"), subtitle/tagline ("subtitle"), author credit/byline ("authorByline"), and cover theme ("colorScheme": "midnight_glacier" | "warm_cream" | "storybook_vibrant" | "minimal_monochrome").
-   - Populate "coverDraft" and set coverDraft.isReadyForCover = true as soon as the creator describes or selects a cover direction (or approves your suggested cover concept). Set bookDraft.recommendedAction = "design_book_cover".
+   - Reference the book's exact title, subject matter, and interior tone/style from the project (do NOT default to website cream colors or unrelated children's mascots unless the book itself is a children's book).
+   - Always pitch a clear Cover Concept Proposal for confirmation covering three parts:
+     1) Cover Color ("colorScheme": "midnight_black" | "midnight_glacier" | "warm_cream" | "storybook_vibrant" | "minimal_monochrome"),
+     2) Detailed Front Cover Design ("coverPrompt": pure visual artwork description, zero rendered text/letters inside the artwork),
+     3) Detailed Back Cover Design / Blurb ("backCoverText": 1-3 concise sentences matching the book's topic).
+   - If the user explicitly describes a custom cover scene (e.g., "black cover with golden man standing in the bottom middle and money pouring on him"), copy their exact visual subject, placement, colors, and mood verbatim into "coverPrompt" without substituting different characters or styles, and pick the matching "colorScheme" (e.g. "midnight_black" for pure/jet black covers).
+   - Populate "coverDraft" and set coverDraft.isReadyForCover = true as soon as you propose a concept or the creator describes/approves one. Set bookDraft.recommendedAction = "design_book_cover".
 
 TITLE RULES:
 - If a title is already locked (see CURRENT PROJECT STATE), do NOT restate or re-confirm it, and keep "titleOptions": [] unless the creator explicitly asks for new or different titles.
@@ -178,8 +183,9 @@ OUTPUT: a single flat JSON object with exactly these keys:
     "title": string | null,
     "subtitle": string | null,
     "authorByline": string | null,
-    "coverPrompt": "Detailed visual prompt for the front cover artwork matching the book's theme and style" | null,
-    "colorScheme": "midnight_glacier" | "warm_cream" | "storybook_vibrant" | "minimal_monochrome" | null,
+    "coverPrompt": "Detailed visual prompt for the front cover artwork matching the book's topic (preserving exact user scene requests verbatim, no text inside image)" | null,
+    "backCoverText": "Concise 1-3 sentence back cover blurb matching the book's exact topic" | null,
+    "colorScheme": "midnight_black" | "midnight_glacier" | "warm_cream" | "storybook_vibrant" | "minimal_monochrome" | null,
     "isReadyForCover": boolean
   },
   "quickReplies": string[],
@@ -588,17 +594,37 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const wantsBlackCover = /\b(black\s+cover|jet\s+black|pure\s+black|pitch\s+black|midnight\s+black|black\s+background)\b/i.test(
+      latestUser
+    );
+    const hasExplicitCoverScene =
+      (stage === "cover_design" || userMentionsCover) &&
+      latestUser.trim().length > 15 &&
+      /\b(with|standing|pouring|background|center|middle|bottom|top|gold|golden|man|woman|figure|emblem|minimal|cover|scene|illustration|dark|black|white|cream)\b/i.test(
+        latestUser
+      ) &&
+      !/^(approve|confirm|looks good|generate|design it|yes)/i.test(latestUser.trim());
+
+    const resolvedCoverScheme = wantsBlackCover
+      ? "midnight_black"
+      : parsed.coverDraft?.colorScheme || projectState?.coverColorScheme || "warm_cream";
+
     const coverDraft = parsed.coverDraft
       ? {
           title: parsed.coverDraft.title || bookDraft?.title || lockedTitle || projectState?.title || null,
           subtitle: parsed.coverDraft.subtitle || bookDraft?.subtitle || projectState?.subtitle || null,
           authorByline: parsed.coverDraft.authorByline || projectState?.authorName || null,
-          coverPrompt:
-            parsed.coverDraft.coverPrompt ||
-            (stage === "cover_design" ? latestUser : null) ||
-            projectState?.coverPrompt ||
+          coverPrompt: hasExplicitCoverScene
+            ? latestUser.trim()
+            : parsed.coverDraft.coverPrompt ||
+              (stage === "cover_design" ? latestUser : null) ||
+              projectState?.coverPrompt ||
+              null,
+          backCoverText:
+            parsed.coverDraft.backCoverText ||
+            projectState?.backCoverText ||
             null,
-          colorScheme: parsed.coverDraft.colorScheme || projectState?.coverColorScheme || "midnight_glacier",
+          colorScheme: resolvedCoverScheme,
           isReadyForCover:
             Boolean(parsed.coverDraft.isReadyForCover) ||
             stage === "cover_design" ||
@@ -610,7 +636,8 @@ export async function POST(req: NextRequest) {
           subtitle: bookDraft?.subtitle || projectState?.subtitle || null,
           authorByline: projectState?.authorName || null,
           coverPrompt: latestUser || projectState?.coverPrompt || projectState?.prompt || null,
-          colorScheme: projectState?.coverColorScheme || "midnight_glacier",
+          backCoverText: projectState?.backCoverText || null,
+          colorScheme: resolvedCoverScheme,
           isReadyForCover: true,
         }
       : null;

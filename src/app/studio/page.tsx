@@ -197,6 +197,7 @@ interface CoverDraftData {
   subtitle?: string | null;
   authorByline?: string | null;
   coverPrompt?: string | null;
+  backCoverText?: string | null;
   colorScheme?: BookCoverColorScheme | null;
   isReadyForCover?: boolean;
 }
@@ -438,6 +439,7 @@ export default function StudioPage() {
   const [tokenModalOpen, setTokenModalOpen] = useState<boolean>(false);
   const [unlockChoiceOpen, setUnlockChoiceOpen] = useState<boolean>(false);
   const [orderModalOpen, setOrderModalOpen] = useState<boolean>(false);
+  const [orderModalInitialTab, setOrderModalInitialTab] = useState<"physical_print" | "digital_pdf">("physical_print");
   const [bookDetailsOpen, setBookDetailsOpen] = useState<boolean>(false);
   const [orderTrackingOpen, setOrderTrackingOpen] = useState<boolean>(false);
   const [bookLibraryOpen, setBookLibraryOpen] = useState<boolean>(false);
@@ -507,7 +509,7 @@ export default function StudioPage() {
         const data = await res.json();
         if (data && data.success && Array.isArray(data.products)) {
           setCompanionProducts(data.products);
-          setSelectedCompanion(data.products[0] || null);
+          setSelectedCompanion(null);
         }
       } catch (err) {
         console.warn("Failed to load initial Channel3 items:", err);
@@ -687,7 +689,6 @@ export default function StudioPage() {
               const ch3Data = await ch3Res.json();
               if (ch3Data.success && ch3Data.products && ch3Data.products.length > 0) {
                 setCompanionProducts(ch3Data.products);
-                setSelectedCompanion(ch3Data.products[0]);
               }
             } catch (ch3Err) {
               console.warn("Channel3 query failed:", ch3Err);
@@ -696,28 +697,39 @@ export default function StudioPage() {
         }
 
         // Synchronize coverDraft into cover state when designing or revising the cover
+        let mergedCoverDraft: CoverDraftData | undefined = undefined;
         if (data.coverDraft) {
-          if (data.coverDraft.coverPrompt) {
-            setCoverPrompt(data.coverDraft.coverPrompt);
+          mergedCoverDraft = {
+            title: data.coverDraft.title || book.cover?.title || book.title,
+            subtitle: data.coverDraft.subtitle || book.cover?.subtitle || book.subtitle,
+            authorByline: data.coverDraft.authorByline || book.cover?.authorByline || authorName || book.authorName,
+            coverPrompt: data.coverDraft.coverPrompt || book.cover?.coverPrompt || coverPrompt,
+            backCoverText: data.coverDraft.backCoverText || book.cover?.backCoverText || undefined,
+            colorScheme: data.coverDraft.colorScheme || book.cover?.colorScheme || coverColorScheme,
+            isReadyForCover: Boolean(data.coverDraft.isReadyForCover),
+          };
+          if (mergedCoverDraft.coverPrompt) {
+            setCoverPrompt(mergedCoverDraft.coverPrompt);
           }
-          if (data.coverDraft.colorScheme) {
-            setCoverColorScheme(data.coverDraft.colorScheme);
+          if (mergedCoverDraft.colorScheme) {
+            setCoverColorScheme(mergedCoverDraft.colorScheme);
           }
-          if (data.coverDraft.authorByline) {
-            setAuthorName(data.coverDraft.authorByline);
+          if (mergedCoverDraft.authorByline) {
+            setAuthorName(mergedCoverDraft.authorByline);
           }
           setBook((prev) => ({
             ...prev,
-            title: data.coverDraft.title || prev.title,
-            subtitle: data.coverDraft.subtitle || prev.subtitle,
-            authorName: data.coverDraft.authorByline || prev.authorName,
+            title: mergedCoverDraft?.title || prev.title,
+            subtitle: mergedCoverDraft?.subtitle || prev.subtitle,
+            authorName: mergedCoverDraft?.authorByline || prev.authorName,
             cover: {
               ...prev.cover,
-              title: data.coverDraft.title || prev.cover?.title || prev.title,
-              subtitle: data.coverDraft.subtitle || prev.cover?.subtitle || prev.subtitle,
-              authorByline: data.coverDraft.authorByline || prev.cover?.authorByline || prev.authorName,
-              coverPrompt: data.coverDraft.coverPrompt || prev.cover?.coverPrompt || coverPrompt,
-              colorScheme: data.coverDraft.colorScheme || prev.cover?.colorScheme || coverColorScheme,
+              title: mergedCoverDraft?.title || prev.cover?.title || prev.title,
+              subtitle: mergedCoverDraft?.subtitle || prev.cover?.subtitle || prev.subtitle,
+              authorByline: mergedCoverDraft?.authorByline || prev.cover?.authorByline || prev.authorName,
+              coverPrompt: mergedCoverDraft?.coverPrompt || prev.cover?.coverPrompt || coverPrompt,
+              backCoverText: mergedCoverDraft?.backCoverText || prev.cover?.backCoverText,
+              colorScheme: mergedCoverDraft?.colorScheme || prev.cover?.colorScheme || coverColorScheme,
             },
           }));
         }
@@ -732,18 +744,29 @@ export default function StudioPage() {
 
         // Apply targeted page/cover edits directly into the book project
         if (data.pageEdit) {
-          if (data.pageEdit.pageIndex === 0) {
+          if (data.pageEdit.pageIndex === 0 || data.pageEdit.pageNumber === 0) {
+            const editedCoverDraft: CoverDraftData = {
+              title: data.pageEdit.title || mergedCoverDraft?.title || book.cover?.title || book.title,
+              subtitle: data.pageEdit.subtitle || mergedCoverDraft?.subtitle || book.cover?.subtitle || book.subtitle,
+              authorByline: mergedCoverDraft?.authorByline || book.cover?.authorByline || authorName || book.authorName,
+              coverPrompt: data.pageEdit.imagePrompt || mergedCoverDraft?.coverPrompt || book.cover?.coverPrompt || coverPrompt,
+              backCoverText: mergedCoverDraft?.backCoverText || book.cover?.backCoverText,
+              colorScheme: mergedCoverDraft?.colorScheme || book.cover?.colorScheme || coverColorScheme,
+              isReadyForCover: true,
+            };
             setBook((prev) => ({
               ...prev,
               cover: {
                 ...prev.cover,
-                title: data.pageEdit.title || prev.cover?.title || prev.title,
-                subtitle: data.pageEdit.subtitle || prev.cover?.subtitle || prev.subtitle,
-                coverPrompt: data.pageEdit.imagePrompt || prev.cover?.coverPrompt,
+                title: editedCoverDraft.title || prev.cover?.title || prev.title,
+                subtitle: editedCoverDraft.subtitle || prev.cover?.subtitle || prev.subtitle,
+                coverPrompt: editedCoverDraft.coverPrompt || prev.cover?.coverPrompt,
+                backCoverText: editedCoverDraft.backCoverText || prev.cover?.backCoverText,
+                colorScheme: editedCoverDraft.colorScheme || prev.cover?.colorScheme,
               },
             }));
             if (data.pageEdit.regenerateArt) {
-              handleDesignBookCover();
+              handleDesignBookCover(editedCoverDraft);
             }
           } else if (data.pageEdit.pageIndex > 0) {
             const targetIdx = data.pageEdit.pageIndex - 1;
@@ -809,7 +832,7 @@ export default function StudioPage() {
                 pageCount: data.bookDraft.pageCount || requestedPages,
               }
             : undefined,
-          coverDraft: data.coverDraft || undefined,
+          coverDraft: mergedCoverDraft || data.coverDraft || undefined,
         };
         setMessages([...newThread, assistantMsg]);
       }
@@ -949,35 +972,40 @@ export default function StudioPage() {
           selectedGenre === "memory_book" ||
           Boolean(data.book.pages?.some((p: any) => p.journalData));
 
+        const proposedScheme: BookCoverColorScheme = isJournalBook ? "warm_cream" : "storybook_vibrant";
+        const proposedFrontDesign = character.name
+          ? `Centered editorial cover illustration starring ${character.name} (${character.type}), visually reflecting "${data.book.title}" — ${prompt || data.book.subtitle}`
+          : `Centered editorial cover illustration representing "${data.book.title}" — ${prompt || data.book.subtitle}`;
+        const proposedBackDesign = data.book.subtitle
+          ? `${data.book.title}: ${data.book.subtitle}. Thoughtfully crafted around ${prompt || data.book.title}.`
+          : `A custom-designed edition of "${data.book.title}", tailored to your exact creative direction.`;
+
         const coverInviteMsg: ChatMessageItem = {
           id: `msg_cover_invite_${Date.now()}`,
           role: "assistant",
           content:
             lockedCount > 0 && !isBookUnlocked
-              ? `🎉 **Your first 5 pages of "${data.book.title}" are generated for FREE!**\n\nPages 1–5 are ready to explore below, and Pages 6–${generatedCount} are shown in blurred preview mode (you can unlock them anytime right on the page).\n\nWould you also like to design your **Front Book Cover** right here in our chat?`
-              : `🎉 All ${generatedCount} interior pages of "${data.book.title}" are now generated!\n\nNext step: let's design your **Front Book Cover** right here in our chat. How would you like your cover to look?`,
+              ? `🎉 **Your first 5 pages of "${data.book.title}" are generated for FREE!**\n\nPages 1–5 are ready to explore below, and Pages 6–${generatedCount} are shown in blurred preview mode.\n\nHere is my **Cover Concept Proposal** tailored to your book's topic. Review or customize the **Cover Color**, **Front Cover Design**, and **Back Cover Design** below — or tell me exactly what you'd like instead!`
+              : `🎉 All ${generatedCount} interior pages of "${data.book.title}" are now generated!\n\nHere is my **Cover Concept Proposal** tailored to your book's topic. Confirm the **Cover Color**, **Front Cover Design**, and **Back Cover Design** below — or describe your own scene in chat!`,
           discussionStage: "cover_design",
           quickReplies: isJournalBook
             ? [
-                "Minimalist line-art emblem cover on warm cream paper",
-                "Midnight glacier cover with bold title & tech border",
-                "Vibrant storybook cover with custom author byline",
+                "Use Jet Black cover with minimalist gold emblem",
+                "Keep Warm Cream cover with clean botanical ink art",
+                "Design a bold monochrome ink illustration cover",
               ]
             : [
-                character.name
-                  ? `Vibrant hero cover starring ${character.name}`
-                  : `Vibrant illustrated cover for "${data.book.title}"`,
-                "Minimalist monochrome line-art cover ready to color",
-                "Midnight glacier edition with golden starlight frame",
+                "Use Midnight Black cover with dramatic spotlight artwork",
+                "Use Warm Cream editorial cover styling",
+                "Use Vibrant Color full-bleed cover illustration",
               ],
           coverDraft: {
             title: data.book.title,
             subtitle: data.book.subtitle,
             authorByline: authorName || data.book.authorName || null,
-            coverPrompt: character.name
-              ? `Book cover illustration for "${data.book.title}" featuring ${character.name} (${character.type}), ${artStyle || prompt}`
-              : `Book cover illustration for "${data.book.title}", ${artStyle || prompt}`,
-            colorScheme: "warm_cream",
+            coverPrompt: proposedFrontDesign,
+            backCoverText: proposedBackDesign,
+            colorScheme: proposedScheme,
             isReadyForCover: true,
           },
         };
@@ -1087,27 +1115,39 @@ export default function StudioPage() {
         overrideCoverDraft?.authorByline || book.cover?.authorByline || authorName || book.authorName;
       const effectiveScheme: BookCoverColorScheme =
         overrideCoverDraft?.colorScheme || book.cover?.colorScheme || coverColorScheme || "warm_cream";
+      const effectiveBackCoverText =
+        overrideCoverDraft?.backCoverText ||
+        book.cover?.backCoverText ||
+        (effectiveCoverSubtitle ? `${effectiveCoverTitle} — ${effectiveCoverSubtitle}` : effectiveCoverTitle);
 
       const rawCoverPrompt =
         overrideCoverDraft?.coverPrompt ||
         coverPrompt ||
         book.cover?.coverPrompt ||
-        `Front book cover centerpiece artwork for "${effectiveCoverTitle}" — ${prompt || book.subtitle || "custom edition"}`;
+        `Book cover centerpiece artwork for "${effectiveCoverTitle}" — ${prompt || book.subtitle || "custom edition"}`;
 
       const isMonochromeCover =
         effectiveScheme === "minimal_monochrome" ||
-        /\b(monochrome|black and white|line art|coloring cover)\b/i.test(rawCoverPrompt);
+        /\b(monochrome|black and white line art|coloring cover)\b/i.test(rawCoverPrompt);
+
+      const coverArtStyle = isMonochromeCover
+        ? "Clean high-contrast black and white line art emblem, pure white background"
+        : effectiveScheme === "midnight_black"
+        ? "Dramatic high-contrast studio cover artwork on pure jet-black (#0A0A0C) background"
+        : overrideCoverDraft?.coverPrompt
+        ? ""
+        : artStyle || "Editorial book cover illustration";
 
       const res = await fetch("/api/ai/image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: `Front book cover centerpiece illustration (no text inside image), ${rawCoverPrompt}`,
-          characterTraits: character.traits.join(", "),
+          prompt: rawCoverPrompt,
+          characterTraits: overrideCoverDraft?.coverPrompt ? "" : character.traits.join(", "),
           pageNumber: 0,
-          artStyle: isMonochromeCover
-            ? "Clean high-contrast black and white line art emblem, pure white background"
-            : artStyle || "Playful, vibrant book cover illustration",
+          isCover: true,
+          coverColorScheme: effectiveScheme,
+          artStyle: coverArtStyle,
           interiorColor: isMonochromeCover ? "black_and_white" : "standard_color",
         }),
       });
@@ -1120,7 +1160,8 @@ export default function StudioPage() {
         subtitle: effectiveCoverSubtitle,
         authorByline: effectiveCoverAuthor,
         coverPrompt: rawCoverPrompt,
-        artStyle: isMonochromeCover ? "Monochrome line-art cover" : artStyle,
+        backCoverText: effectiveBackCoverText,
+        artStyle: isMonochromeCover ? "Monochrome line-art cover" : coverArtStyle || artStyle,
         colorScheme: effectiveScheme,
         imageUrl: generatedCoverUrl,
         isDesigned: true,
@@ -1187,6 +1228,7 @@ export default function StudioPage() {
 
   const handleDownloadFullPdf = async () => {
     if (!isBookUnlocked) {
+      setOrderModalInitialTab("digital_pdf");
       setOrderModalOpen(true);
       return;
     }
@@ -1483,9 +1525,9 @@ export default function StudioPage() {
                                           handleSendMessage(`I choose the print-safe title: "${msg.printAdvisory.safeTitle}"`);
                                         }
                                       }}
-                                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white border border-emerald-800 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
                                     >
-                                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-200" />
                                       <span>Adopt Print-Safe: &quot;{msg.printAdvisory.safeTitle}&quot;</span>
                                     </button>
                                   )}
@@ -1494,7 +1536,7 @@ export default function StudioPage() {
                                     onClick={() => {
                                       handleSendMessage("I prefer to keep my original title and character for personal use. Let's continue designing!");
                                     }}
-                                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-amber-200 border border-amber-400/30 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-[#FAF6EE] text-[#1E2530] border border-[#E8DFD3] flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
                                   >
                                     <span>Keep Original &amp; Continue Designing</span>
                                   </button>
@@ -1504,21 +1546,21 @@ export default function StudioPage() {
 
                             {/* Applied edits (revision turns) */}
                             {!isUser && msg.changes && msg.changes.length > 0 && (
-                              <div className="pt-2.5 border-t border-emerald-400/20 space-y-1.5">
-                                <span className="text-[10px] uppercase font-bold text-emerald-300 tracking-wider flex items-center gap-1.5">
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                              <div className="pt-2.5 border-t border-emerald-200 space-y-1.5">
+                                <span className="text-[10px] uppercase font-bold text-emerald-800 tracking-wider flex items-center gap-1.5">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                                   Changes Applied
                                 </span>
                                 <div className="flex flex-wrap gap-1.5">
                                   {msg.changes.map((c, cIdx) => (
                                     <span
                                       key={cIdx}
-                                      className="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-400/30 text-emerald-100"
+                                      className="text-[11px] px-2.5 py-1.5 rounded-lg bg-emerald-50/90 border border-emerald-300 text-emerald-950 font-medium shadow-2xs"
                                     >
-                                      <strong className="capitalize">{c.field}:</strong>{" "}
-                                      {c.from ? <span className="line-through text-slate-400">{c.from}</span> : null}
-                                      {c.from ? " → " : ""}
-                                      {c.to}
+                                      <strong className="capitalize text-emerald-900">{c.field}:</strong>{" "}
+                                      {c.from ? <span className="line-through text-[#7A6F5D]">{c.from}</span> : null}
+                                      {c.from ? <span className="text-emerald-700 font-bold"> → </span> : ""}
+                                      <span className="text-emerald-950 font-semibold">{c.to}</span>
                                     </span>
                                   ))}
                                 </div>
@@ -1527,13 +1569,13 @@ export default function StudioPage() {
 
                             {/* Interactive Title Options Suggested by Copilot (latest reply only, until a title is locked) */}
                             {isLatestAssistant && msg.titleOptions && msg.titleOptions.length > 0 && (
-                              <div className="pt-2.5 border-t border-sky-400/20 space-y-2">
+                              <div className="pt-2.5 border-t border-[#E8DFD3] space-y-2">
                                 <div className="flex items-center justify-between">
-                                  <span className="text-[11px] font-bold text-sky-300 flex items-center gap-1.5 uppercase tracking-wider">
-                                    <BookOpen className="w-3.5 h-3.5 text-sky-400" />
+                                  <span className="text-[11px] font-bold text-amber-800 flex items-center gap-1.5 uppercase tracking-wider">
+                                    <BookOpen className="w-3.5 h-3.5 text-amber-600" />
                                     <span>Suggested Book Titles (Click to Pick):</span>
                                   </span>
-                                  <span className="text-[10px] text-slate-400">Tap to select</span>
+                                  <span className="text-[10px] text-[#6E6254]">Tap to select</span>
                                 </div>
                                 <div className="grid grid-cols-1 gap-1.5">
                                   {msg.titleOptions.map((titleOpt, tIdx) => {
@@ -1609,13 +1651,141 @@ export default function StudioPage() {
                                   {hasFullBook ||
                                   msg.discussionStage === "cover_design" ||
                                   Boolean(msg.coverDraft?.isReadyForCover) ? (
-                                    <>
-                                      <span className="text-[11px] text-amber-900 font-medium">
-                                        {hasCover
-                                          ? "✨ Cover updated in chat! Regenerate your Front Book Cover to see changes."
-                                          : "🎨 Interior pages complete! Generate your Front Book Cover from our chat now."}
-                                      </span>
-                                      <div className="flex items-center gap-2">
+                                    <div className="w-full space-y-2.5">
+                                      {/* Interactive Cover Concept Proposal & Confirmation Card */}
+                                      <div className="w-full rounded-xl border border-[#E8DFD3] bg-[#FAF6EE] p-3 space-y-2.5">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                          <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800">
+                                            Cover Concept Confirmation
+                                          </span>
+                                          <span className="text-[10px] text-slate-600 font-medium">
+                                            Confirm color, front artwork, &amp; back blurb before generating
+                                          </span>
+                                        </div>
+
+                                        {/* Color Scheme Picker */}
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                          {(
+                                            [
+                                              { id: "midnight_black", label: "Jet Black", swatch: "bg-[#0A0A0C]" },
+                                              { id: "midnight_glacier", label: "Midnight Slate", swatch: "bg-[#0F172A]" },
+                                              { id: "warm_cream", label: "Warm Cream", swatch: "bg-[#FAF6EE] border border-[#D4C5B3]" },
+                                              { id: "storybook_vibrant", label: "Vibrant Amber", swatch: "bg-amber-700" },
+                                              { id: "minimal_monochrome", label: "B&W Ink", swatch: "bg-white border border-slate-900" },
+                                            ] as { id: BookCoverColorScheme; label: string; swatch: string }[]
+                                          ).map((opt) => {
+                                            const activeScheme = msg.coverDraft?.colorScheme || coverColorScheme || "warm_cream";
+                                            const isSelected = activeScheme === opt.id;
+                                            return (
+                                              <button
+                                                key={opt.id}
+                                                type="button"
+                                                onClick={() => {
+                                                  setCoverColorScheme(opt.id);
+                                                  setBook((prev) => ({
+                                                    ...prev,
+                                                    cover: { ...prev.cover, colorScheme: opt.id },
+                                                  }));
+                                                  setMessages((prev) =>
+                                                    prev.map((m) =>
+                                                      m.id === msg.id
+                                                        ? {
+                                                            ...m,
+                                                            coverDraft: {
+                                                              ...(m.coverDraft || {}),
+                                                              colorScheme: opt.id,
+                                                              isReadyForCover: true,
+                                                            },
+                                                          }
+                                                        : m
+                                                    )
+                                                  );
+                                                }}
+                                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
+                                                  isSelected
+                                                    ? "bg-[#1E2530] text-white border-[#1E2530] shadow-xs"
+                                                    : "bg-white hover:bg-amber-50 text-[#1E2530] border-[#E8DFD3]"
+                                                }`}
+                                              >
+                                                <span className={`w-2.5 h-2.5 rounded-full ${opt.swatch}`} />
+                                                {opt.label}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+
+                                        {/* Editable Front & Back Cover Proposals */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                          <label className="block space-y-1">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                                              Front Cover Artwork Prompt
+                                            </span>
+                                            <textarea
+                                              rows={2}
+                                              value={msg.coverDraft?.coverPrompt ?? coverPrompt ?? ""}
+                                              onChange={(e) => {
+                                                const val = e.target.value;
+                                                setCoverPrompt(val);
+                                                setMessages((prev) =>
+                                                  prev.map((m) =>
+                                                    m.id === msg.id
+                                                      ? {
+                                                          ...m,
+                                                          coverDraft: {
+                                                            ...(m.coverDraft || {}),
+                                                            coverPrompt: val,
+                                                            isReadyForCover: true,
+                                                          },
+                                                        }
+                                                      : m
+                                                  )
+                                                );
+                                              }}
+                                              placeholder="Describe your exact front cover visual scene..."
+                                              className="w-full rounded-lg border border-[#E8DFD3] bg-white px-2.5 py-1.5 text-[11px] text-[#1E2530] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+                                            />
+                                          </label>
+                                          <label className="block space-y-1">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                                              Back Cover Design / Blurb
+                                            </span>
+                                            <textarea
+                                              rows={2}
+                                              value={msg.coverDraft?.backCoverText ?? book.cover?.backCoverText ?? ""}
+                                              onChange={(e) => {
+                                                const val = e.target.value;
+                                                setBook((prev) => ({
+                                                  ...prev,
+                                                  cover: { ...prev.cover, backCoverText: val },
+                                                }));
+                                                setMessages((prev) =>
+                                                  prev.map((m) =>
+                                                    m.id === msg.id
+                                                      ? {
+                                                          ...m,
+                                                          coverDraft: {
+                                                            ...(m.coverDraft || {}),
+                                                            backCoverText: val,
+                                                            isReadyForCover: true,
+                                                          },
+                                                        }
+                                                      : m
+                                                  )
+                                                );
+                                              }}
+                                              placeholder="Concise back cover blurb matching your book topic..."
+                                              className="w-full rounded-lg border border-[#E8DFD3] bg-white px-2.5 py-1.5 text-[11px] text-[#1E2530] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400/50"
+                                            />
+                                          </label>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <span className="text-[11px] text-amber-900 font-medium">
+                                          {hasCover
+                                            ? "✨ Cover updated! Regenerate to apply your confirmed design."
+                                            : "🎨 Happy with this color, front cover & back cover? Confirm to generate."}
+                                        </span>
                                         <button
                                           type="button"
                                           onClick={() => handleDesignBookCover(msg.coverDraft)}
@@ -1631,12 +1801,12 @@ export default function StudioPage() {
                                             <span>
                                               {hasCover
                                                 ? "🎨 Regenerate Book Cover →"
-                                                : "🎨 Generate Front Book Cover Now →"}
+                                                : "✅ Approve & Generate Cover →"}
                                             </span>
                                           )}
                                         </button>
                                       </div>
-                                    </>
+                                    </div>
                                   ) : hasProof && !msg.requiresNewProof && !isProofStale ? (
                                     msg.isPagePlanConfirmed || isPagePlanConfirmed ? (
                                       <>
@@ -1749,8 +1919,8 @@ export default function StudioPage() {
 
                     {/* Chatting Loading Indicator */}
                     {isChatting && (
-                      <div className="flex items-center gap-2 text-xs text-sky-300 italic py-1">
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <div className="flex items-center gap-2 text-xs text-amber-800 font-medium italic py-1">
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600" />
                         <span>PaperTales is brainstorming your book idea...</span>
                       </div>
                     )}
@@ -1759,20 +1929,20 @@ export default function StudioPage() {
 
                 {/* Bottom Input Bar: Matches wireframe sketch with rounded blue border, att button & send button */}
                 {activePageReference && (
-                  <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-sky-500/15 border border-sky-400/30 text-xs text-sky-200 mb-2">
+                  <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-950 mb-2">
                     <div className="flex items-center gap-2 truncate">
-                      <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                      <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                       <span className="font-bold">
                         {activePageReference.isCover ? "Editing Cover Reference:" : `Editing Page ${activePageReference.pageIndex} Reference:`}
                       </span>
-                      <span className="truncate text-slate-300">
+                      <span className="truncate text-[#5C5347]">
                         &ldquo;{activePageReference.title || activePageReference.storyText?.slice(0, 35) || activePageReference.imagePrompt?.slice(0, 35) || "Active Page"}&rdquo;
                       </span>
                     </div>
                     <button
                       type="button"
                       onClick={() => setActivePageReference(null)}
-                      className="p-1 hover:text-white text-slate-400 rounded-lg cursor-pointer ml-2"
+                      className="p-1 hover:text-[#1E2530] text-slate-500 rounded-lg cursor-pointer ml-2"
                       title="Remove page reference"
                     >
                       <X className="w-3.5 h-3.5" />
@@ -2015,8 +2185,8 @@ export default function StudioPage() {
               {/* Trim Size & Dimension Selector */}
               <div className="space-y-2 pt-1">
                 <div className="flex items-center justify-between text-xs sm:text-sm">
-                  <span className="font-bold text-white">Trim Size &amp; Book Dimension:</span>
-                  <span className="text-[11px] font-bold text-sky-300">
+                  <span className="font-bold text-[#1E2530]">Trim Size &amp; Book Dimension:</span>
+                  <span className="text-[11px] font-bold text-amber-700">
                     Lulu POD Industry Standard
                   </span>
                 </div>
@@ -2382,7 +2552,10 @@ export default function StudioPage() {
               onDownloadPdf={handleDownloadFullPdf}
               onPrintFirstPage={handlePrintFirstPage}
               onOpenBookDetails={() => setBookDetailsOpen(true)}
-              onOrderPhysical={() => setOrderModalOpen(true)}
+              onOrderPhysical={() => {
+                setOrderModalInitialTab("physical_print");
+                setOrderModalOpen(true);
+              }}
               onOpenTokenModal={() => setTokenModalOpen(true)}
               onOpenUnlockChoice={() => setUnlockChoiceOpen(true)}
               onUnlockRemainingPages={handleUnlockRemainingPages}
@@ -2492,6 +2665,7 @@ export default function StudioPage() {
           }}
           onOrderPhysical={() => {
             setUnlockChoiceOpen(false);
+            setOrderModalInitialTab("physical_print");
             setOrderModalOpen(true);
           }}
         />
@@ -2500,6 +2674,7 @@ export default function StudioPage() {
           isOpen={orderModalOpen}
           onClose={() => setOrderModalOpen(false)}
           book={book}
+          initialFulfillmentType={orderModalInitialTab}
           isDigitalUnlocked={isBookUnlocked}
           onOrderCompleted={() => {
             setIsBookUnlocked(true);

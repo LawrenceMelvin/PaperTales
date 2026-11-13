@@ -88,7 +88,14 @@ export async function compileBookPdf(book: BookProject, options?: PdfCompileOpti
 
   const coverTitle = book.cover?.title || book.title;
   const coverSubtitle = book.cover?.subtitle || book.subtitle;
-  const coverAuthor = book.cover?.authorByline || book.authorName || "Personal Keepsake Edition";
+  const rawAuthor = book.cover?.authorByline || book.authorName || "";
+  const coverAuthor =
+    rawAuthor && rawAuthor !== "Personal Keepsake Edition" && rawAuthor !== "PaperTales Author"
+      ? rawAuthor
+      : "";
+  const backBlurb =
+    book.cover?.backCoverText ||
+    (coverSubtitle ? `${coverTitle} — ${coverSubtitle}` : "");
 
   // =========================================================================
   // MODE 1: LULU COVER PDF (Single Wraparound Page: Back + Spine + Front)
@@ -98,59 +105,54 @@ export async function compileBookPdf(book: BookProject, options?: PdfCompileOpti
     const totalCoverHeight = TRIM_HEIGHT + (BLEED_PT * 2);
     const coverPage = pdfDoc.addPage([totalCoverWidth, totalCoverHeight]);
 
-    // Background color (e.g. Midnight Glacier)
-    const isDark = book.cover?.colorScheme !== "warm_cream" && book.cover?.colorScheme !== "minimal_monochrome";
+    // Background color (e.g. Midnight Black, Midnight Glacier, Warm Cream, etc.)
+    const coverScheme = book.cover?.colorScheme || "warm_cream";
+    const isDark = coverScheme !== "warm_cream" && coverScheme !== "minimal_monochrome";
     if (isDark) {
       coverPage.drawRectangle({
         x: 0,
         y: 0,
         width: totalCoverWidth,
         height: totalCoverHeight,
-        color: rgb(0.06, 0.09, 0.14), // #0f1524
+        color:
+          coverScheme === "midnight_black"
+            ? rgb(0.04, 0.04, 0.05) // #0A0A0C jet black
+            : rgb(0.06, 0.09, 0.14), // #0f1524
+      });
+    } else if (coverScheme === "warm_cream") {
+      coverPage.drawRectangle({
+        x: 0,
+        y: 0,
+        width: totalCoverWidth,
+        height: totalCoverHeight,
+        color: rgb(0.98, 0.96, 0.93),
       });
     }
 
     // 1. Back Cover Area: x = BLEED_PT, width = TRIM_WIDTH
     const backX = BLEED_PT;
     const backY = BLEED_PT;
-    coverPage.drawText("BACK COVER • KEEPSAKE EDITION", {
-      x: backX + 36,
-      y: backY + TRIM_HEIGHT - 54,
-      size: 9,
-      font: helveticaBold,
-      color: rgb(0.49, 0.83, 0.99),
-    });
 
     coverPage.drawText(coverTitle, {
       x: backX + 36,
-      y: backY + TRIM_HEIGHT - 90,
+      y: backY + TRIM_HEIGHT - 70,
       size: 18,
       font: timesBold,
       color: isDark ? rgb(1, 1, 1) : rgb(0.1, 0.1, 0.1),
       maxWidth: TRIM_WIDTH - 72,
     });
 
-    const backText = book.cover?.backCoverText ||
-      `Step inside a personalized bedtime journey crafted with love. Starring ${book.character?.name || "our hero"}, this archival edition preserves precious memories and sparks boundless imagination.`;
-
-    coverPage.drawText(backText, {
-      x: backX + 36,
-      y: backY + TRIM_HEIGHT - 130,
-      size: 11,
-      font: timesNormal,
-      color: isDark ? rgb(0.8, 0.85, 0.9) : rgb(0.2, 0.2, 0.2),
-      maxWidth: TRIM_WIDTH - 72,
-      lineHeight: 16,
-    });
-
-    // Back Cover Barcode placeholder
-    coverPage.drawText("ISBN 978-0-PT-AI-2026 • Lulu Direct POD", {
-      x: backX + 36,
-      y: backY + 45,
-      size: 9,
-      font: courier,
-      color: rgb(0.5, 0.5, 0.5),
-    });
+    if (backBlurb) {
+      coverPage.drawText(backBlurb, {
+        x: backX + 36,
+        y: backY + TRIM_HEIGHT - 110,
+        size: 11,
+        font: timesNormal,
+        color: isDark ? rgb(0.85, 0.88, 0.92) : rgb(0.2, 0.2, 0.2),
+        maxWidth: TRIM_WIDTH - 72,
+        lineHeight: 16,
+      });
+    }
 
     // 2. Spine Area (if perfect bound with thickness)
     const spineX = BLEED_PT + TRIM_WIDTH;
@@ -202,14 +204,16 @@ export async function compileBookPdf(book: BookProject, options?: PdfCompileOpti
       });
     }
 
-    // Footer
-    coverPage.drawText(`By: ${coverAuthor}`, {
-      x: frontX + 36,
-      y: frontY + 40,
-      size: 11,
-      font: timesNormal,
-      color: isDark ? rgb(0.9, 0.9, 0.9) : rgb(0.2, 0.2, 0.2),
-    });
+    // Footer (only when user provided a real author byline)
+    if (coverAuthor) {
+      coverPage.drawText(`By: ${coverAuthor}`, {
+        x: frontX + 36,
+        y: frontY + 40,
+        size: 11,
+        font: timesNormal,
+        color: isDark ? rgb(0.9, 0.9, 0.9) : rgb(0.2, 0.2, 0.2),
+      });
+    }
 
     return await pdfDoc.save();
   }
@@ -284,55 +288,50 @@ export async function compileBookPdf(book: BookProject, options?: PdfCompileOpti
 
   // Spread 0: Wraparound Cover [Back Cover | Front Cover]
   const coverSpread = pdfDoc.addPage([SPREAD_WIDTH, SPREAD_HEIGHT]);
-  const isDarkCover = book.cover?.colorScheme !== "warm_cream" && book.cover?.colorScheme !== "minimal_monochrome";
+  const spreadCoverScheme = book.cover?.colorScheme || "warm_cream";
+  const isDarkCover = spreadCoverScheme !== "warm_cream" && spreadCoverScheme !== "minimal_monochrome";
   if (isDarkCover) {
     coverSpread.drawRectangle({
       x: 0,
       y: 0,
       width: SPREAD_WIDTH,
       height: SPREAD_HEIGHT,
-      color: rgb(0.06, 0.09, 0.14),
+      color:
+        spreadCoverScheme === "midnight_black"
+          ? rgb(0.04, 0.04, 0.05)
+          : rgb(0.06, 0.09, 0.14),
+    });
+  } else if (spreadCoverScheme === "warm_cream") {
+    coverSpread.drawRectangle({
+      x: 0,
+      y: 0,
+      width: SPREAD_WIDTH,
+      height: SPREAD_HEIGHT,
+      color: rgb(0.98, 0.96, 0.93),
     });
   }
 
   // Left Leaf: Back Cover
-  coverSpread.drawText("BACK COVER • KEEPSAKE EDITION", {
-    x: 40,
-    y: SPREAD_HEIGHT - 54,
-    size: 9,
-    font: helveticaBold,
-    color: rgb(0.49, 0.83, 0.99),
-  });
-
   coverSpread.drawText(coverTitle, {
     x: 40,
-    y: SPREAD_HEIGHT - 90,
+    y: SPREAD_HEIGHT - 72,
     size: 20,
     font: timesBold,
     color: isDarkCover ? rgb(1, 1, 1) : rgb(0.1, 0.1, 0.1),
     maxWidth: TRIM_WIDTH - 80,
   });
 
-  const backBlurb = book.cover?.backCoverText ||
-    `Step into the magical world of ${coverTitle}. Starring ${book.character?.name || "our hero"}, this personalized keepsake edition preserves precious memories and sparks boundless imagination.`;
-
-  coverSpread.drawText(backBlurb, {
-    x: 40,
-    y: SPREAD_HEIGHT - 130,
-    size: 11,
-    font: timesNormal,
-    color: isDarkCover ? rgb(0.8, 0.85, 0.9) : rgb(0.2, 0.2, 0.2),
-    maxWidth: TRIM_WIDTH - 80,
-    lineHeight: 16,
-  });
-
-  coverSpread.drawText("ISBN 978-0-PT-AI-2026 • Lulu Direct 300 DPI", {
-    x: 40,
-    y: 40,
-    size: 9,
-    font: courier,
-    color: rgb(0.5, 0.5, 0.5),
-  });
+  if (backBlurb) {
+    coverSpread.drawText(backBlurb, {
+      x: 40,
+      y: SPREAD_HEIGHT - 114,
+      size: 11,
+      font: timesNormal,
+      color: isDarkCover ? rgb(0.85, 0.88, 0.92) : rgb(0.2, 0.2, 0.2),
+      maxWidth: TRIM_WIDTH - 80,
+      lineHeight: 16,
+    });
+  }
 
   // Center Spine Divider
   coverSpread.drawLine({
@@ -375,13 +374,15 @@ export async function compileBookPdf(book: BookProject, options?: PdfCompileOpti
     });
   }
 
-  coverSpread.drawText(`By: ${coverAuthor}`, {
-    x: frontStartX + 40,
-    y: 40,
-    size: 11,
-    font: timesNormal,
-    color: isDarkCover ? rgb(0.9, 0.9, 0.9) : rgb(0.2, 0.2, 0.2),
-  });
+  if (coverAuthor) {
+    coverSpread.drawText(`By: ${coverAuthor}`, {
+      x: frontStartX + 40,
+      y: 40,
+      size: 11,
+      font: timesNormal,
+      color: isDarkCover ? rgb(0.9, 0.9, 0.9) : rgb(0.2, 0.2, 0.2),
+    });
+  }
 
   // Interior Spreads
   for (const page of book.pages) {

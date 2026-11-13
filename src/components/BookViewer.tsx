@@ -663,10 +663,8 @@ export default function BookViewer({
           <p className="text-xs text-slate-600 mt-0.5">
             {book.authorName && book.authorName.trim() !== "" && book.authorName !== "Lawrence & Leo" ? (
               <>By <strong className="text-[#1E2530]">{book.authorName}</strong> &bull; </>
-            ) : (
-              <>Personal Keepsake Edition &bull; </>
-            )}
-            {book.pageCount} Pages &bull; Archival Saddle-Stitch POD
+            ) : null}
+            {book.pageCount} Pages
           </p>
         </div>
 
@@ -694,13 +692,15 @@ export default function BookViewer({
             const coverScheme = book.cover?.colorScheme || "warm_cream";
             const isLightCover = coverScheme === "warm_cream" || coverScheme === "minimal_monochrome";
             const coverBgClass =
-              coverScheme === "warm_cream"
+              coverScheme === "midnight_black"
+                ? "bg-[#0A0A0C] text-[#F8FAFC] border-amber-400/50"
+                : coverScheme === "warm_cream"
                 ? "bg-[#FAF6EE] text-[#1E2530] border-[#E8DFD3]"
                 : coverScheme === "minimal_monochrome"
                 ? "bg-white text-slate-950 border-slate-900 border-2"
                 : coverScheme === "storybook_vibrant"
                 ? "bg-gradient-to-br from-amber-700 via-amber-800 to-amber-950 text-white border-amber-300/60"
-                : "bg-[#2A1D13] text-[#FAF6EE] border-amber-500/40";
+                : "bg-[#0F172A] text-[#F8FAFC] border-sky-400/40";
 
             const coverTitle = book.cover?.title || book.title;
             const coverSubtitle = book.cover?.subtitle || book.subtitle;
@@ -715,50 +715,22 @@ export default function BookViewer({
                 className={`w-full h-full ${spreadAspectClass} flex flex-col sm:flex-row ${coverBgClass} rounded-2xl border-2 book-shadow overflow-hidden transition-all duration-300 relative`}
               >
                 {/* Left Leaf: Back Cover */}
-                <div className={`flex-1 p-6 sm:p-8 lg:p-10 flex flex-col justify-between border-b sm:border-b-0 sm:border-r ${isLightCover ? "bg-[#FAF6EE] border-[#E8DFD3]" : "border-amber-400/20"} relative`}>
+                <div className={`flex-1 p-6 sm:p-8 lg:p-10 flex flex-col justify-between border-b sm:border-b-0 sm:border-r ${isLightCover ? "bg-[#FAF6EE] border-[#E8DFD3]" : "border-white/15"} relative`}>
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
                       <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${isLightCover ? "bg-amber-100 text-amber-900 border border-amber-300" : "bg-amber-400/20 text-amber-300 border border-amber-400/30"}`}>
                         Back Cover
                       </span>
-                      <span className={`text-[10px] ${isLightCover ? "text-slate-500" : "text-slate-400"}`}>
-                        Personal Keepsake Edition
-                      </span>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-2.5">
                       <h3 className={`text-lg sm:text-xl font-black font-serif ${isLightCover ? "text-[#1E2530]" : "text-white"}`}>
                         {coverTitle}
                       </h3>
-                      <p className={`text-xs sm:text-sm leading-relaxed ${isLightCover ? "text-slate-700" : "text-slate-300"}`}>
+                      <p className={`text-xs sm:text-sm leading-relaxed ${isLightCover ? "text-slate-700" : "text-slate-200"}`}>
                         {book.cover?.backCoverText ||
-                          `Step into the magical journey of ${coverTitle}. Featuring ${book.character?.name || "our hero"}, this personalized keepsake edition preserves cherished moments, sparks boundless creativity, and inspires young artists.`}
+                          (coverSubtitle ? `${coverTitle} — ${coverSubtitle}` : `${coverTitle}`)}
                       </p>
-                    </div>
-
-                    <div className={`text-xs p-3.5 rounded-xl ${isLightCover ? "bg-white border border-[#E8DFD3] text-slate-700 shadow-2xs" : "bg-slate-900/70 text-slate-300 border border-amber-400/20"}`}>
-                      <p className={`font-bold ${isLightCover ? "text-amber-800" : "text-amber-300"}`}>Archival Softcover Keepsake</p>
-                      <p className={`text-[11px] ${isLightCover ? "text-slate-500" : "text-slate-400"} mt-1`}>
-                        Printed on 60# uncoated white paper &bull; Archival Saddle-Stitch POD &bull; PaperTales AI Studio
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Back Cover Barcode & Lulu imprint */}
-                  <div className={`pt-4 border-t ${isLightCover ? "border-[#E8DFD3]" : "border-amber-400/20"} flex items-center justify-between`}>
-                    <div className={`text-[10px] ${isLightCover ? "text-slate-500" : "text-slate-400"} font-mono`}>
-                      <div>Lulu Direct 300 DPI</div>
-                      <div>ISBN 978-0-PT-AI-2026</div>
-                    </div>
-                    <div className={`bg-white p-1.5 rounded-md flex flex-col items-center ${isLightCover ? "border border-[#E8DFD3] shadow-xs" : "shadow-xs"}`}>
-                      <div className="flex items-center gap-[2px] h-7">
-                        {[3, 1, 2, 1, 4, 1, 2, 3, 1, 2, 4, 2, 1, 3].map((w, i) => (
-                          <div key={i} className="bg-slate-950 h-full" style={{ width: `${w * 1.5}px` }} />
-                        ))}
-                      </div>
-                      <span className="text-[7px] font-mono text-slate-900 font-bold tracking-widest mt-0.5">
-                        PAPER-TALES-AI
-                      </span>
                     </div>
                   </div>
                 </div>
@@ -843,26 +815,17 @@ export default function BookViewer({
                   </div>
 
                   {/* Front Cover Footer */}
-                  <div
-                    className={`flex items-center justify-between border-t pt-2 text-xs z-10 ${
-                      isLightCover ? "border-[#E8DFD3] text-slate-600" : "border-white/10 text-[#a0b4c4]"
-                    }`}
-                  >
-                    <span>
-                      {coverAuthor ? (
-                        <>
-                          Author: <strong className={isLightCover ? "text-[#1E2530]" : "text-white"}>{coverAuthor}</strong>
-                        </>
-                      ) : (
-                        <strong className={isLightCover ? "text-[#1E2530]" : "text-white"}>
-                          Personal Keepsake Edition
-                        </strong>
-                      )}
-                    </span>
-                    <span className={`text-[10px] font-mono ${isLightCover ? "text-amber-800 font-bold" : "text-amber-300"}`}>
-                      {is6x9 ? '6" × 9" Lulu POD' : is85x11 ? '8.5" × 11" Lulu POD' : '8.5" × 8.5" Lulu POD'}
-                    </span>
-                  </div>
+                  {coverAuthor && coverAuthor !== "Personal Keepsake Edition" && (
+                    <div
+                      className={`flex items-center justify-center border-t pt-2 text-xs z-10 ${
+                        isLightCover ? "border-[#E8DFD3] text-slate-600" : "border-white/15 text-slate-300"
+                      }`}
+                    >
+                      <span>
+                        By <strong className={isLightCover ? "text-[#1E2530]" : "text-white"}>{coverAuthor}</strong>
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -1360,27 +1323,27 @@ export default function BookViewer({
             transform: "translate(-50%, -100%)",
             zIndex: 60,
           }}
-          className="glacier-glass rounded-2xl p-3 border border-sky-400/40 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 w-[300px] sm:w-[360px]"
+          className="bg-[#FFFDF9] rounded-2xl p-3 border border-[#E8DFD3] shadow-2xl animate-in fade-in zoom-in-95 duration-150 w-[300px] sm:w-[360px] text-[#1E2530]"
         >
           <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-sky-200">
-              <Sparkles className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
+            <div className="flex items-center gap-1.5 text-xs font-bold text-[#1E2530]">
+              <Sparkles className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
               <span>Refine with AI</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-400/20 text-sky-300 font-mono border border-sky-400/30">
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 font-mono border border-amber-300">
                 1 Token
               </span>
             </div>
             <button
               type="button"
               onClick={() => setTextSelection(null)}
-              className="text-slate-400 hover:text-white p-0.5 rounded cursor-pointer"
+              className="text-slate-500 hover:text-[#1E2530] p-0.5 rounded cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
 
           {/* Snippet Preview */}
-          <div className="text-[11px] text-slate-300 italic line-clamp-2 bg-slate-950/60 p-2 rounded-lg border border-white/10 mb-2.5">
+          <div className="text-[11px] text-[#5C5347] italic line-clamp-2 bg-[#FAF6EE] p-2 rounded-lg border border-[#E8DFD3] mb-2.5">
             &ldquo;{textSelection.text}&rdquo;
           </div>
 
@@ -1390,25 +1353,25 @@ export default function BookViewer({
               type="button"
               disabled={isRefiningText}
               onClick={() => handleApplyRefine("Make it playful, humorous, and full of giggles")}
-              className="text-[11px] px-2.5 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-400/30 flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+              className="text-[11px] px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-300 flex items-center gap-1 active:scale-95 transition-all cursor-pointer font-medium"
             >
-              <Smile className="w-3 h-3 text-sky-400" /> Playful
+              <Smile className="w-3 h-3 text-sky-700" /> Playful
             </button>
             <button
               type="button"
               disabled={isRefiningText}
               onClick={() => handleApplyRefine("Simplify language for younger readers")}
-              className="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/30 flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+              className="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 flex items-center gap-1 active:scale-95 transition-all cursor-pointer font-medium"
             >
-              <Baby className="w-3 h-3 text-emerald-400" /> Simplify
+              <Baby className="w-3 h-3 text-emerald-700" /> Simplify
             </button>
             <button
               type="button"
               disabled={isRefiningText}
               onClick={() => handleApplyRefine("Add rich sensory details and vivid imagery")}
-              className="text-[11px] px-2.5 py-1 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-400/30 flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
+              className="text-[11px] px-2.5 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-300 flex items-center gap-1 active:scale-95 transition-all cursor-pointer font-medium"
             >
-              <Eye className="w-3 h-3 text-purple-400" /> Sensory
+              <Eye className="w-3 h-3 text-purple-700" /> Sensory
             </button>
           </div>
 
@@ -1428,12 +1391,12 @@ export default function BookViewer({
               onChange={(e) => setCustomInstruction(e.target.value)}
               placeholder="Or type custom change..."
               disabled={isRefiningText}
-              className="flex-1 bg-slate-900/90 text-xs text-white placeholder-slate-400 px-2.5 py-1.5 rounded-lg border border-sky-400/30 focus:outline-none focus:ring-1 focus:ring-sky-400"
+              className="flex-1 bg-white text-xs text-[#1E2530] placeholder-slate-400 px-2.5 py-1.5 rounded-lg border border-[#E8DFD3] focus:outline-none focus:ring-1 focus:ring-amber-500"
             />
             <button
               type="submit"
               disabled={isRefiningText || !customInstruction.trim()}
-              className="px-2.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs flex items-center gap-1 disabled:opacity-50 transition-all cursor-pointer"
+              className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1 disabled:opacity-50 transition-all cursor-pointer"
             >
               {isRefiningText ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />

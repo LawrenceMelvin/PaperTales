@@ -38,13 +38,20 @@ export interface JournalPageData {
   illustrationPlacement?: "bottom_right" | "top_right";
 }
 
-export type BookCoverColorScheme = "midnight_glacier" | "warm_cream" | "storybook_vibrant" | "minimal_monochrome";
+export type BookCoverColorScheme =
+  | "midnight_black"
+  | "midnight_glacier"
+  | "warm_cream"
+  | "storybook_vibrant"
+  | "minimal_monochrome";
 
 export interface BookCoverDesign {
   title?: string;
   subtitle?: string;
   authorByline?: string;
   coverPrompt?: string;
+  frontCoverDesign?: string;
+  backCoverDesign?: string;
   backCoverText?: string;
   artStyle?: string;
   colorScheme?: BookCoverColorScheme;

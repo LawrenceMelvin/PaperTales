@@ -1,24 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-
-function getCleanIllustrationPrompt(
-  rawPrompt: string,
-  characterTraits?: string,
-  artStyle?: string,
-  interiorColor?: "black_and_white" | "standard_color"
-): string {
-  const base = rawPrompt || "a friendly child explorer on an adventure";
-  const traits = characterTraits ? `, character details: ${characterTraits}` : "";
-  const isColor =
-    interiorColor === "standard_color" ||
-    Boolean(artStyle && /\b(color|colorful|vibrant|watercolor|pastel|painted|digital art|saturated)\b/i.test(artStyle));
-
-  if (isColor) {
-    const styleDesc = artStyle || "playful, colorful digital children's book illustration";
-    return `Children's book illustration, square 1:1 full-bleed composition filling the entire frame edge-to-edge with no outer margins or letterboxing, vibrant full color, ${styleDesc}, high detail, rich palette, delightful character expression, cinematic lighting, ${base}${traits}.`;
-  }
-
-  return `Children's coloring book page outline, square 1:1 full-bleed composition filling the entire frame edge-to-edge, thick continuous bold black outlines, zero shading, pure white background, no gradients, no borders or letterboxing, ${base}${traits}. Strict monochrome black and white line art, ready for coloring with crayons.`;
-}
+import { getCleanIllustrationPrompt } from "@/lib/illustration-prompt";
 
 // Keep backward compatibility
 const getCleanColoringPrompt = getCleanIllustrationPrompt;
@@ -30,9 +11,13 @@ function getPollinationsImageUrl(prompt: string): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, characterTraits, pageNumber, artStyle, interiorColor } = await req.json();
+    const { prompt, characterTraits, pageNumber, artStyle, interiorColor, isCover, coverColorScheme } = await req.json();
+    const effectiveIsCover = Boolean(isCover) || pageNumber === 0;
 
-    const enhancedPrompt = getCleanIllustrationPrompt(prompt, characterTraits, artStyle, interiorColor);
+    const enhancedPrompt = getCleanIllustrationPrompt(prompt, characterTraits, artStyle, interiorColor, {
+      isCover: effectiveIsCover,
+      coverColorScheme,
+    });
     const isColor =
       interiorColor === "standard_color" ||
       Boolean(artStyle && /\b(color|colorful|vibrant|watercolor|pastel|painted|digital art|saturated)\b/i.test(artStyle));

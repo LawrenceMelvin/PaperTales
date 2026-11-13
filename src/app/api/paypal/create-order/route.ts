@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
             category: "DIGITAL_GOODS",
           },
         ],
-        customId: `tokens_${pack.id}`,
+        customId: `tokens_${pack.id}_${Date.now()}`,
         requireShippingAddress: false,
       });
 

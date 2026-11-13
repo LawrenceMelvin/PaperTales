@@ -45,6 +45,8 @@ export default function UnlockChoiceModal({
 }: UnlockChoiceModalProps) {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [paypalRetryKey, setPaypalRetryKey] = useState<number>(0);
+  const isSandboxMode = process.env.NEXT_PUBLIC_PAYPAL_ENV !== "production";
 
   if (!isOpen) return null;
 
@@ -54,6 +56,25 @@ export default function UnlockChoiceModal({
   const freePagesCount = quote.freePages;
   const tokensNeeded = quote.tokensRequired;
   const hasEnoughTokens = currentTokens >= tokensNeeded;
+
+  const buildSandboxFallbackDigitalOrder = (): PaperTalesOrder => ({
+    id: `ORD-DIGITAL-${Date.now().toString(36).toUpperCase()}`,
+    bookId: book.id,
+    bookTitle: book.title,
+    authorName: book.authorName || "Creator",
+    fulfillmentType: "digital_pdf",
+    status: "paid",
+    pageCount: book.pageCount,
+    quantity: 1,
+    creationFee: quote.priceUsd,
+    printCost: 0,
+    shippingCost: 0,
+    totalAmount: quote.priceUsd,
+    currency: "USD",
+    paypalOrderId: `SANDBOX-DIGITAL-${Date.now().toString(36).toUpperCase()}`,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
 
   const handleCaptureSuccess = (order: PaperTalesOrder) => {
     markFirstBookClaimed();
@@ -125,9 +146,32 @@ export default function UnlockChoiceModal({
 
         {/* Error Notification */}
         {errorMessage && (
-          <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2.5">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-            <p className="leading-relaxed">{errorMessage}</p>
+          <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-300 text-rose-900 text-xs space-y-2.5">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <p className="leading-relaxed font-medium">{errorMessage}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 pl-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setErrorMessage(null);
+                  setPaypalRetryKey((k) => k + 1);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-white hover:bg-[#FAF6EE] text-[#1E2530] border border-[#E8DFD3] font-bold text-[11px] cursor-pointer shadow-2xs"
+              >
+                🔄 Reset &amp; Retry PayPal
+              </button>
+              {isSandboxMode && (
+                <button
+                  type="button"
+                  onClick={() => handleCaptureSuccess(buildSandboxFallbackDigitalOrder())}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] cursor-pointer shadow-xs"
+                >
+                  ⚡ Complete Sandbox Test Order
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -185,8 +229,9 @@ export default function UnlockChoiceModal({
                 </div>
               ) : (
                 <PayPalButtons
+                  key={`paypal-unlock-${paypalRetryKey}`}
                   style={{ layout: "horizontal", height: 40, label: "pay", tagline: false }}
-                  forceReRender={[quote.priceUsd, book.id]}
+                  forceReRender={[quote.priceUsd, book.id, paypalRetryKey]}
                   createOrder={async () => {
                     setIsProcessing(true);
                     setErrorMessage(null);
@@ -211,34 +256,26 @@ export default function UnlockChoiceModal({
                         throw new Error(data.error || "Failed to create digital book order");
                       }
                       if (data.mock || data.orderId.startsWith("SANDBOX-")) {
-                        const mockOrder: PaperTalesOrder = {
-                          id: `ORD-DIGITAL-${Date.now().toString(36).toUpperCase()}`,
-                          bookId: book.id,
-                          bookTitle: book.title,
-                          authorName: book.authorName || "Creator",
-                          fulfillmentType: "digital_pdf",
-                          status: "paid",
-                          pageCount: book.pageCount,
-                          quantity: 1,
-                          creationFee: quote.priceUsd,
-                          printCost: 0,
-                          shippingCost: 0,
-                          totalAmount: quote.priceUsd,
-                          currency: "USD",
-                          paypalOrderId: data.orderId,
-                          createdAt: new Date().toISOString(),
-                          updatedAt: new Date().toISOString(),
-                        };
+                        const mockOrder = buildSandboxFallbackDigitalOrder();
+                        mockOrder.paypalOrderId = data.orderId;
                         handleCaptureSuccess(mockOrder);
                         return "";
                       }
                       return data.orderId;
                     } catch (err: any) {
                       setIsProcessing(false);
+                      setPaypalRetryKey((k) => k + 1);
                       setErrorMessage(err.message || "Could not initialize PayPal order.");
                       console.error("Direct digital order error:", err);
                       throw err;
                     }
+                  }}
+                  onCancel={() => {
+                    setIsProcessing(false);
+                    setPaypalRetryKey((k) => k + 1);
+                    setErrorMessage(
+                      "Payment window was closed before completion. Your PayPal checkout session has been reset — click PayPal whenever you're ready to retry."
+                    );
                   }}
                   onApprove={async (data) => {
                     setIsProcessing(true);
@@ -265,17 +302,21 @@ export default function UnlockChoiceModal({
                       if (captureData.success && captureData.order) {
                         handleCaptureSuccess(captureData.order);
                       } else {
+                        setPaypalRetryKey((k) => k + 1);
                         setErrorMessage(captureData.error || "PayPal payment capture failed.");
                       }
                     } catch (err: any) {
                       setIsProcessing(false);
+                      setPaypalRetryKey((k) => k + 1);
                       setErrorMessage(err.message || "Error capturing PayPal payment.");
                     }
                   }}
                   onError={(err: any) => {
+                    setIsProcessing(false);
+                    setPaypalRetryKey((k) => k + 1);
                     console.warn("PayPal button notice:", err);
                     setErrorMessage(
-                      "PayPal Sandbox checkout could not complete. Make sure you log in with a Sandbox Personal (Buyer) account."
+                      "PayPal Sandbox checkout could not complete. Reset and retry above, or complete a Sandbox Test Order."
                     );
                   }}
                 />

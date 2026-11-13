@@ -2,6 +2,7 @@ import { compileBookPdf } from "./src/lib/pdf-builder.ts";
 import { calculateLuluQuote } from "./src/lib/lulu-client.ts";
 import { createPayPalOrder, capturePayPalOrder } from "./src/lib/paypal-client.ts";
 import { calculateBookQuote, calculateLuluCommission, PRICING_CONFIG } from "./src/lib/pricing-calculator.ts";
+import { getCleanIllustrationPrompt } from "./src/lib/illustration-prompt.ts";
 
 async function runSmokeTests() {
   console.log("--- Starting PaperTales AI Backend Smoke Tests (65% Margin & Commission) ---");
@@ -128,6 +129,49 @@ async function runSmokeTests() {
 
   const pdfBytes = await compileBookPdf(sampleBook);
   console.log(`✔ 46-Page PDF Compiled Successfully! Size: ${pdfBytes.length} bytes`);
+
+  // 6. Test Cover Prompt Fidelity (Zero Forced Children's/Text Boilerplate) & Midnight Black Cover PDF
+  const customCoverScene =
+    "I want a black cover with the golden man standing in the bottom middle and money is pouring on him";
+  const enhancedCoverPrompt = getCleanIllustrationPrompt(
+    customCoverScene,
+    "",
+    "",
+    "standard_color",
+    { isCover: true, coverColorScheme: "midnight_black" }
+  );
+  if (
+    !enhancedCoverPrompt.includes(customCoverScene) ||
+    enhancedCoverPrompt.includes("Children's book illustration") ||
+    !enhancedCoverPrompt.includes("NO text") ||
+    !enhancedCoverPrompt.includes("#0A0A0C")
+  ) {
+    throw new Error(`Cover prompt failed fidelity check: ${enhancedCoverPrompt}`);
+  }
+  console.log("✔ Custom Midnight Black Cover Prompt Fidelity Verified");
+
+  const blackCoverBook = {
+    ...sampleBook,
+    id: "test_book_black_cover",
+    title: "The Golden Rain",
+    subtitle: "Wealth & Mindset Logbook",
+    authorName: "",
+    pages: samplePages.slice(0, 6),
+    pageCount: 6,
+    cover: {
+      title: "The Golden Rain",
+      subtitle: "Wealth & Mindset Logbook",
+      coverPrompt: customCoverScene,
+      backCoverText: "Daily reflections on abundance and discipline.",
+      colorScheme: "midnight_black",
+      isDesigned: true,
+    },
+  };
+  const blackCoverPdfBytes = await compileBookPdf(blackCoverBook);
+  if (!blackCoverPdfBytes || blackCoverPdfBytes.length < 1000) {
+    throw new Error("Midnight black cover PDF compilation failed");
+  }
+  console.log(`✔ Midnight Black Clean Cover PDF Compiled! Size: ${blackCoverPdfBytes.length} bytes`);
 
   console.log("--- All Smoke Tests Passed at 65% Margin & 10% Commission! ---");
 }

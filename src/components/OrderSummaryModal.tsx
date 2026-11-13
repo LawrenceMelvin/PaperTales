@@ -35,8 +35,10 @@ export default function OrderSummaryModal({
   const [selectedCompanion, setSelectedCompanion] = useState<CompanionProduct | null>(null);
   const [completedOrder, setCompletedOrder] = useState<PaperTalesOrder | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [paypalRetryKey, setPaypalRetryKey] = useState<number>(0);
   const [channel3SearchQuery, setChannel3SearchQuery] = useState<string>("");
   const [isSearchingChannel3, setIsSearchingChannel3] = useState<boolean>(false);
+  const isSandboxMode = process.env.NEXT_PUBLIC_PAYPAL_ENV !== "production";
 
   const handleChannel3Search = async (query: string) => {
     setIsSearchingChannel3(true);
@@ -56,8 +58,10 @@ export default function OrderSummaryModal({
   useEffect(() => {
     if (isOpen) {
       setFulfillmentType(initialFulfillmentType);
+      setSelectedCompanion(null);
       setCompletedOrder(null);
       setCheckoutError(null);
+      setPaypalRetryKey((k) => k + 1);
     }
   }, [isOpen, initialFulfillmentType, book.id]);
 
@@ -84,12 +88,11 @@ export default function OrderSummaryModal({
           setLuluQuote(quoteData.quote);
         }
 
-        // 2. Channel3 Companion Catalog (tailored dynamically to book genre)
+        // 2. Channel3 Companion Catalog (tailored dynamically to book genre; strictly opt-in)
         const ch3Res = await fetch(`/api/channel3/suggest?genre=${encodeURIComponent(book.genre || "coloring_book")}`);
         const ch3Data = await ch3Res.json();
         if (ch3Data.success && ch3Data.products && ch3Data.products.length > 0) {
           setCompanionProducts(ch3Data.products);
-          setSelectedCompanion(initialFulfillmentType === "physical_print" ? ch3Data.products[0] : null);
         }
       } catch (err) {
         console.error("Error fetching checkout details:", err);
@@ -125,6 +128,39 @@ export default function OrderSummaryModal({
   const isPhysicalBlocked = fulfillmentType === "physical_print" && !book.cover?.isDesigned;
 
 
+  const buildSandboxFallbackOrder = (): PaperTalesOrder => ({
+    id: `ORD-SANDBOX-${Date.now().toString(36).toUpperCase()}`,
+    bookId: book.id,
+    bookTitle: book.title,
+    authorName: book.authorName,
+    fulfillmentType,
+    status: fulfillmentType === "physical_print" ? "in_production" : "paid",
+    pageCount: book.pageCount,
+    trimSize: book.format?.trimSize,
+    interiorColor: book.format?.interiorColor,
+    quantity: 1,
+    creationFee,
+    printCost,
+    shippingCost,
+    companionItem: selectedCompanion || undefined,
+    totalAmount: grandTotal,
+    currency: "USD",
+    paypalOrderId: `SANDBOX-ORDER-${Date.now().toString(36).toUpperCase()}`,
+    paypalCaptureId: `CAP-MOCK-${Date.now()}`,
+    shippingAddress: {
+      recipientName: "Demo Creator",
+      street1: "742 Evergreen Terrace",
+      city: "Springfield",
+      stateOrProvince: "OR",
+      postalCode: "97477",
+      countryCode: "US",
+    },
+    luluJobId: `LULU-${Math.floor(100000 + Math.random() * 900000)}`,
+    luluTrackingNumber: `1Z999AA101${Math.floor(10000000 + Math.random() * 90000000)}`,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+
   const handleOrderSuccess = (order: PaperTalesOrder) => {
     setCompletedOrder(order);
     confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
@@ -141,66 +177,66 @@ export default function OrderSummaryModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="glacier-glass w-full max-w-xl rounded-2xl shadow-2xl border border-sky-400/30 overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/55 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="bg-[#FFFDF9] w-full max-w-xl rounded-3xl shadow-2xl border border-[#E8DFD3] overflow-hidden flex flex-col max-h-[90vh] text-[#1E2530]">
         {/* Header */}
-        <div className="px-6 py-5 bg-slate-950/80 border-b border-sky-400/20 text-white flex items-center justify-between">
+        <div className="px-6 py-5 bg-[#FAF6EE] border-b border-[#E8DFD3] text-[#1E2530] flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-sky-400/15 border border-sky-400/30 flex items-center justify-center text-sky-300">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-800">
               <Printer className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-bold">PaperTales Print &amp; Fulfillment</h3>
-              <p className="text-xs text-[#a0b4c4]">
+              <h3 className="text-lg font-black font-serif text-[#1E2530]">PaperTales Print &amp; Fulfillment</h3>
+              <p className="text-xs text-[#5C5347]">
                 Direct Lulu manufacturing &bull; Channel3 companion kit &bull; PayPal rails
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
+            className="text-slate-500 hover:text-[#1E2530] p-1.5 rounded-lg hover:bg-amber-100/60 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 overflow-y-auto space-y-5 text-[#e0e8f0]">
+        <div className="p-6 overflow-y-auto space-y-5 text-[#1E2530]">
           {completedOrder ? (
             /* Order Completion Success View */
             <div className="py-8 flex flex-col items-center text-center">
-              <div className="w-16 h-16 rounded-full bg-sky-400/20 border border-sky-400/40 text-sky-300 flex items-center justify-center mb-4">
+              <div className="w-16 h-16 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-700 flex items-center justify-center mb-4">
                 <PackageCheck className="w-10 h-10" />
               </div>
-              <h4 className="text-2xl font-black text-white">Order Confirmed!</h4>
-              <p className="text-xs text-[#a0b4c4] mt-1 max-w-md">
-                PayPal transaction completed successfully. Order <strong>{completedOrder.id}</strong> is logged in the AG Grid dispatch system.
+              <h4 className="text-2xl font-black font-serif text-[#1E2530]">Order Confirmed!</h4>
+              <p className="text-xs text-[#5C5347] mt-1 max-w-md">
+                PayPal transaction completed successfully. Order <strong className="text-[#1E2530]">{completedOrder.id}</strong> is logged in the AG Grid dispatch system.
               </p>
 
               {completedOrder.fulfillmentType === "physical_print" ? (
-                <div className="w-full glacier-glass-subtle border border-sky-400/20 rounded-xl p-4 mt-5 text-left text-xs space-y-2">
-                  <div className="flex justify-between font-semibold text-[#a0b4c4]">
+                <div className="w-full bg-[#FAF6EE] border border-[#E8DFD3] rounded-xl p-4 mt-5 text-left text-xs space-y-2">
+                  <div className="flex justify-between font-semibold text-[#5C5347]">
                     <span>Lulu Print Job ID:</span>
-                    <span className="font-mono text-sky-300 font-bold">{completedOrder.luluJobId}</span>
+                    <span className="font-mono text-amber-800 font-bold">{completedOrder.luluJobId}</span>
                   </div>
-                  <div className="flex justify-between font-semibold text-[#a0b4c4]">
+                  <div className="flex justify-between font-semibold text-[#5C5347]">
                     <span>Carrier Tracking Number:</span>
-                    <span className="font-mono text-emerald-400 font-bold">{completedOrder.luluTrackingNumber}</span>
+                    <span className="font-mono text-emerald-700 font-bold">{completedOrder.luluTrackingNumber}</span>
                   </div>
-                  <div className="flex justify-between font-semibold text-[#a0b4c4]">
+                  <div className="flex justify-between font-semibold text-[#5C5347]">
                     <span>Shipping Destination:</span>
-                    <span className="text-white">{completedOrder.shippingAddress?.city}, {completedOrder.shippingAddress?.stateOrProvince} ({completedOrder.shippingAddress?.countryCode})</span>
+                    <span className="text-[#1E2530]">{completedOrder.shippingAddress?.city}, {completedOrder.shippingAddress?.stateOrProvince} ({completedOrder.shippingAddress?.countryCode})</span>
                   </div>
-                  <div className="flex justify-between font-semibold text-[#a0b4c4] pt-2 border-t border-white/10">
+                  <div className="flex justify-between font-semibold text-[#5C5347] pt-2 border-t border-[#E8DFD3]">
                     <span>Status:</span>
-                    <span className="px-2 py-0.5 rounded-full bg-sky-400/20 text-sky-300 border border-sky-400/30 font-bold text-[10px]">
+                    <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[10px]">
                       In Production (3-5 Days)
                     </span>
                   </div>
                 </div>
               ) : (
-                <div className="w-full bg-sky-950/40 border border-sky-400/30 rounded-xl p-4 mt-5 text-center text-xs text-sky-200">
-                  Your print-ready 300 DPI PDF is ready for instant download and printing at home!
+                <div className="w-full bg-emerald-50 border border-emerald-300 rounded-xl p-4 mt-5 text-center text-xs text-emerald-900 font-medium">
+                  Your print-ready 300 DPI PDF is unlocked and ready for instant download!
                 </div>
               )}
 
@@ -208,7 +244,7 @@ export default function OrderSummaryModal({
                 {onDownloadPdf && (
                   <button
                     onClick={onDownloadPdf}
-                    className="px-5 py-2.5 text-xs font-black bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 rounded-xl shadow-lg transition-all flex items-center gap-2 cursor-pointer"
+                    className="px-5 py-2.5 text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
                   >
                     <Download className="w-4 h-4" />
                     <span>Download Full 300 DPI PDF</span>
@@ -216,13 +252,13 @@ export default function OrderSummaryModal({
                 )}
                 <a
                   href="/dashboard"
-                  className="glacier-btn px-5 py-2.5 text-xs font-bold text-[#001f2e] rounded-xl transition-all"
+                  className="px-5 py-2.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-xl shadow-sm transition-all"
                 >
                   View in AG Grid Dashboard &rarr;
                 </a>
                 <button
                   onClick={onClose}
-                  className="px-5 py-2.5 text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white border border-white/10 rounded-xl transition-colors cursor-pointer"
+                  className="px-5 py-2.5 text-xs font-bold bg-white hover:bg-[#FAF6EE] text-[#1E2530] border border-[#E8DFD3] rounded-xl transition-colors cursor-pointer"
                 >
                   Return to Studio
                 </button>
@@ -232,50 +268,56 @@ export default function OrderSummaryModal({
             <>
               {/* Option 1 vs Option 2: Format Choice */}
               <div>
-                <label className="block text-xs font-bold text-[#a0b4c4] mb-2 uppercase tracking-wider">
+                <label className="block text-xs font-bold text-[#5C5347] mb-2 uppercase tracking-wider">
                   Select Delivery Option:
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <div
-                    onClick={() => setFulfillmentType("physical_print")}
+                    onClick={() => {
+                      setFulfillmentType("physical_print");
+                      setCheckoutError(null);
+                    }}
                     className={`cursor-pointer p-3.5 rounded-xl border flex flex-col justify-between transition-all ${
                       fulfillmentType === "physical_print"
-                        ? "border-2 border-sky-400 bg-sky-500/15 glacier-glow"
-                        : "border-white/10 bg-slate-900/40 hover:border-sky-400/30"
+                        ? "border-2 border-amber-500 bg-amber-50/70 shadow-sm"
+                        : "border-[#E8DFD3] bg-[#FAF6EE] hover:border-amber-300"
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-2">
-                      <div className="w-7 h-7 rounded-lg bg-sky-400/15 text-sky-300 flex items-center justify-center border border-sky-400/30">
+                      <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center border border-amber-300">
                         <Printer className="w-4 h-4" />
                       </div>
-                      <span className="text-xs font-bold text-white">Physical Printed Book</span>
+                      <span className="text-xs font-bold text-[#1E2530]">Physical Printed Book</span>
                     </div>
-                    <p className="text-[11px] text-[#a0b4c4]">
+                    <p className="text-[11px] text-[#5C5347]">
                       Printed by Lulu on 80# satin archival stock &amp; softcover bound. Shipped to your door.
                     </p>
-                    <span className="text-xs font-bold text-sky-300 mt-2">
+                    <span className="text-xs font-bold text-amber-800 mt-2">
                       Print &amp; Ship (~${(printCost + shippingCost).toFixed(2)})
                     </span>
                   </div>
 
                   <div
-                    onClick={() => setFulfillmentType("digital_pdf")}
+                    onClick={() => {
+                      setFulfillmentType("digital_pdf");
+                      setCheckoutError(null);
+                    }}
                     className={`cursor-pointer p-3.5 rounded-xl border flex flex-col justify-between transition-all ${
                       fulfillmentType === "digital_pdf"
-                        ? "border-2 border-sky-400 bg-sky-500/15 glacier-glow"
-                        : "border-white/10 bg-slate-900/40 hover:border-sky-400/30"
+                        ? "border-2 border-amber-500 bg-amber-50/70 shadow-sm"
+                        : "border-[#E8DFD3] bg-[#FAF6EE] hover:border-amber-300"
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-2">
-                      <div className="w-7 h-7 rounded-lg bg-purple-400/15 text-purple-300 flex items-center justify-center border border-purple-400/30">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center border border-emerald-300">
                         <Download className="w-4 h-4" />
                       </div>
-                      <span className="text-xs font-bold text-white">Instant Digital PDF</span>
+                      <span className="text-xs font-bold text-[#1E2530]">Instant Digital PDF</span>
                     </div>
-                    <p className="text-[11px] text-[#a0b4c4]">
+                    <p className="text-[11px] text-[#5C5347]">
                       High-res vector 300 DPI PDF with bleed margins. Print at home or read on tablets.
                     </p>
-                    <span className="text-xs font-bold text-purple-300 mt-2">
+                    <span className="text-xs font-bold text-emerald-800 mt-2">
                       {isDigitalUnlocked ? "Included (Unlocked)" : `$${creationFee.toFixed(2)} (${dynamicQuote.tokensRequired} Tokens)`}
                     </span>
                   </div>
@@ -284,25 +326,25 @@ export default function OrderSummaryModal({
                 {fulfillmentType === "physical_print" && (
                   <div className="mt-2.5 space-y-2">
                     {isPhysicalBlocked ? (
-                      <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 flex items-start gap-2 text-xs text-rose-200 animate-in fade-in">
-                        <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                        <div className="space-y-1">
-                          <p className="font-extrabold text-rose-300">Front Cover Required for Physical Print Orders</p>
-                          <p className="text-[11px] text-rose-200/90 leading-relaxed">
+                      <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-300 flex items-start gap-2.5 text-xs text-rose-950 animate-in fade-in">
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                        <div className="space-y-1.5">
+                          <p className="font-extrabold text-rose-900">Front Cover Required for Physical Print Orders</p>
+                          <p className="text-[11px] text-rose-800 leading-relaxed">
                             Lulu POD factory machinery requires a designed wraparound cover spread to print physical softcovers. A physical order cannot be placed without a designed cover.
                           </p>
-                          <div className="pt-1 flex items-center gap-2">
+                          <div className="pt-1 flex flex-wrap items-center gap-2">
                             <button
                               type="button"
                               onClick={onClose}
-                              className="px-3 py-1 rounded-lg bg-rose-500/30 hover:bg-rose-500/40 text-white font-bold border border-rose-400/40 text-[11px] cursor-pointer"
+                              className="px-3 py-1.5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white font-bold text-[11px] cursor-pointer shadow-xs"
                             >
-                              🎨 Go to Studio & Design Cover
+                              🎨 Go to Studio &amp; Design Cover
                             </button>
                             <button
                               type="button"
                               onClick={() => setFulfillmentType("digital_pdf")}
-                              className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 text-[11px] font-bold border border-sky-400/30 cursor-pointer"
+                              className="px-3 py-1.5 rounded-lg bg-white hover:bg-[#FAF6EE] text-[#1E2530] text-[11px] font-bold border border-[#E8DFD3] cursor-pointer"
                             >
                               Switch to Instant Digital PDF
                             </button>
@@ -310,10 +352,10 @@ export default function OrderSummaryModal({
                         </div>
                       </div>
                     ) : (
-                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-400/25 flex items-start gap-2 text-[11px] text-amber-200">
-                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-300 flex items-start gap-2 text-[11px] text-amber-950">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                         <div>
-                          <span className="font-bold text-amber-300">Lulu Print Clearance Note:</span> If your book uses trademarked franchise names or logos, commercial print factories may flag the title for review. Digital PDF exports are unrestricted for personal use.
+                          <span className="font-bold text-amber-900">Lulu Print Clearance Note:</span> If your book uses trademarked franchise names or logos, commercial print factories may flag the title for review. Digital PDF exports are unrestricted for personal use.
                         </div>
                       </div>
                     )}
@@ -323,15 +365,15 @@ export default function OrderSummaryModal({
 
               {/* Channel3 Agentic Commerce Companion Bundling */}
               {companionProducts.length > 0 && (
-                <div className="glacier-glass-subtle border border-sky-400/25 rounded-xl p-3.5 space-y-2.5">
+                <div className="bg-[#FAF6EE] border border-[#E8DFD3] rounded-xl p-3.5 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-sky-400" />
-                      <span className="text-xs font-bold text-white">
+                      <Sparkles className="w-4 h-4 text-amber-600" />
+                      <span className="text-xs font-bold text-[#1E2530]">
                         Companion Art Bundle (Channel3 Agentic Commerce)
                       </span>
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-400/20 text-sky-300 border border-sky-400/30">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
                       Optional Add-on
                     </span>
                   </div>
@@ -347,19 +389,19 @@ export default function OrderSummaryModal({
                     className="flex items-center gap-1.5"
                   >
                     <div className="relative flex-1">
-                      <Search className="w-3.5 h-3.5 text-sky-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <Search className="w-3.5 h-3.5 text-amber-700 absolute left-2.5 top-1/2 -translate-y-1/2" />
                       <input
                         type="text"
                         placeholder="Search art supplies, markers, paints (Channel3)..."
                         value={channel3SearchQuery}
                         onChange={(e) => setChannel3SearchQuery(e.target.value)}
-                        className="w-full bg-slate-900/90 text-xs text-white placeholder-slate-400 pl-8 pr-2.5 py-1.5 rounded-lg border border-sky-400/30 focus:outline-none focus:ring-1 focus:ring-sky-400"
+                        className="w-full bg-white text-xs text-[#1E2530] placeholder-slate-400 pl-8 pr-2.5 py-1.5 rounded-lg border border-[#E8DFD3] focus:outline-none focus:ring-1 focus:ring-amber-500"
                       />
                     </div>
                     <button
                       type="submit"
                       disabled={isSearchingChannel3 || !channel3SearchQuery.trim()}
-                      className="px-3 py-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-400/30 text-xs font-bold transition-all disabled:opacity-40 cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-xs font-bold transition-all disabled:opacity-40 cursor-pointer"
                     >
                       {isSearchingChannel3 ? "..." : "Search"}
                     </button>
@@ -375,27 +417,27 @@ export default function OrderSummaryModal({
                           onClick={() => setSelectedCompanion(isAdded ? null : item)}
                           className={`cursor-pointer p-2 rounded-xl border text-xs flex items-center gap-2.5 transition-all ${
                             isAdded
-                              ? "bg-sky-500/20 border-sky-400 shadow-sm ring-1 ring-sky-400/30"
-                              : "bg-slate-900/60 border-white/10 hover:border-sky-400/30"
+                              ? "bg-amber-50 border-amber-500 shadow-sm ring-1 ring-amber-400/30"
+                              : "bg-white border-[#E8DFD3] hover:border-amber-400"
                           }`}
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={item.imageUrl}
                             alt={item.title}
-                            className="w-10 h-10 object-cover rounded-lg border border-white/10 shrink-0"
+                            className="w-10 h-10 object-cover rounded-lg border border-[#E8DFD3] shrink-0"
                           />
                           <div className="flex-1 min-w-0">
-                            <p className="font-bold text-white truncate text-[11px]">{item.title}</p>
-                            <p className="text-[10px] text-[#a0b4c4]">
+                            <p className="font-bold text-[#1E2530] truncate text-[11px]">{item.title}</p>
+                            <p className="text-[10px] text-[#5C5347]">
                               ${item.price.toFixed(2)} &bull;{" "}
-                              <span className="text-sky-300">{item.retailerDomain || item.brand}</span>
+                              <span className="text-amber-800 font-semibold">{item.retailerDomain || item.brand}</span>
                             </p>
                           </div>
                           <button
                             type="button"
                             className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-all ${
-                              isAdded ? "bg-sky-400 text-slate-950 font-bold" : "border border-slate-600 text-slate-400"
+                              isAdded ? "bg-amber-600 text-white font-bold" : "border border-slate-300 text-slate-600 bg-white"
                             }`}
                           >
                             {isAdded ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
@@ -408,39 +450,39 @@ export default function OrderSummaryModal({
               )}
 
               {/* Itemized Order Breakdown */}
-              <div className="glacier-glass-subtle rounded-xl p-4 border border-sky-400/20 text-xs space-y-2">
-                <div className="flex justify-between text-[#a0b4c4]">
+              <div className="bg-[#FAF6EE] rounded-xl p-4 border border-[#E8DFD3] text-xs space-y-2">
+                <div className="flex justify-between text-[#5C5347]">
                   <span>Custom AI Generation &amp; 300 DPI PDF License:</span>
                   {isDigitalUnlocked ? (
-                    <span className="font-semibold text-emerald-400">$0.00 (Included)</span>
+                    <span className="font-semibold text-emerald-700">$0.00 (Included)</span>
                   ) : (
-                    <span className="font-mono font-medium text-white">${creationFee.toFixed(2)}</span>
+                    <span className="font-mono font-bold text-[#1E2530]">${creationFee.toFixed(2)}</span>
                   )}
                 </div>
 
                 {fulfillmentType === "physical_print" && (
                   <>
-                    <div className="flex justify-between text-[#a0b4c4]">
-                      <span>Archival Softcover Print &amp; Binding (8.5x8.5):</span>
-                      <span className="font-mono font-medium text-white">${printCost.toFixed(2)}</span>
+                    <div className="flex justify-between text-[#5C5347]">
+                      <span>Archival Softcover Print &amp; Binding ({book.format?.trimSize || "8.5x8.5"}):</span>
+                      <span className="font-mono font-bold text-[#1E2530]">${printCost.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between text-[#a0b4c4]">
+                    <div className="flex justify-between text-[#5C5347]">
                       <span>Tracked Standard Shipping:</span>
-                      <span className="font-mono font-medium text-white">${shippingCost.toFixed(2)}</span>
+                      <span className="font-mono font-bold text-[#1E2530]">${shippingCost.toFixed(2)}</span>
                     </div>
                   </>
                 )}
 
                 {selectedCompanion && (
-                  <div className="flex justify-between text-sky-300 font-semibold">
+                  <div className="flex justify-between text-amber-900 font-semibold">
                     <span>Companion: {selectedCompanion.title}</span>
                     <span className="font-mono">+${selectedCompanion.price.toFixed(2)}</span>
                   </div>
                 )}
 
-                <div className="flex justify-between text-sm font-extrabold text-white pt-2 border-t border-white/10">
+                <div className="flex justify-between text-sm font-extrabold text-[#1E2530] pt-2 border-t border-[#E8DFD3]">
                   <span>Total Amount (USD):</span>
-                  <span className="font-mono text-sky-300 text-base font-black">${grandTotal.toFixed(2)}</span>
+                  <span className="font-mono text-amber-800 text-base font-black">${grandTotal.toFixed(2)}</span>
                 </div>
               </div>
 
@@ -448,12 +490,13 @@ export default function OrderSummaryModal({
               <div className="pt-1">
                 <div className="min-h-[45px]">
                   {isPhysicalBlocked ? (
-                    <div className="p-3.5 rounded-xl bg-slate-900/90 border border-rose-500/30 text-center space-y-1">
-                      <p className="text-xs font-bold text-rose-300">Physical Print Checkout Blocked</p>
-                      <p className="text-[11px] text-slate-400">Please design a front cover in the Studio before ordering a physical copy, or select Instant Digital PDF above.</p>
+                    <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-300 text-center space-y-1">
+                      <p className="text-xs font-bold text-rose-900">Physical Print Checkout Blocked</p>
+                      <p className="text-[11px] text-rose-800">Please design a front cover in the Studio before ordering a physical copy, or select Instant Digital PDF above.</p>
                     </div>
                   ) : (
                     <PayPalButtons
+                    key={`paypal-order-${paypalRetryKey}`}
                     style={{ layout: "horizontal", height: 42, label: "checkout" }}
                     forceReRender={[
                       fulfillmentType,
@@ -463,6 +506,7 @@ export default function OrderSummaryModal({
                       selectedCompanion?.id || "none",
                       grandTotal,
                       book.title,
+                      paypalRetryKey,
                     ]}
                     createOrder={async () => {
                       setCheckoutError(null);
@@ -495,53 +539,27 @@ export default function OrderSummaryModal({
 
                         // If offline / mock simulation
                         if (data.mock || data.orderId.startsWith("SANDBOX-")) {
-                          const mockOrder: PaperTalesOrder = {
-                            id: `ORD-SANDBOX-${Date.now().toString(36).toUpperCase()}`,
-                            bookId: book.id,
-                            bookTitle: book.title,
-                            authorName: book.authorName,
-                            fulfillmentType,
-                            status: fulfillmentType === "physical_print" ? "in_production" : "paid",
-                            pageCount: book.pageCount,
-                            trimSize: book.format?.trimSize,
-                            interiorColor: book.format?.interiorColor,
-                            quantity: 1,
-                            creationFee,
-                            printCost,
-                            shippingCost,
-                            companionItem: selectedCompanion || undefined,
-                            totalAmount: grandTotal,
-                            currency: "USD",
-                            paypalOrderId: data.orderId,
-                            paypalCaptureId: `CAP-MOCK-${Date.now()}`,
-                            shippingAddress: {
-                              recipientName: "Demo Parent",
-                              street1: "742 Evergreen Terrace",
-                              city: "Springfield",
-                              stateOrProvince: "OR",
-                              postalCode: "97477",
-                              countryCode: "US",
-                            },
-                            luluJobId: `LULU-${Math.floor(100000 + Math.random() * 900000)}`,
-                            luluTrackingNumber: `1Z999AA101${Math.floor(10000000 + Math.random() * 90000000)}`,
-                            createdAt: new Date().toISOString(),
-                            updatedAt: new Date().toISOString(),
-                          };
+                          const mockOrder = buildSandboxFallbackOrder();
+                          mockOrder.paypalOrderId = data.orderId;
                           handleOrderSuccess(mockOrder);
-                          // Return empty or throw error to cancel SDK popup cleanly
                           throw new Error("MOCK_SIMULATION_COMPLETED");
                         }
 
                         return data.orderId;
                       } catch (err: any) {
                         if (err.message === "MOCK_SIMULATION_COMPLETED") {
-                          // Silent bypass
                           return "";
                         }
                         console.error("Error creating PayPal order:", err);
                         setCheckoutError(err.message || "Failed to initialize PayPal order.");
                         throw err;
                       }
+                    }}
+                    onCancel={() => {
+                      setPaypalRetryKey((k) => k + 1);
+                      setCheckoutError(
+                        "Payment window was closed before completion. Your checkout session has been reset — click PayPal whenever you are ready to try again."
+                      );
                     }}
                     onApprove={async (data) => {
                       setCheckoutError(null);
@@ -573,31 +591,55 @@ export default function OrderSummaryModal({
                           handleOrderSuccess(captureData.order);
                         } else {
                           console.error("Capture failed:", captureData);
+                          setPaypalRetryKey((k) => k + 1);
                           setCheckoutError(
                             captureData.error ||
-                              "PayPal capture failed. Please ensure you log in with a Sandbox Personal (Buyer) account."
+                              "PayPal capture failed. Please reset the session or use a Sandbox Personal (Buyer) account."
                           );
                         }
                       } catch (err: any) {
+                        setPaypalRetryKey((k) => k + 1);
                         setCheckoutError(err.message || "Error capturing PayPal order.");
                       }
                     }}
                     onError={(err: any) => {
                       console.warn("PayPal checkout notice:", err);
+                      setPaypalRetryKey((k) => k + 1);
                       setCheckoutError(
-                        "PayPal Sandbox checkout could not complete. Ensure you log in with a Sandbox Personal (Buyer) account rather than the Merchant account that owns the Client ID."
+                        "PayPal Sandbox checkout could not complete (or declined by Sandbox compliance rules). Reset the session below or complete a Sandbox Test Order."
                       );
                     }}
                   />
                   )}
                 </div>
                 {checkoutError && (
-                  <div className="mt-2.5 p-2.5 rounded-lg bg-rose-500/15 border border-rose-400/30 text-[11px] text-rose-200 text-center">
-                    {checkoutError}
+                  <div className="mt-2.5 p-3 rounded-xl bg-rose-50 border border-rose-300 text-[11px] text-rose-900 text-center space-y-2.5">
+                    <p className="font-medium leading-relaxed">{checkoutError}</p>
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCheckoutError(null);
+                          setPaypalRetryKey((k) => k + 1);
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-white hover:bg-[#FAF6EE] text-[#1E2530] border border-[#E8DFD3] font-bold text-[11px] cursor-pointer shadow-2xs"
+                      >
+                        🔄 Reset &amp; Retry PayPal
+                      </button>
+                      {isSandboxMode && (
+                        <button
+                          type="button"
+                          onClick={() => handleOrderSuccess(buildSandboxFallbackOrder())}
+                          className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] cursor-pointer shadow-xs"
+                        >
+                          ⚡ Complete Sandbox Test Order
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
-                <p className="text-[10px] text-center text-[#a0b4c4] mt-2">
-                  🔒 Zero-Friction Checkout: Shipping address retrieved securely from your PayPal account
+                <p className="text-[10px] text-center text-[#5C5347] mt-2">
+                  🔒 Encrypted checkout via PayPal Sandbox &bull; Instant digital unlock &amp; dispatch
                 </p>
               </div>
             </>
