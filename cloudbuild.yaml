@@ -1,0 +1,23 @@
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "build"
+      - "--build-arg"
+      - "NEXT_PUBLIC_FIREBASE_API_KEY=${_NEXT_PUBLIC_FIREBASE_API_KEY}"
+      - "--build-arg"
+      - "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN}"
+      - "--build-arg"
+      - "NEXT_PUBLIC_FIREBASE_PROJECT_ID=${_NEXT_PUBLIC_FIREBASE_PROJECT_ID}"
+      - "--build-arg"
+      - "NEXT_PUBLIC_FIREBASE_APP_ID=${_NEXT_PUBLIC_FIREBASE_APP_ID}"
+      - "--build-arg"
+      - "NEXT_PUBLIC_RECAPTCHA_SITE_KEY=${_NEXT_PUBLIC_RECAPTCHA_SITE_KEY}"
+      - "--build-arg"
+      - "NEXT_PUBLIC_PAYPAL_CLIENT_ID=${_NEXT_PUBLIC_PAYPAL_CLIENT_ID}"
+      - "--build-arg"
+      - "NEXT_PUBLIC_PAYPAL_ENV=${_NEXT_PUBLIC_PAYPAL_ENV}"
+      - "-t"
+      - "gcr.io/$PROJECT_ID/papertale-web:latest"
+      - "."
+images:
+  - "gcr.io/$PROJECT_ID/papertale-web:latest"

@@ -5,90 +5,42 @@ import Navbar from "@/components/Navbar";
 import OrdersDataGrid from "@/components/OrdersDataGrid";
 import TokenModal from "@/components/TokenModal";
 import { PaperTalesOrder } from "@/types/order";
+import { apiFetch } from "@/lib/api-fetch";
+import { useAuth } from "@/components/AuthProvider";
 import { BookOpen, Printer, DollarSign, Clock, Plus, Sparkles, Layers } from "lucide-react";
 import Link from "next/link";
 
-const INITIAL_MOCK_ORDERS: PaperTalesOrder[] = [
-  {
-    id: "ORD-K829XA",
-    bookId: "book_dino_1",
-    bookTitle: "Penny's Big Bakery Adventure",
-    authorName: "Maya & Dad",
-    fulfillmentType: "physical_print",
-    status: "in_production",
-    pageCount: 8,
-    quantity: 1,
-    creationFee: 3.5,
-    printCost: 4.5,
-    shippingCost: 3.99,
-    totalAmount: 11.99,
-    currency: "USD",
-    paypalOrderId: "5BX82910KP882144L",
-    paypalCaptureId: "9CC1029482910398A",
-    luluJobId: "LULU-849201",
-    luluTrackingNumber: "1Z999AA10123984719",
-    luluCarrier: "Standard Ground",
-    createdAt: new Date(Date.now() - 3600000 * 4).toISOString(),
-    updatedAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-  },
-  {
-    id: "ORD-P910MC",
-    bookId: "book_space_2",
-    bookTitle: "Barnaby's Journey to Mars",
-    authorName: "Personal Edition",
-    fulfillmentType: "physical_print",
-    status: "shipped",
-    pageCount: 6,
-    quantity: 2,
-    creationFee: 3.5,
-    printCost: 8.5,
-    shippingCost: 4.99,
-    totalAmount: 16.99,
-    currency: "USD",
-    paypalOrderId: "2LK992010882194X",
-    paypalCaptureId: "7BB2019482910321P",
-    luluJobId: "LULU-719302",
-    luluTrackingNumber: "1Z999AA10184719203",
-    luluCarrier: "Standard Ground",
-    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-    updatedAt: new Date(Date.now() - 86400000 * 1).toISOString(),
-  },
-  {
-    id: "ORD-M394DF",
-    bookId: "book_ocean_3",
-    bookTitle: "Coral Reef Mermaid Chronicles",
-    authorName: "Mrs. Henderson (Grade 1)",
-    fulfillmentType: "digital_pdf",
-    status: "paid",
-    pageCount: 12,
-    quantity: 1,
-    creationFee: 3.5,
-    printCost: 0,
-    shippingCost: 0,
-    totalAmount: 3.5,
-    currency: "USD",
-    paypalOrderId: "8MK102940182910L",
-    paypalCaptureId: "1AA9920194820198Z",
-    createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
-    updatedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
-  },
-];
-
 export default function DashboardPage() {
-  const [orders, setOrders] = useState<PaperTalesOrder[]>(INITIAL_MOCK_ORDERS);
+  const { isLoading: authLoading } = useAuth();
+  const [orders, setOrders] = useState<PaperTalesOrder[]>([]);
+  const [isLoadingOrders, setIsLoadingOrders] = useState<boolean>(true);
   const [tokenModalOpen, setTokenModalOpen] = useState(false);
 
-  useEffect(() => {
+  const loadOrders = async () => {
+    setIsLoadingOrders(true);
     try {
-      const stored = localStorage.getItem("papertales_orders");
-      if (stored) {
-        const parsed: PaperTalesOrder[] = JSON.parse(stored);
-        setOrders([...parsed, ...INITIAL_MOCK_ORDERS]);
+      const res = await apiFetch("/api/orders");
+      if (res.ok) {
+        const data = await res.json();
+        setOrders(Array.isArray(data.orders) ? data.orders : []);
+      } else {
+        setOrders([]);
       }
     } catch (e) {
-      console.warn("Could not load stored orders:", e);
+      console.warn("Could not load orders from server:", e);
+      setOrders([]);
+    } finally {
+      setIsLoadingOrders(false);
     }
-  }, []);
+  };
+
+  useEffect(() => {
+    if (authLoading) return;
+    loadOrders();
+    const handleOrdersUpdated = () => loadOrders();
+    window.addEventListener("orders_updated", handleOrdersUpdated);
+    return () => window.removeEventListener("orders_updated", handleOrdersUpdated);
+  }, [authLoading]);
 
   const totalBooks = orders.length;
   const inProductionCount = orders.filter((o) => o.status === "in_production").length;
@@ -186,7 +138,26 @@ export default function DashboardPage() {
               </span>
             </div>
 
-            <OrdersDataGrid orders={orders} />
+            {!isLoadingOrders && orders.length === 0 ? (
+              <div className="bg-white rounded-xl border border-[#E8DFD3] p-10 text-center space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 mx-auto flex items-center justify-center border border-amber-200">
+                  <BookOpen className="w-6 h-6" />
+                </div>
+                <h4 className="text-base font-serif font-bold text-[#1E2530]">No orders yet</h4>
+                <p className="text-xs text-slate-600 max-w-md mx-auto">
+                  When you unlock a digital 300 DPI PDF or order a physical softcover book via PayPal, it will appear here with live Lulu fulfillment tracking.
+                </p>
+                <Link
+                  href="/studio"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-700 text-white transition-all"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Create Your First Book
+                </Link>
+              </div>
+            ) : (
+              <OrdersDataGrid orders={orders} onRefresh={loadOrders} />
+            )}
           </div>
         </main>
 

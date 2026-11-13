@@ -1,29 +1,27 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import Link from "next/link";
 import Logo from "@/components/Logo";
-import { Sparkles, Coins, LayoutDashboard, Calculator, Printer, BookOpen } from "lucide-react";
-import { getClientTokenBalance } from "@/lib/token-store";
+import {
+  Sparkles,
+  Coins,
+  LayoutDashboard,
+  Calculator,
+  Printer,
+  BookOpen,
+  LogIn,
+  LogOut,
+} from "lucide-react";
+import { useAuth } from "@/components/AuthProvider";
 
 interface NavbarProps {
   onOpenTokenModal?: () => void;
   onOpenOrderTracking?: () => void;
 }
 
-export default function Navbar({ onOpenTokenModal, onOpenOrderTracking }: NavbarProps) {
-  const [tokens, setTokens] = useState<number>(120);
-
-  useEffect(() => {
-    setTokens(getClientTokenBalance());
-
-    const handleUpdate = () => {
-      setTokens(getClientTokenBalance());
-    };
-
-    window.addEventListener("tokens_updated", handleUpdate);
-    return () => window.removeEventListener("tokens_updated", handleUpdate);
-  }, []);
+export default function Navbar({ onOpenTokenModal }: NavbarProps) {
+  const { isAnonymous, profile, tokenBalance, signInWithGoogle, signOut } = useAuth();
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-[#E8DFD3] bg-[#FFFDF9]/90 backdrop-blur-2xl transition-all">
@@ -66,7 +64,7 @@ export default function Navbar({ onOpenTokenModal, onOpenOrderTracking }: Navbar
         </nav>
 
         {/* Trailing Action Badges and CTAs */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           {/* Token Status Pill */}
           <div
             onClick={onOpenTokenModal}
@@ -74,8 +72,48 @@ export default function Navbar({ onOpenTokenModal, onOpenOrderTracking }: Navbar
             title="Manage micro-tokens"
           >
             <Coins className="w-3.5 h-3.5 text-amber-600" />
-            <span>{tokens} Tokens</span>
+            <span>{tokenBalance} Tokens</span>
           </div>
+
+          {/* Auth / User Menu */}
+          {isAnonymous ? (
+            <button
+              onClick={() => signInWithGoogle()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-white/80 hover:bg-white text-slate-700 text-xs font-semibold transition-colors"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Sign in</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Link
+                href="/dashboard"
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white/80 hover:bg-white text-slate-700 text-xs font-semibold transition-colors"
+                title="My Orders & Print Jobs"
+              >
+                {profile?.photoUrl ? (
+                  <img
+                    src={profile.photoUrl}
+                    alt={profile.displayName || "User"}
+                    className="w-4 h-4 rounded-full"
+                  />
+                ) : (
+                  <LayoutDashboard className="w-3.5 h-3.5 text-amber-600" />
+                )}
+                <span className="max-w-[90px] truncate">
+                  {profile?.displayName?.split(" ")[0] || "Account"}
+                </span>
+              </Link>
+              <button
+                onClick={() => signOut()}
+                className="p-1.5 rounded-lg border border-slate-200 bg-white/80 hover:bg-red-50 hover:text-red-600 text-slate-500 transition-colors"
+                title="Sign out"
+                aria-label="Sign out"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Primary Header CTA */}
           <Link

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPayPalAgentTools, executePayPalAgentToolCall } from "@/lib/paypal-ai-toolkit";
+import { guardAiRequest, GuardError } from "@/lib/server/guard";
 
 /**
  * GET /api/ai/paypal-agent
@@ -38,6 +39,7 @@ export async function GET() {
  */
 export async function POST(req: NextRequest) {
   try {
+    await guardAiRequest(req, { kind: "paypal_agent" });
     const body = await req.json();
     const { toolCall } = body;
 
@@ -51,6 +53,7 @@ export async function POST(req: NextRequest) {
     const result = await executePayPalAgentToolCall(toolCall);
     return NextResponse.json({ success: true, result });
   } catch (err: any) {
+    if (err instanceof GuardError) return err.toResponse();
     console.error("PayPal AI Toolkit tool execution error:", err);
     return NextResponse.json(
       { success: false, error: err.message || "Tool execution failed" },

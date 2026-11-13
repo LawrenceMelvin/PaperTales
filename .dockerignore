@@ -1,0 +1,14 @@
+.git
+.github
+.next
+node_modules
+.env
+.env.*
+!.env.example
+openspec
+tests
+docs
+*.log
+npm-debug.log*
+KDP*
+bookstore-src

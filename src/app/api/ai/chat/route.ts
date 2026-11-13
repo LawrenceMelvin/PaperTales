@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { EditingPageReference } from "@/types/book";
+import { guardAiRequest, GuardError } from "@/lib/server/guard";
+import { GEMINI_KID_SAFE_SETTINGS } from "@/lib/server/prompt-safety";
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -296,6 +298,7 @@ async function callGeminiChat(
         responseMimeType: "application/json",
         temperature: 0.4,
       },
+      safetySettings: GEMINI_KID_SAFE_SETTINGS,
     }),
   });
 
@@ -344,6 +347,7 @@ export async function POST(req: NextRequest) {
 
     const lockedTitle: string | null = detectLockedTitle(messages) || body.lockedTitle || null;
     const latestUser = [...messages].reverse().find((m) => m.role === "user")?.content || "";
+    await guardAiRequest(req, { kind: "chat", texts: [latestUser] });
     const userWantsNewTitles = NEW_TITLE_REQUEST_PATTERN.test(latestUser);
     const allUserText = messages
       .filter((m) => m.role === "user")
@@ -662,6 +666,7 @@ export async function POST(req: NextRequest) {
       engine: engineUsed,
     });
   } catch (error: any) {
+    if (error instanceof GuardError) return error.toResponse();
     console.error("Error in PaperTales AI chat:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to generate AI response" },

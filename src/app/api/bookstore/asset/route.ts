@@ -3,6 +3,11 @@ import fs from "fs";
 import path from "path";
 import { BOOKSTORE_CATALOG, bookstoreItemToBookProject } from "@/lib/bookstore-catalog";
 import { compileBookPdf } from "@/lib/pdf-builder";
+import {
+  getSignedReadUrl,
+  objectExists,
+  ONE_HOUR_SECONDS,
+} from "@/lib/server/storage";
 
 const KDP_VAULT_ROOT = "C:\\Lawrence\\KDP SKETCH BOOK";
 
@@ -22,8 +27,18 @@ export async function GET(req: NextRequest) {
 
     const safeFilename = `${item.title.replace(/[^a-z0-9]/gi, "_").toLowerCase()}_print_ready.pdf`;
 
-    // 1. Check if the original print-ready PDF exists in C:\Lawrence\KDP SKETCH BOOK
-    if (item.sourcePdfRelativePath) {
+    // 1. In production, serve from private GCS bucket via 1-hour V4 signed URL
+    if (process.env.NODE_ENV === "production" && item.sourcePdfRelativePath) {
+      const normalizedRel = item.sourcePdfRelativePath.replace(/\\/g, "/");
+      const objectPath = `bookstore-src/${normalizedRel}`;
+      if (await objectExists(objectPath)) {
+        const signedUrl = await getSignedReadUrl(objectPath, ONE_HOUR_SECONDS);
+        return NextResponse.redirect(signedUrl, 302);
+      }
+    }
+
+    // 2. In local development, stream from C:\Lawrence\KDP SKETCH BOOK if present
+    if (process.env.NODE_ENV !== "production" && item.sourcePdfRelativePath) {
       const fullPdfPath = path.join(KDP_VAULT_ROOT, item.sourcePdfRelativePath);
       if (fs.existsSync(fullPdfPath)) {
         const stat = fs.statSync(fullPdfPath);
@@ -57,7 +72,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 2. Fallback: compile a 300 DPI PDF using our vector PDF builder & preview pages
+    // 3. Fallback: compile a 300 DPI PDF using our vector PDF builder & preview pages
     const project = bookstoreItemToBookProject(item);
     const pdfBytes = await compileBookPdf(project);
 

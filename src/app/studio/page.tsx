@@ -14,7 +14,10 @@ import { BOOKSTORE_CATALOG, bookstoreItemToBookProject } from "@/lib/bookstore-c
 
 import { BookProject, BookPage, CharacterAnchor, BookCoverDesign, BookCoverColorScheme, EditingPageReference } from "@/types/book";
 import { CompanionProduct, PaperTalesOrder } from "@/types/order";
-import { deductClientTokens, getClientTokenBalance, markFirstBookClaimed } from "@/lib/token-store";
+import { dispatchTokensUpdated } from "@/lib/token-store";
+import { apiFetch } from "@/lib/api-fetch";
+import { useAuth } from "@/components/AuthProvider";
+import SignInGateModal from "@/components/SignInGateModal";
 import { calculateBookQuote } from "@/lib/pricing-calculator";
 import {
   Sparkles,
@@ -307,10 +310,15 @@ export default function StudioPage() {
   const [cornerDecorations, setCornerDecorations] = useState<"tech_brackets" | "gears" | "minimal" | "none">("none");
   const [lineRuleSpacing, setLineRuleSpacing] = useState<"wide" | "college">("college");
   const [showPageNumbers, setShowPageNumbers] = useState<boolean>(false);
+  const { isAnonymous, isLoading: authLoading, tokenBalance: authTokenBalance, refreshProfile } = useAuth();
   const [authorName, setAuthorName] = useState<string>("");
   const [targetAge, setTargetAge] = useState<string>("4-8");
   const [pageCount, setPageCount] = useState<number>(5);
   const [userTokens, setUserTokens] = useState<number>(0);
+
+  useEffect(() => {
+    setUserTokens(authTokenBalance);
+  }, [authTokenBalance]);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isGeneratingCover, setIsGeneratingCover] = useState<boolean>(false);
   const [isUnlockingPages, setIsUnlockingPages] = useState<boolean>(false);
@@ -419,18 +427,63 @@ export default function StudioPage() {
   }, []);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem("papertales_orders");
-      if (stored) {
-        const orders = JSON.parse(stored);
+    if (authLoading) return;
+    let cancelled = false;
+    async function restoreBookAndOrders() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("remix")) return;
+
+        const queryBookId = params.get("bookId");
+        const savedBookId = queryBookId || localStorage.getItem("papertales_active_book_id");
+        if (savedBookId) {
+          const res = await apiFetch(`/api/books/${encodeURIComponent(savedBookId)}`);
+          if (res.ok && !cancelled) {
+            const data = await res.json();
+            if (data.book) {
+              setBook(data.book);
+              setSelectedGenre(data.book.genre || "coloring_book");
+              setPageCount(data.book.pageCount || data.book.pages?.length || 5);
+              if (data.book.pages?.length >= 1) setHasProof(true);
+              if (data.book.pages?.length > 1) setHasFullBook(true);
+              if (data.book.cover?.isDesigned) setHasCover(true);
+              if ((data.book.paidThrough || 0) >= (data.book.pageCount || 5)) {
+                setIsBookUnlocked(true);
+              }
+            }
+          }
+        }
+      } catch {
+        // ignore restore errors
+      }
+    }
+    restoreBookAndOrders();
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    let cancelled = false;
+    async function checkBookOrderUnlock() {
+      try {
+        const res = await apiFetch("/api/orders");
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        const orders = Array.isArray(data.orders) ? data.orders : [];
         if (orders.some((o: any) => o.bookId === book.id || o.bookTitle === book.title)) {
           setIsBookUnlocked(true);
         }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
     }
-  }, [book.id, book.title]);
+    checkBookOrderUnlock();
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, book.id, book.title]);
 
   // Reference photo / sketch upload
   const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
@@ -443,21 +496,50 @@ export default function StudioPage() {
   const [bookDetailsOpen, setBookDetailsOpen] = useState<boolean>(false);
   const [orderTrackingOpen, setOrderTrackingOpen] = useState<boolean>(false);
   const [bookLibraryOpen, setBookLibraryOpen] = useState<boolean>(false);
+  const [signInGateOpen, setSignInGateOpen] = useState<boolean>(false);
+  const [signInGateReason, setSignInGateReason] = useState<"proof_complete" | "sign_in_required">("proof_complete");
 
-  const handleDirectUnlockSuccess = (order: PaperTalesOrder) => {
+  const ensureServerBookId = async (titleOverride?: string): Promise<string> => {
+    if (book.id && book.id.startsWith("bk_")) {
+      localStorage.setItem("papertales_active_book_id", book.id);
+      return book.id;
+    }
+    try {
+      const res = await apiFetch("/api/books", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...book,
+          title: titleOverride || book.title,
+          genre: selectedGenre,
+          pageCount,
+          character,
+          authorName,
+          targetAge,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.book?.id) {
+          setBook((prev) => ({ ...prev, id: data.book.id }));
+          localStorage.setItem("papertales_active_book_id", data.book.id);
+          return data.book.id;
+        }
+      }
+    } catch {
+      // fallback to existing id
+    }
+    return book.id;
+  };
+
+  const handleDirectUnlockSuccess = async () => {
     setIsBookUnlocked(true);
     setBook((prev) => ({
       ...prev,
       pages: prev.pages.map((p) => ({ ...p, isLocked: false })),
     }));
-    markFirstBookClaimed();
-    try {
-      const stored = localStorage.getItem("papertales_orders");
-      const existing = stored ? JSON.parse(stored) : [];
-      localStorage.setItem("papertales_orders", JSON.stringify([order, ...existing]));
-    } catch {
-      // ignore
-    }
+    await refreshProfile();
+    dispatchTokensUpdated();
     setUnlockChoiceOpen(false);
     setMessages((prev) => [
       ...prev,
@@ -491,18 +573,11 @@ export default function StudioPage() {
   const quote = calculateBookQuote(pageCount);
   const activeGenreConfig = GENRE_LANES.find((g) => g.id === selectedGenre) || GENRE_LANES[0];
 
-  useEffect(() => {
-    setUserTokens(getClientTokenBalance());
-    const handleUpdate = () => setUserTokens(getClientTokenBalance());
-    window.addEventListener("tokens_updated", handleUpdate);
-    return () => window.removeEventListener("tokens_updated", handleUpdate);
-  }, []);
-
   // Fetch initial Channel3 companion supplies
   useEffect(() => {
     async function loadInitialSupplies() {
       try {
-        const res = await fetch(`/api/channel3/suggest?genre=${selectedGenre}`);
+        const res = await apiFetch(`/api/channel3/suggest?genre=${selectedGenre}`);
         if (!res.ok) return;
         const contentType = res.headers.get("content-type");
         if (!contentType || !contentType.includes("application/json")) return;
@@ -576,7 +651,7 @@ export default function StudioPage() {
     setIsChatting(true);
 
     try {
-      const res = await fetch("/api/ai/chat", {
+      const res = await apiFetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -605,6 +680,15 @@ export default function StudioPage() {
           editingPageReference: activePageReference || undefined,
         }),
       });
+
+      if (res.status === 401) {
+        const errData = await res.json().catch(() => ({}));
+        if (errData.error === "sign_in_required") {
+          setSignInGateReason("sign_in_required");
+          setSignInGateOpen(true);
+        }
+        return;
+      }
 
       const data = await res.json();
       if (data.success) {
@@ -681,7 +765,7 @@ export default function StudioPage() {
           // Dynamically query Channel3 for smart companion supplies matching this story
           if (data.bookDraft.channel3Query) {
             try {
-              const ch3Res = await fetch(
+              const ch3Res = await apiFetch(
                 `/api/channel3/suggest?genre=${data.bookDraft.genre || selectedGenre}&query=${encodeURIComponent(
                   data.bookDraft.channel3Query
                 )}`
@@ -780,10 +864,11 @@ export default function StudioPage() {
               };
               handlePageUpdate(updatedPage);
               if (data.pageEdit.regenerateArt) {
-                fetch("/api/ai/image", {
+                apiFetch("/api/ai/image", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
+                    bookId: book.id,
                     prompt: data.pageEdit.imagePrompt || existingPage.imagePrompt,
                     characterTraits: character.traits.join(", "),
                     pageNumber: data.pageEdit.pageIndex,
@@ -848,10 +933,12 @@ export default function StudioPage() {
     setIsGenerating(true);
     try {
       const effectiveTitle = book.title !== INITIAL_BOOK.title ? book.title : lockedTitle || "";
-      const res = await fetch("/api/ai/story", {
+      const serverBookId = await ensureServerBookId(effectiveTitle || undefined);
+      const res = await apiFetch("/api/ai/story", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          id: serverBookId,
           title: effectiveTitle,
           subtitle: book.subtitle !== INITIAL_BOOK.subtitle ? book.subtitle : "",
           prompt,
@@ -877,6 +964,15 @@ export default function StudioPage() {
         }),
       });
 
+      if (res.status === 401) {
+        const errData = await res.json().catch(() => ({}));
+        if (errData.error === "sign_in_required") {
+          setSignInGateReason("sign_in_required");
+          setSignInGateOpen(true);
+        }
+        return;
+      }
+
       const data = await res.json();
       if (data.success && data.book) {
         setBook((prev) => ({
@@ -898,6 +994,11 @@ export default function StudioPage() {
         if (displayEl) {
           displayEl.scrollIntoView({ behavior: "smooth" });
         }
+
+        if (isAnonymous) {
+          setSignInGateReason("proof_complete");
+          setSignInGateOpen(true);
+        }
       }
     } catch (err) {
       console.error("Hero page design failed:", err);
@@ -918,10 +1019,12 @@ export default function StudioPage() {
   const handleExpandFullSpread = async () => {
     setIsGenerating(true);
     try {
-      const res = await fetch("/api/ai/story", {
+      const serverBookId = await ensureServerBookId();
+      const res = await apiFetch("/api/ai/story", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          id: serverBookId,
           title: book.title,
           subtitle: book.subtitle,
           prompt,
@@ -948,6 +1051,15 @@ export default function StudioPage() {
           messages: messages.map((m) => ({ role: m.role, content: m.content })),
         }),
       });
+
+      if (res.status === 401) {
+        const errData = await res.json().catch(() => ({}));
+        if (errData.error === "sign_in_required") {
+          setSignInGateReason("sign_in_required");
+          setSignInGateOpen(true);
+        }
+        return;
+      }
 
       const data = await res.json();
       if (data.success && data.book) {
@@ -1029,14 +1141,32 @@ export default function StudioPage() {
   const executeUnlockRemainingPages = async (tokensToDeduct: number) => {
     setIsUnlockingPages(true);
     try {
+      const serverBookId = await ensureServerBookId();
       if (tokensToDeduct > 0) {
-        deductClientTokens(tokensToDeduct);
+        const unlockRes = await apiFetch(`/api/books/${encodeURIComponent(serverBookId)}/unlock`, {
+          method: "POST",
+        });
+        if (unlockRes.status === 401) {
+          setSignInGateReason("sign_in_required");
+          setSignInGateOpen(true);
+          return;
+        }
+        if (unlockRes.status === 402) {
+          setPendingUnlockAfterPayment(true);
+          setTokenModalOpen(true);
+          return;
+        }
+        if (!unlockRes.ok) {
+          throw new Error("Failed to unlock pages on server");
+        }
+        await refreshProfile();
+        dispatchTokensUpdated();
       }
-      const res = await fetch("/api/ai/story", {
+      const res = await apiFetch("/api/ai/story", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: book.id,
+          id: serverBookId,
           title: book.title,
           subtitle: book.subtitle,
           prompt,
@@ -1056,6 +1186,15 @@ export default function StudioPage() {
           messages: messages.map((m) => ({ role: m.role, content: m.content })),
         }),
       });
+      if (res.status === 401) {
+        const errData = await res.json().catch(() => ({}));
+        if (errData.error === "sign_in_required") {
+          setSignInGateReason("sign_in_required");
+          setSignInGateOpen(true);
+        }
+        return;
+      }
+
       const data = await res.json();
       if (data.success && data.book) {
         setBook((prev) => ({
@@ -1085,8 +1224,7 @@ export default function StudioPage() {
   const handleUnlockRemainingPages = () => {
     const lockedPagesCount = Math.max(0, book.pages.length - 5);
     const tokensNeeded = lockedPagesCount > 0 ? lockedPagesCount : quote.tokensRequired;
-    const balance = getClientTokenBalance();
-    if (balance < tokensNeeded) {
+    if (userTokens < tokensNeeded) {
       setPendingUnlockAfterPayment(true);
       setTokenModalOpen(true);
       return;
@@ -1138,10 +1276,11 @@ export default function StudioPage() {
         ? ""
         : artStyle || "Editorial book cover illustration";
 
-      const res = await fetch("/api/ai/image", {
+      const res = await apiFetch("/api/ai/image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          bookId: book.id,
           prompt: rawCoverPrompt,
           characterTraits: overrideCoverDraft?.coverPrompt ? "" : character.traits.join(", "),
           pageNumber: 0,
@@ -1151,6 +1290,15 @@ export default function StudioPage() {
           interiorColor: isMonochromeCover ? "black_and_white" : "standard_color",
         }),
       });
+
+      if (res.status === 401) {
+        const errData = await res.json().catch(() => ({}));
+        if (errData.error === "sign_in_required") {
+          setSignInGateReason("sign_in_required");
+          setSignInGateOpen(true);
+        }
+        return;
+      }
 
       const data = await res.json();
       const generatedCoverUrl = data.success && data.imageUrl ? data.imageUrl : book.pages[0]?.imageUrl;
@@ -1202,7 +1350,7 @@ export default function StudioPage() {
         pageCount: 1,
       };
 
-      const res = await fetch("/api/pdf/compile", {
+      const res = await apiFetch("/api/pdf/compile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(pageOneProject),
@@ -1242,7 +1390,7 @@ export default function StudioPage() {
 
     setIsDownloadingPdf(true);
     try {
-      const res = await fetch("/api/pdf/compile", {
+      const res = await apiFetch("/api/pdf/compile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(book),
@@ -2643,6 +2791,19 @@ export default function StudioPage() {
         <TokenModal
           isOpen={tokenModalOpen}
           onClose={() => setTokenModalOpen(false)}
+        />
+
+        <SignInGateModal
+          isOpen={signInGateOpen}
+          onClose={() => setSignInGateOpen(false)}
+          onSuccess={() => {
+            setSignInGateOpen(false);
+            refreshProfile();
+          }}
+          proofImageUrl={book.pages[0]?.imageUrl}
+          bookTitle={book.title}
+          activeBookId={book.id}
+          reason={signInGateReason}
         />
 
         <UnlockChoiceModal

@@ -1,5 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { BookPage, BookProject, CharacterAnchor, JournalSection } from "@/types/book";
+import { BookGenre, BookPage, BookProject, CharacterAnchor, JournalSection } from "@/types/book";
+import { getAdminDb } from "@/lib/firebase/admin";
+import { guardAiRequest, GuardError } from "@/lib/server/guard";
+import {
+  createBook,
+  getBookForOwner,
+  StoredBookRecord,
+  updateBookForOwner,
+} from "@/lib/server/books-repo";
+import { allowedPages } from "@/lib/server/entitlement";
+import { claimFreeGrant } from "@/lib/server/ledger";
+import {
+  getSignedReadUrl,
+  ONE_HOUR_SECONDS,
+  parseDataUrl,
+  uploadBuffer,
+} from "@/lib/server/storage";
 
 interface ChapterTemplate {
   title: string;
@@ -312,6 +328,70 @@ export async function POST(req: NextRequest) {
       showPageNumbers = false,
       messages: incomingMessages,
     } = body;
+
+    const user = await guardAiRequest(req, {
+      kind: Number(pageCount) === 1 && !unlockPagesOnly ? "story_proof" : "story_expand",
+      texts: [title, prompt, pageStructure, characterName],
+    });
+
+    const enforceAuth = process.env.REQUIRE_AUTH !== "false";
+    let effectiveFreePagesLimit: number | undefined =
+      typeof freePagesLimit === "number" ? freePagesLimit : undefined;
+    let storedBook: StoredBookRecord | null = null;
+    const requestedBookId: string | undefined = body.id || body.bookId;
+
+    if (enforceAuth) {
+      if (requestedBookId && !requestedBookId.startsWith("book_default")) {
+        storedBook = await getBookForOwner(requestedBookId, user.uid);
+      }
+      if (!storedBook && Number(pageCount) === 1 && !unlockPagesOnly) {
+        storedBook = await createBook(user.uid, {
+          id: requestedBookId,
+          title: title || "Untitled Story",
+          authorName,
+          genre: genre as BookGenre,
+          targetAge,
+          pageCount: Number(pageCount) || 1,
+        });
+      }
+      if (!storedBook) {
+        return NextResponse.json(
+          { error: "Book not found or not owned by user", code: "book_not_found" },
+          { status: 404 }
+        );
+      }
+
+      if (Number(pageCount) > 1 && !unlockPagesOnly) {
+        const granted = await claimFreeGrant(user.uid, storedBook.id);
+        if (granted) {
+          storedBook.entitlement = {
+            ...storedBook.entitlement,
+            freePages: 5,
+            unlockedBy: "free",
+          };
+          await getAdminDb()
+            .collection("books")
+            .doc(storedBook.id)
+            .set({ entitlement: storedBook.entitlement }, { merge: true });
+        }
+      }
+
+      const targetCount = unlockPagesOnly && Array.isArray(existingPages)
+        ? existingPages.length
+        : Number(pageCount) || 5;
+      const allowedSet = allowedPages(targetCount, storedBook.entitlement, user.isAnonymous);
+      effectiveFreePagesLimit = Math.max(1, ...Array.from(allowedSet));
+
+      if (unlockPagesOnly && !allowedSet.has(targetCount)) {
+        return NextResponse.json(
+          {
+            error: "Pages 6+ require token unlock or PayPal checkout.",
+            code: "unlock_required",
+          },
+          { status: 402 }
+        );
+      }
+    }
 
     const conversationMessages = Array.isArray(incomingMessages) && incomingMessages.length > 0
       ? incomingMessages
@@ -808,7 +888,7 @@ DIRECT CONTINUITY CHECKLIST:
                   };
                 }
 
-                const isPageLocked = typeof freePagesLimit === "number" && pNum > freePagesLimit;
+                const isPageLocked = typeof effectiveFreePagesLimit === "number" && pNum > effectiveFreePagesLimit;
                 const rawPageTitle = p.title || (isJournalMode ? `Day ${pNum}` : `Page ${pNum}`);
                 const pageTitle =
                   !userMentionedBarnaby && /barnaby/i.test(rawPageTitle)
@@ -967,7 +1047,7 @@ DIRECT CONTINUITY CHECKLIST:
         });
         continue;
       }
-      const isPageLocked = typeof freePagesLimit === "number" && pNum > freePagesLimit;
+      const isPageLocked = typeof effectiveFreePagesLimit === "number" && pNum > effectiveFreePagesLimit;
       const template = templates[i % templates.length];
       const fallbackCharName = character.name || "Friend";
       const fallbackCharType = character.type || "Explorer";
@@ -1081,8 +1161,50 @@ DIRECT CONTINUITY CHECKLIST:
       updatedAt: new Date().toISOString(),
     };
 
+    if (enforceAuth && storedBook) {
+      const nextVer = (storedBook.contentVersion || 1) + 1;
+      const persistedPages = await Promise.all(
+        bookProject.pages.map(async (p) => {
+          if (p.imageUrl && p.imageUrl.startsWith("data:")) {
+            const parsed = parseDataUrl(p.imageUrl);
+            if (parsed) {
+              const ext = parsed.contentType.includes("png") ? "png" : "jpg";
+              const objectPath = `users/${user.uid}/books/${storedBook!.id}/pages/page-${p.pageNumber}-v${nextVer}.${ext}`;
+              await uploadBuffer(objectPath, parsed.buffer, parsed.contentType);
+              const signedUrl = await getSignedReadUrl(objectPath, ONE_HOUR_SECONDS);
+              return { ...p, imagePath: objectPath, imageUrl: signedUrl };
+            }
+          }
+          return p;
+        })
+      );
+      await updateBookForOwner(
+        storedBook.id,
+        user.uid,
+        {
+          title: bookProject.title,
+          subtitle: bookProject.subtitle,
+          authorName: bookProject.authorName,
+          genre: bookProject.genre,
+          targetAge: bookProject.targetAge,
+          character: bookProject.character,
+          artStyle: bookProject.artStyle,
+          pageStructure: bookProject.pageStructure,
+          showPageNumbers: bookProject.showPageNumbers,
+          singleSidedColoring: bookProject.singleSidedColoring,
+          pages: persistedPages,
+          pageCount: persistedPages.length,
+          format: bookProject.format,
+        },
+        true
+      );
+      bookProject.id = storedBook.id;
+      bookProject.pages = persistedPages;
+    }
+
     return NextResponse.json({ success: true, book: bookProject });
   } catch (error: any) {
+    if (error instanceof GuardError) return error.toResponse();
     console.error("Error generating book story:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to generate book" },

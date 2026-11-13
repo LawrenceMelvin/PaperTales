@@ -4,7 +4,9 @@ import React, { useState } from "react";
 import { BookProject } from "@/types/book";
 import { PaperTalesOrder } from "@/types/order";
 import { calculateBookQuote } from "@/lib/pricing-calculator";
-import { isFirstTimeCustomer, deductClientTokens, markFirstBookClaimed } from "@/lib/token-store";
+import { dispatchTokensUpdated } from "@/lib/token-store";
+import { apiFetch } from "@/lib/api-fetch";
+import { useAuth } from "@/components/AuthProvider";
 import { PayPalButtons } from "@paypal/react-paypal-js";
 import confetti from "canvas-confetti";
 import {
@@ -43,6 +45,7 @@ export default function UnlockChoiceModal({
   onBuyTokens,
   onOrderPhysical,
 }: UnlockChoiceModalProps) {
+  const { freeGrantClaimed, refreshProfile } = useAuth();
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [paypalRetryKey, setPaypalRetryKey] = useState<number>(0);
@@ -50,7 +53,7 @@ export default function UnlockChoiceModal({
 
   if (!isOpen) return null;
 
-  const isFirstTime = isFirstTimeCustomer();
+  const isFirstTime = !freeGrantClaimed;
   const quote = calculateBookQuote(book.pageCount, "illustrated", isFirstTime);
   const paidPagesCount = quote.paidPages;
   const freePagesCount = quote.freePages;
@@ -76,8 +79,9 @@ export default function UnlockChoiceModal({
     updatedAt: new Date().toISOString(),
   });
 
-  const handleCaptureSuccess = (order: PaperTalesOrder) => {
-    markFirstBookClaimed();
+  const handleCaptureSuccess = async (order: PaperTalesOrder) => {
+    await refreshProfile();
+    dispatchTokensUpdated();
     confetti({
       particleCount: 80,
       spread: 70,
@@ -87,14 +91,29 @@ export default function UnlockChoiceModal({
     onDirectUnlockSuccess(order);
   };
 
-  const handleTokenUnlock = () => {
+  const handleTokenUnlock = async () => {
     if (!hasEnoughTokens) {
       onBuyTokens();
       return;
     }
-    const success = deductClientTokens(tokensNeeded);
-    if (success) {
-      markFirstBookClaimed();
+    setIsProcessing(true);
+    setErrorMessage(null);
+    try {
+      const res = await apiFetch(`/api/books/${book.id}/unlock`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      setIsProcessing(false);
+      if (res.status === 402) {
+        onBuyTokens();
+        return;
+      }
+      if (!res.ok) {
+        setErrorMessage(data.error || "Could not unlock book with tokens.");
+        return;
+      }
+      await refreshProfile();
+      dispatchTokensUpdated();
       confetti({
         particleCount: 60,
         spread: 60,
@@ -102,6 +121,9 @@ export default function UnlockChoiceModal({
         colors: ["#d97706", "#f59e0b", "#fbbf24"],
       });
       onTokenUnlockSuccess();
+    } catch (err: any) {
+      setIsProcessing(false);
+      setErrorMessage(err.message || "Could not unlock book with tokens.");
     }
   };
 
@@ -236,17 +258,16 @@ export default function UnlockChoiceModal({
                     setIsProcessing(true);
                     setErrorMessage(null);
                     try {
-                      const res = await fetch("/api/paypal/create-order", {
+                      const res = await apiFetch("/api/paypal/create-order", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                           type: "book_order",
                           bookCheckout: {
+                            bookId: book.id,
                             bookTitle: book.title,
+                            pageCount: book.pageCount,
                             fulfillmentType: "digital_download",
-                            creationFee: quote.priceUsd,
-                            printCost: 0,
-                            shippingCost: 0,
                           },
                         }),
                       });
@@ -281,26 +302,17 @@ export default function UnlockChoiceModal({
                     setIsProcessing(true);
                     setErrorMessage(null);
                     try {
-                      const res = await fetch("/api/paypal/capture-order", {
+                      const res = await apiFetch("/api/paypal/capture-order", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                           orderId: data.orderID,
-                          orderDetails: {
-                            bookId: book.id,
-                            bookTitle: book.title,
-                            authorName: book.authorName || "Creator",
-                            fulfillmentType: "digital_pdf",
-                            pageCount: book.pageCount,
-                            creationFee: quote.priceUsd,
-                            totalAmount: quote.priceUsd,
-                          },
                         }),
                       });
                       const captureData = await res.json();
                       setIsProcessing(false);
                       if (captureData.success && captureData.order) {
-                        handleCaptureSuccess(captureData.order);
+                        await handleCaptureSuccess(captureData.order);
                       } else {
                         setPaypalRetryKey((k) => k + 1);
                         setErrorMessage(captureData.error || "PayPal payment capture failed.");

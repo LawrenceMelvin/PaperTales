@@ -9,11 +9,13 @@
     "start": "next start",
     "lint": "next lint",
     "test": "npx tsx test-core.mjs",
+    "test:server": "npx tsx tests/server/run-all.ts",
     "test:conversations": "npx tsx scratch/verify-ai-conversations.mjs",
     "paypal:mcp": "npx -y @paypal/mcp --tools=all"
   },
   "dependencies": {
     "@channel3/sdk": "^4.1.0",
+    "@google-cloud/storage": "^9.0.0",
     "@paypal/agent-toolkit": "^1.11.0",
     "@paypal/paypal-server-sdk": "^2.5.0",
     "@paypal/react-paypal-js": "^10.6.0",
@@ -21,6 +23,8 @@
     "ag-grid-react": "^36.2.0",
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
+    "firebase": "^13.3.0",
+    "firebase-admin": "^14.5.1",
     "lucide-react": "^0.475.0",
     "next": "^15.1.7",
     "pdf-lib": "^1.17.1",

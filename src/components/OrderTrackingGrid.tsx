@@ -12,7 +12,7 @@ import {
   themeQuartz,
 } from "ag-grid-community";
 import { PublishOrder } from "@/types/order";
-import { getClientOrders } from "@/lib/order-store";
+import { fetchServerOrders } from "@/lib/order-store";
 import {
   X,
   Download,
@@ -57,8 +57,9 @@ export default function OrderTrackingGrid({
   const gridRef = useRef<AgGridReact<PublishOrder>>(null);
   const [gridApi, setGridApi] = useState<GridApi<PublishOrder> | null>(null);
 
-  const reloadOrders = useCallback(() => {
-    setOrders(getClientOrders());
+  const reloadOrders = useCallback(async () => {
+    const serverOrders = await fetchServerOrders();
+    setOrders(serverOrders);
   }, []);
 
   useEffect(() => {

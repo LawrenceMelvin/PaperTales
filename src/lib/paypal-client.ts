@@ -136,6 +136,43 @@ export async function createPayPalOrder(params: PayPalCreateOrderParams) {
   };
 }
 
+export async function verifyPayPalWebhookSignature(
+  headers: Headers,
+  rawEvent: unknown
+): Promise<boolean> {
+  const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
+  const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
+  const webhookId = process.env.PAYPAL_WEBHOOK_ID;
+
+  if (!clientId || !clientSecret || !webhookId || webhookId === "REPLACE_ME" || webhookId.startsWith("test_")) {
+    return false;
+  }
+
+  const accessToken = await getPayPalAccessToken(clientId, clientSecret);
+  if (!accessToken) return false;
+
+  const res = await fetch("https://api-m.sandbox.paypal.com/v1/notifications/verify-webhook-signature", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      auth_algo: headers.get("paypal-auth-algo"),
+      cert_url: headers.get("paypal-cert-url"),
+      transmission_id: headers.get("paypal-transmission-id"),
+      transmission_sig: headers.get("paypal-transmission-sig"),
+      transmission_time: headers.get("paypal-transmission-time"),
+      webhook_id: webhookId,
+      webhook_event: rawEvent,
+    }),
+  });
+
+  if (!res.ok) return false;
+  const data = await res.json();
+  return data.verification_status === "SUCCESS";
+}
+
 export async function capturePayPalOrder(orderId: string) {
   const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
   const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
@@ -157,10 +194,13 @@ export async function capturePayPalOrder(orderId: string) {
           const captureData = await captureRes.json();
           const purchaseUnit = captureData.purchase_units?.[0];
           const shipping = purchaseUnit?.shipping;
+          const captureObj = purchaseUnit?.payments?.captures?.[0];
           return {
             id: captureData.id,
             status: captureData.status,
-            captureId: purchaseUnit?.payments?.captures?.[0]?.id,
+            captureId: captureObj?.id,
+            capturedAmount: captureObj?.amount?.value ? Number(captureObj.amount.value) : undefined,
+            capturedCurrency: captureObj?.amount?.currency_code,
             shippingAddress: shipping
               ? {
                   recipientName: shipping.name?.full_name || "Customer",

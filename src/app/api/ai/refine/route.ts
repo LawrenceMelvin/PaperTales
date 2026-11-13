@@ -1,20 +1,44 @@
 import { NextRequest, NextResponse } from "next/server";
+import { guardAiRequest, GuardError } from "@/lib/server/guard";
+import { debitTokens, InsufficientTokensError, refundTokens } from "@/lib/server/ledger";
 
 export async function POST(req: NextRequest) {
+  let userUid: string | null = null;
+  let debitTxnId: string | null = null;
   try {
+    const body = await req.json();
     const {
       originalText,
       instruction,
       fullStoryText = "",
       bookTitle = "Book",
       genre = "story",
-    } = await req.json();
+      bookId = "refine",
+    } = body;
 
     if (!originalText || !instruction) {
       return NextResponse.json(
         { success: false, error: "Missing originalText or instruction" },
         { status: 400 }
       );
+    }
+
+    const user = await guardAiRequest(req, {
+      kind: "refine",
+      texts: [originalText, instruction],
+    });
+    userUid = user.uid;
+
+    const devBypass =
+      process.env.REQUIRE_AUTH === "false" && process.env.NODE_ENV !== "production";
+    if (!devBypass) {
+      const debit = await debitTokens(
+        user.uid,
+        1,
+        bookId,
+        `AI passage refinement for "${bookTitle}"`
+      );
+      debitTxnId = debit.txnId;
     }
 
     const geminiKey = process.env.GEMINI_API_KEY;
@@ -177,6 +201,22 @@ User's Change Instruction:
       tokensUsed: 1,
     });
   } catch (error: any) {
+    if (error instanceof GuardError) return error.toResponse();
+    if (error instanceof InsufficientTokensError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: error.message,
+          code: error.code,
+          required: error.required,
+          available: error.available,
+        },
+        { status: 402 }
+      );
+    }
+    if (userUid && debitTxnId) {
+      await refundTokens(userUid, 1, debitTxnId, "Refinement failed refund").catch(() => {});
+    }
     console.error("Refine API error:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to refine text" },

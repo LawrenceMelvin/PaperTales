@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { capturePayPalOrder } from "@/lib/paypal-client";
-import { submitLuluPrintJob } from "@/lib/lulu-client";
-import { PaperTalesOrder } from "@/types/order";
+import { AuthError, requireUser } from "@/lib/server/auth";
+import { fulfillOrder, FulfillmentError } from "@/lib/server/fulfillment";
 
 export async function POST(req: NextRequest) {
   try {
-    const { orderId, orderDetails } = await req.json();
+    const user = await requireUser(req, { allowAnonymous: false });
+    const { orderId } = await req.json();
 
     if (!orderId) {
       return NextResponse.json({ error: "Order ID is required" }, { status: 400 });
     }
 
     const captureResult = await capturePayPalOrder(orderId);
-
     if (captureResult.status !== "COMPLETED") {
       return NextResponse.json(
         { error: `Payment status is ${captureResult.status}` },
@@ -20,50 +20,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let luluJobId: string | undefined;
-    let luluTracking: string | undefined;
-
-    // If this is a physical print order, trigger the Lulu print job with dedicated interior and cover URLs
-    if (orderDetails?.fulfillmentType === "physical_print") {
-      const baseUrl = req.nextUrl.origin || "https://papertales.ai";
-      const interiorUrl = `${baseUrl}/api/pdf/compile?bookId=${encodeURIComponent(orderDetails.bookId)}&mode=lulu_interior`;
-      const coverUrl = `${baseUrl}/api/pdf/compile?bookId=${encodeURIComponent(orderDetails.bookId)}&mode=lulu_cover`;
-      const luluRes = await submitLuluPrintJob(orderDetails, interiorUrl, coverUrl);
-      luluJobId = luluRes.jobId;
-      luluTracking = luluRes.trackingNumber;
-    }
-
-    const finalizedOrder: PaperTalesOrder = {
-      id: `ORD-${Date.now().toString(36).toUpperCase()}`,
-      bookId: orderDetails?.bookId || "book_default",
-      bookTitle: orderDetails?.bookTitle || "My Custom Coloring Adventure",
-      authorName: orderDetails?.authorName || "Little Author",
-      fulfillmentType: orderDetails?.fulfillmentType || "digital_pdf",
-      status: orderDetails?.fulfillmentType === "physical_print" ? "in_production" : "paid",
-      pageCount: orderDetails?.pageCount || 6,
-      quantity: orderDetails?.quantity || 1,
-      creationFee: orderDetails?.creationFee || 3.5,
-      printCost: orderDetails?.printCost || 0,
-      shippingCost: orderDetails?.shippingCost || 0,
-      companionItem: orderDetails?.companionItem,
-      totalAmount: orderDetails?.totalAmount || 3.5,
-      currency: "USD",
-      paypalOrderId: orderId,
-      paypalCaptureId: captureResult.captureId,
+    const fulfilled = await fulfillOrder(orderId, user.uid, {
+      captureId: captureResult.captureId || `CAP-${orderId}`,
+      amountValue: (captureResult as any).capturedAmount,
+      currencyCode: (captureResult as any).capturedCurrency,
       shippingAddress: captureResult.shippingAddress,
-      luluJobId: luluJobId,
-      luluTrackingNumber: luluTracking,
-      luluCarrier: "Standard Ground (Tracked)",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    });
 
     return NextResponse.json({
       success: true,
       capture: captureResult,
-      order: finalizedOrder,
+      order: fulfilled.finalizedOrder || fulfilled,
     });
   } catch (error: any) {
+    if (error instanceof AuthError) return error.toResponse();
+    if (error instanceof FulfillmentError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status }
+      );
+    }
     console.error("PayPal Capture Order API Error:", error);
     return NextResponse.json(
       { error: error.message || "Failed to capture PayPal order" },

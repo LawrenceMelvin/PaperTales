@@ -1,5 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCleanIllustrationPrompt } from "@/lib/illustration-prompt";
+import { guardAiRequest, GuardError } from "@/lib/server/guard";
+import { GEMINI_KID_SAFE_SETTINGS } from "@/lib/server/prompt-safety";
+import { getBookForOwner, setBookPageImagePath } from "@/lib/server/books-repo";
+import { allowedPages } from "@/lib/server/entitlement";
+import {
+  getSignedReadUrl,
+  ONE_HOUR_SECONDS,
+  parseDataUrl,
+  uploadBuffer,
+} from "@/lib/server/storage";
+
+async function persistImageToGcsIfBook(
+  uid: string,
+  bookId: string | undefined,
+  pageNumber: number,
+  contentVersion: number,
+  dataUrlOrUrl: string
+): Promise<{ imageUrl: string; imagePath?: string }> {
+  if (!bookId || process.env.REQUIRE_AUTH === "false") {
+    return { imageUrl: dataUrlOrUrl };
+  }
+  const parsed = parseDataUrl(dataUrlOrUrl);
+  if (!parsed) {
+    return { imageUrl: dataUrlOrUrl };
+  }
+  const ext = parsed.contentType.includes("png") ? "png" : "jpg";
+  const pageKey = pageNumber === 0 ? "cover" : `page-${pageNumber}`;
+  const objectPath = `users/${uid}/books/${bookId}/pages/${pageKey}-v${contentVersion}.${ext}`;
+  await uploadBuffer(objectPath, parsed.buffer, parsed.contentType);
+  await setBookPageImagePath(bookId, uid, pageNumber, objectPath);
+  const signedUrl = await getSignedReadUrl(objectPath, ONE_HOUR_SECONDS);
+  return { imageUrl: signedUrl, imagePath: objectPath };
+}
 
 // Keep backward compatibility
 const getCleanColoringPrompt = getCleanIllustrationPrompt;
@@ -11,8 +44,40 @@ function getPollinationsImageUrl(prompt: string): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, characterTraits, pageNumber, artStyle, interiorColor, isCover, coverColorScheme } = await req.json();
+    const {
+      prompt,
+      characterTraits,
+      pageNumber = 1,
+      artStyle,
+      interiorColor,
+      isCover,
+      coverColorScheme,
+      bookId,
+    } = await req.json();
     const effectiveIsCover = Boolean(isCover) || pageNumber === 0;
+
+    const user = await guardAiRequest(req, {
+      kind: "image",
+      texts: [prompt, ...(Array.isArray(characterTraits) ? characterTraits : [])],
+    });
+
+    let contentVersion = 1;
+    if (bookId && process.env.REQUIRE_AUTH !== "false") {
+      const book = await getBookForOwner(bookId, user.uid);
+      if (!book) {
+        return NextResponse.json({ error: "Book not found" }, { status: 404 });
+      }
+      contentVersion = (book.contentVersion || 1) + 1;
+      if (!effectiveIsCover) {
+        const allowed = allowedPages(book.pageCount || 12, book.entitlement, user.isAnonymous);
+        if (!allowed.has(Number(pageNumber))) {
+          return NextResponse.json(
+            { error: "Page is locked. Unlock pages to generate.", code: "page_locked" },
+            { status: 402 }
+          );
+        }
+      }
+    }
 
     const enhancedPrompt = getCleanIllustrationPrompt(prompt, characterTraits, artStyle, interiorColor, {
       isCover: effectiveIsCover,
@@ -54,6 +119,7 @@ export async function POST(req: NextRequest) {
                     aspectRatio: "1:1",
                   },
                 },
+                safetySettings: GEMINI_KID_SAFE_SETTINGS,
               }),
               signal: AbortSignal.timeout(35000),
             }
@@ -64,11 +130,19 @@ export async function POST(req: NextRequest) {
             const part = data.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData?.data);
             if (part?.inlineData?.data) {
               const mime = part.inlineData.mimeType || "image/jpeg";
-              const imageUrl = `data:${mime};base64,${part.inlineData.data}`;
+              const rawDataUrl = `data:${mime};base64,${part.inlineData.data}`;
+              const stored = await persistImageToGcsIfBook(
+                user.uid,
+                bookId,
+                effectiveIsCover ? 0 : Number(pageNumber),
+                contentVersion,
+                rawDataUrl
+              );
               return NextResponse.json({
                 success: true,
                 model,
-                imageUrl,
+                imageUrl: stored.imageUrl,
+                ...(stored.imagePath ? { imagePath: stored.imagePath } : {}),
                 costEstimateUsd: model.includes("lite") ? 0.0336 : 0.0672,
                 message: isColor
                   ? `Full-color illustration generated with Google ${model}`
@@ -151,6 +225,7 @@ export async function POST(req: NextRequest) {
         : "High-contrast vector line-art generated successfully",
     });
   } catch (error: any) {
+    if (error instanceof GuardError) return error.toResponse();
     console.error("Error in AI image route:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to generate image" },

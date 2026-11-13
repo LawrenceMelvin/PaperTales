@@ -2,7 +2,9 @@
 
 import React, { useState } from "react";
 import { X, Coins, Sparkles, CheckCircle2 } from "lucide-react";
-import { AVAILABLE_TOKEN_PACKS, addClientTokens } from "@/lib/token-store";
+import { AVAILABLE_TOKEN_PACKS, dispatchTokensUpdated } from "@/lib/token-store";
+import { apiFetch } from "@/lib/api-fetch";
+import { useAuth } from "@/components/AuthProvider";
 import { TokenPack } from "@/types/order";
 import { PayPalButtons } from "@paypal/react-paypal-js";
 import confetti from "canvas-confetti";
@@ -14,6 +16,7 @@ interface TokenModalProps {
 }
 
 export default function TokenModal({ isOpen, onClose, onSuccess }: TokenModalProps) {
+  const { refreshProfile } = useAuth();
   const [selectedPack, setSelectedPack] = useState<TokenPack>(AVAILABLE_TOKEN_PACKS[1]); // Default to Creator bundle
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -23,9 +26,10 @@ export default function TokenModal({ isOpen, onClose, onSuccess }: TokenModalPro
 
   if (!isOpen) return null;
 
-  const handleCaptureSuccess = (pack: TokenPack) => {
+  const handleCaptureSuccess = async (pack: TokenPack) => {
     setErrorMessage(null);
-    addClientTokens(pack.tokens + (pack.bonusTokens || 0));
+    await refreshProfile();
+    dispatchTokensUpdated();
     confetti({ particleCount: 75, spread: 60, origin: { y: 0.7 } });
     setSuccessMessage(`Successfully refilled ${pack.tokens + (pack.bonusTokens || 0)} tokens!`);
     if (onSuccess) onSuccess(pack.tokens + (pack.bonusTokens || 0));
@@ -147,7 +151,7 @@ export default function TokenModal({ isOpen, onClose, onSuccess }: TokenModalPro
                       setIsProcessing(true);
                       setErrorMessage(null);
                       try {
-                        const res = await fetch("/api/paypal/create-order", {
+                        const res = await apiFetch("/api/paypal/create-order", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({
@@ -183,7 +187,7 @@ export default function TokenModal({ isOpen, onClose, onSuccess }: TokenModalPro
                       setIsProcessing(true);
                       setErrorMessage(null);
                       try {
-                        const res = await fetch("/api/paypal/capture-order", {
+                        const res = await apiFetch("/api/paypal/capture-order", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({
@@ -193,7 +197,7 @@ export default function TokenModal({ isOpen, onClose, onSuccess }: TokenModalPro
                         const captureData = await res.json();
                         setIsProcessing(false);
                         if (captureData.success) {
-                          handleCaptureSuccess(selectedPack);
+                          await handleCaptureSuccess(selectedPack);
                         } else {
                           setPaypalRetryKey((k) => k + 1);
                           setErrorMessage(captureData.error || "PayPal payment capture failed. Please reset and retry.");

@@ -76,11 +76,6 @@ export default function OrdersDataGrid({ orders: initialOrders, onRefresh, onUpd
     });
 
     setOrders(updated);
-    try {
-      localStorage.setItem("papertales_orders", JSON.stringify(updated));
-    } catch (e) {
-      console.warn("Storage sync failed", e);
-    }
   };
 
   const handlePillClick = (filterType: string) => {

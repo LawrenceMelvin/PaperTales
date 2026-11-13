@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { BookOpen, Sparkles, X, Palette, Coins, ArrowRight, Bookmark } from "lucide-react";
 import { PRE_DESIGNED_LIBRARY, LibraryBookItem } from "@/lib/library-books";
 import { BookProject } from "@/types/book";
-import { getClientTokenBalance, deductClientTokens } from "@/lib/token-store";
+import { useAuth } from "@/components/AuthProvider";
 
 interface BookLibraryModalProps {
   isOpen: boolean;
@@ -19,26 +19,16 @@ export default function BookLibraryModal({
   onSelectBookForRemix,
   onOpenTokenModal,
 }: BookLibraryModalProps) {
-  const [tokenBalance, setTokenBalance] = useState<number>(0);
+  const { tokenBalance } = useAuth();
   const [selectedBook, setSelectedBook] = useState<LibraryBookItem | null>(null);
-
-  useEffect(() => {
-    if (isOpen) {
-      setTokenBalance(getClientTokenBalance());
-    }
-  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleRemixClick = (item: LibraryBookItem) => {
-    const currentBalance = getClientTokenBalance();
-    if (currentBalance < item.remixCostTokens) {
+    if (tokenBalance < item.remixCostTokens) {
       onOpenTokenModal();
       return;
     }
-
-    // Deduct 1 token for remixing pre-designed library book
-    deductClientTokens(item.remixCostTokens);
 
     const project: BookProject = {
       id: `book_remix_${Date.now()}`,

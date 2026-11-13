@@ -26,7 +26,9 @@ import {
   X,
   Lock,
 } from "lucide-react";
-import { getClientTokenBalance, deductClientTokens } from "@/lib/token-store";
+import { dispatchTokensUpdated } from "@/lib/token-store";
+import { apiFetch } from "@/lib/api-fetch";
+import { useAuth } from "@/components/AuthProvider";
 
 interface BookViewerProps {
   book: BookProject;
@@ -69,6 +71,7 @@ export default function BookViewer({
   isConfirmed = true,
   isBookUnlocked = false,
 }: BookViewerProps) {
+  const { tokenBalance, refreshProfile } = useAuth();
   const [currentPageIndex, setCurrentPageIndex] = useState<number>(activePageIndex ?? 0);
   const [editingStory, setEditingStory] = useState<boolean>(false);
   const [editText, setEditText] = useState<string>("");
@@ -144,8 +147,7 @@ export default function BookViewer({
 
   const handleApplyRefine = async (instruction: string) => {
     if (!textSelection || !activePage) return;
-    const balance = getClientTokenBalance();
-    if (balance < 1) {
+    if (tokenBalance < 1) {
       setTextSelection(null);
       if (onOpenTokenModal) onOpenTokenModal();
       return;
@@ -156,10 +158,11 @@ export default function BookViewer({
     const currentFullStory = activePage.storyText;
 
     try {
-      const res = await fetch("/api/ai/refine", {
+      const res = await apiFetch("/api/ai/refine", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          bookId: book.id,
           originalText: targetSnippet,
           instruction,
           fullStoryText: currentFullStory,
@@ -168,9 +171,16 @@ export default function BookViewer({
         }),
       });
 
+      if (res.status === 402) {
+        setTextSelection(null);
+        if (onOpenTokenModal) onOpenTokenModal();
+        return;
+      }
+
       const data = await res.json();
       if (data.success && data.refinedText) {
-        deductClientTokens(1);
+        await refreshProfile();
+        dispatchTokensUpdated();
         setPreviousStoryText(currentFullStory);
 
         let updatedStory = currentFullStory;

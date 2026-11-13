@@ -7,7 +7,10 @@ import { CompanionProduct, LuluQuoteResponse, PaperTalesOrder } from "@/types/or
 import { PayPalButtons } from "@paypal/react-paypal-js";
 import confetti from "canvas-confetti";
 import { calculateBookQuote, calculateLuluCommission } from "@/lib/pricing-calculator";
-import { isFirstTimeCustomer } from "@/lib/token-store";
+import { dispatchTokensUpdated } from "@/lib/token-store";
+import { dispatchOrdersUpdated } from "@/lib/order-store";
+import { apiFetch } from "@/lib/api-fetch";
+import { useAuth } from "@/components/AuthProvider";
 
 interface OrderSummaryModalProps {
   isOpen: boolean;
@@ -28,6 +31,7 @@ export default function OrderSummaryModal({
   onOrderCompleted,
   onDownloadPdf,
 }: OrderSummaryModalProps) {
+  const { freeGrantClaimed, refreshProfile } = useAuth();
   const [fulfillmentType, setFulfillmentType] = useState<"physical_print" | "digital_pdf">(initialFulfillmentType);
   const [luluQuote, setLuluQuote] = useState<LuluQuoteResponse | null>(null);
   const [loadingQuote, setLoadingQuote] = useState<boolean>(true);
@@ -107,7 +111,7 @@ export default function OrderSummaryModal({
   if (!isOpen) return null;
 
   // Dynamic page-count pricing formula (First 5 pages free for first-time customers)
-  const isFirstTime = isFirstTimeCustomer();
+  const isFirstTime = !freeGrantClaimed;
   const effectivePages = book.pageCount || book.pages?.length || 12;
   const dynamicQuote = calculateBookQuote(effectivePages, "illustrated", isFirstTime);
   const baseCreationFee = dynamicQuote.priceUsd > 0 ? dynamicQuote.priceUsd : 0.99;
@@ -163,6 +167,9 @@ export default function OrderSummaryModal({
 
   const handleOrderSuccess = (order: PaperTalesOrder) => {
     setCompletedOrder(order);
+    refreshProfile();
+    dispatchTokensUpdated();
+    dispatchOrdersUpdated();
     confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
     try {
       const stored = localStorage.getItem("papertales_orders");
@@ -511,17 +518,19 @@ export default function OrderSummaryModal({
                     createOrder={async () => {
                       setCheckoutError(null);
                       try {
-                        const res = await fetch("/api/paypal/create-order", {
+                        const res = await apiFetch("/api/paypal/create-order", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({
                             type: "book_order",
                             bookCheckout: {
+                              bookId: book.id,
                               bookTitle: book.title,
+                              pageCount: book.pageCount,
+                              trimSize: book.format?.trimSize,
+                              interiorColor: book.format?.interiorColor,
+                              quantity: 1,
                               fulfillmentType,
-                              creationFee,
-                              printCost,
-                              shippingCost,
                               companionItem: selectedCompanion,
                             },
                           }),
@@ -564,26 +573,11 @@ export default function OrderSummaryModal({
                     onApprove={async (data) => {
                       setCheckoutError(null);
                       try {
-                        const res = await fetch("/api/paypal/capture-order", {
+                        const res = await apiFetch("/api/paypal/capture-order", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({
                             orderId: data.orderID,
-                            orderDetails: {
-                              bookId: book.id,
-                              bookTitle: book.title,
-                              authorName: book.authorName,
-                              fulfillmentType,
-                              pageCount: book.pageCount,
-                              trimSize: book.format?.trimSize,
-                              interiorColor: book.format?.interiorColor,
-                              quantity: 1,
-                              creationFee,
-                              printCost,
-                              shippingCost,
-                              companionItem: selectedCompanion,
-                              totalAmount: grandTotal,
-                            },
                           }),
                         });
                         const captureData = await res.json();
