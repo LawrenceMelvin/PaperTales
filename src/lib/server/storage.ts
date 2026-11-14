@@ -4,8 +4,25 @@ let storageInstance: Storage | null = null;
 
 export function getStorageClient(): Storage {
   if (!storageInstance) {
+    const projectId = process.env.GCP_PROJECT_ID || "papertale-studio";
+    const rawSa = process.env.GCP_SERVICE_ACCOUNT_JSON;
+    let credentials: { client_email?: string; private_key?: string } | undefined;
+    if (rawSa) {
+      try {
+        const parsed = JSON.parse(rawSa);
+        credentials = {
+          client_email: parsed.client_email,
+          private_key: typeof parsed.private_key === "string"
+            ? parsed.private_key.replace(/\\n/g, "\n")
+            : undefined,
+        };
+      } catch (err) {
+        console.error("Failed to parse GCP_SERVICE_ACCOUNT_JSON for GCS:", err);
+      }
+    }
     storageInstance = new Storage({
-      projectId: process.env.GCP_PROJECT_ID || "papertale-studio",
+      projectId,
+      ...(credentials?.client_email && credentials?.private_key ? { credentials } : {}),
     });
   }
   return storageInstance;

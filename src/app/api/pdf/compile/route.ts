@@ -61,6 +61,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    await requireUser(req, { allowAnonymous: true });
     const urlMode = req.nextUrl.searchParams.get("mode") as PdfCompileMode | null;
     const body = await req.json();
     const mode: PdfCompileMode = urlMode || body.mode || "wysiwyg_full";

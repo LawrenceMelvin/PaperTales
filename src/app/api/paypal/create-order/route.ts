@@ -11,6 +11,7 @@ import {
 import { calculateLuluQuote } from "@/lib/lulu-client";
 import { isBookFullyUnlocked } from "@/lib/server/entitlement";
 import { PendingOrderDoc } from "@/lib/server/fulfillment";
+import { fetchChannel3CompanionProducts } from "@/lib/channel3-client";
 
 export async function POST(req: NextRequest) {
   try {
@@ -146,15 +147,39 @@ export async function POST(req: NextRequest) {
       }
 
       let verifiedCompanionPrice = 0;
-      if (companionItem && typeof companionItem.price === "number" && companionItem.price > 0) {
-        verifiedCompanionPrice = Number(companionItem.price.toFixed(2));
-        items.push({
-          name: `${companionItem.brand || "Art"} - ${companionItem.title || "Companion Kit"}`,
-          description: "Curated companion supplies via Channel3 Agentic Commerce",
-          unitAmount: verifiedCompanionPrice,
-          quantity: 1,
-          category: "PHYSICAL_GOODS",
-        });
+      let verifiedCompanion:
+        | (Record<string, any> & {
+            id: string;
+            title: string;
+            brand: string;
+            price: number;
+          })
+        | undefined;
+      if (companionItem && (companionItem.id || companionItem.title)) {
+        const genreForLookup = bookCheckout.genre || "coloring_book";
+        const catalog = await fetchChannel3CompanionProducts(
+          genreForLookup,
+          typeof companionItem.title === "string" ? companionItem.title : undefined
+        );
+        const match = catalog.find(
+          (p) =>
+            (companionItem.id && p.id === companionItem.id) ||
+            (companionItem.title && p.title === companionItem.title)
+        );
+        if (match && typeof match.price === "number" && match.price > 0) {
+          verifiedCompanionPrice = Number(match.price.toFixed(2));
+          verifiedCompanion = {
+            ...match,
+            price: verifiedCompanionPrice,
+          };
+          items.push({
+            name: `${match.brand || "Art"} - ${match.title || "Companion Kit"}`,
+            description: "Curated companion supplies via Channel3 Agentic Commerce",
+            unitAmount: verifiedCompanionPrice,
+            quantity: 1,
+            category: "PHYSICAL_GOODS",
+          });
+        }
       }
 
       const hasPhysicalGoods =
@@ -192,7 +217,7 @@ export async function POST(req: NextRequest) {
           interiorColor,
           quantity,
           fulfillmentType,
-          companionItem: verifiedCompanionPrice > 0 ? companionItem : undefined,
+          companionItem: verifiedCompanionPrice > 0 ? verifiedCompanion : undefined,
         },
         createdAt: now,
         updatedAt: now,

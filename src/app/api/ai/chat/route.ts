@@ -398,7 +398,13 @@ export async function POST(req: NextRequest) {
 
     // 1. Google Gemini is the Tier-1 primary designer model (uses creator GCP credits).
     if (hasGemini) {
-      const geminiModel = process.env.GEMINI_CHAT_MODEL || "gemini-3.8-flash";
+      const geminiModels = Array.from(
+        new Set([
+          process.env.GEMINI_CHAT_MODEL || "gemini-2.5-flash",
+          "gemini-2.5-flash",
+          "gemini-2.0-flash",
+        ])
+      );
       const combinedSystem = `${SYSTEM_PROMPT}\n\n${buildStateMessage(
         sanitizedState,
         lockedTitle,
@@ -408,11 +414,16 @@ export async function POST(req: NextRequest) {
         hasPlannedPages,
         editingPageReference
       )}`;
-      try {
-        parsed = await callGeminiChat(geminiKey!, geminiModel, combinedSystem, messages);
-        if (parsed) engineUsed = `gemini-${geminiModel}`;
-      } catch (err) {
-        console.warn("Gemini attempt failed, falling back to OpenAI/Groq:", err);
+      for (const geminiModel of geminiModels) {
+        try {
+          parsed = await callGeminiChat(geminiKey!, geminiModel, combinedSystem, messages);
+          if (parsed) {
+            engineUsed = `gemini-${geminiModel}`;
+            break;
+          }
+        } catch (err) {
+          console.warn(`Gemini (${geminiModel}) attempt failed:`, err);
+        }
       }
     }
 

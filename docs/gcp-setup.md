@@ -82,5 +82,28 @@ This allows `firebase-admin` and `@google-cloud/storage` (including V4 `getSigne
 
 See `.env.example` for the full list:
 
-* **Server-side:** `GCP_PROJECT_ID`, `GCS_BUCKET`, `REQUIRE_AUTH`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `LULU_CLIENT_SECRET`, `CHANNEL3_API_KEY`, `GEMINI_API_KEY`
+* **Server-side:** `GCP_PROJECT_ID`, `GCS_BUCKET`, `REQUIRE_AUTH`, `GCP_SERVICE_ACCOUNT_JSON` (external hosts like Render), `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `LULU_CLIENT_SECRET`, `CHANNEL3_API_KEY`, `GEMINI_API_KEY`
 * **Client-side (`NEXT_PUBLIC_*`):** `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID`, `NEXT_PUBLIC_RECAPTCHA_SITE_KEY`, `NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG_TOKEN` (dev only)
+
+---
+
+## 5. Render Deployment (Production Web Hosting)
+
+PaperTales uses `render.yaml` (`runtime: docker`, `dockerfilePath: ./Dockerfile`) to host the Next.js standalone server on Render while keeping Firebase Auth, Firestore, and GCS on `papertale-studio`.
+
+1. **Generate a dedicated Service Account JSON key for Render** (store only in Render's encrypted `GCP_SERVICE_ACCOUNT_JSON` env var, never commit to Git):
+   ```bash
+   gcloud iam service-accounts keys create render-sa.json \
+     --iam-account=papertale-runtime@papertale-studio.iam.gserviceaccount.com \
+     --project=papertale-studio
+   ```
+   Copy the minified JSON contents into `GCP_SERVICE_ACCOUNT_JSON` in Render, then delete `render-sa.json` from local disk.
+2. **Deploy via Render Blueprint / Dashboard:**
+   - Connect `LawrenceMelvin/PaperTales` (`master`) on Render (`New -> Blueprint` using `render.yaml`, or `New -> Web Service -> Docker`).
+   - Fill in all `sync: false` secrets in Render Environment Variables (`NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_WEBHOOK_ID`, `LULU_CLIENT_KEY`, `LULU_CLIENT_SECRET`, `CHANNEL3_API_KEY`, `GEMINI_API_KEY`, `GCP_SERVICE_ACCOUNT_JSON`).
+3. **Post-Deploy Domain Wiring:**
+   - Add `<your-service>.onrender.com` to **Firebase Console -> Authentication -> Settings -> Authorized domains**.
+   - Add `<your-service>.onrender.com` to the **reCAPTCHA Enterprise** key (`6LfT6B4uAAAAAP7QM-y1GxotSblRzRmgxbF6hFkj`) allowed domains.
+   - Register `https://<your-service>.onrender.com/api/paypal/webhook` in the PayPal Developer Dashboard (Sandbox).
+4. **Rollback:**
+   - In the Render Dashboard (`Events` / `Deploys`), select the previous healthy deploy and click **Rollback to this deploy**.

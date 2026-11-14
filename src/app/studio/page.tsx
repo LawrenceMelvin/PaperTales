@@ -683,15 +683,30 @@ export default function StudioPage() {
 
       if (res.status === 401) {
         const errData = await res.json().catch(() => ({}));
-        if (errData.error === "sign_in_required") {
+        const isSignInRequired =
+          errData.code === "sign_in_required" || errData.error === "sign_in_required";
+        if (isSignInRequired) {
           setSignInGateReason("sign_in_required");
           setSignInGateOpen(true);
         }
+        setMessages([
+          ...newThread,
+          {
+            id: `msg_err_${Date.now() + 1}`,
+            role: "assistant",
+            content:
+              errData.error ||
+              (isSignInRequired
+                ? "Please sign in with Google to continue designing your book."
+                : "Your session could not be verified. Please sign in or try again."),
+            quickReplies: isSignInRequired ? [] : ["Try again"],
+          },
+        ]);
         return;
       }
 
-      const data = await res.json();
-      if (data.success) {
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
         // Automatically synchronize book draft parameters into studio state
         if (data.bookDraft) {
           if (typeof data.bookDraft.pageCount === "number" && data.bookDraft.pageCount >= 4) {
@@ -920,9 +935,31 @@ export default function StudioPage() {
           coverDraft: mergedCoverDraft || data.coverDraft || undefined,
         };
         setMessages([...newThread, assistantMsg]);
+      } else {
+        setMessages([
+          ...newThread,
+          {
+            id: `msg_err_${Date.now() + 1}`,
+            role: "assistant",
+            content:
+              data?.error ||
+              "I ran into a temporary connection issue generating a reply. Please try sending your message again.",
+            quickReplies: ["Try again"],
+          },
+        ]);
       }
     } catch (err) {
       console.error("AI Helper chat failed:", err);
+      setMessages([
+        ...newThread,
+        {
+          id: `msg_err_${Date.now() + 1}`,
+          role: "assistant",
+          content:
+            "I ran into a temporary connection issue generating a reply. Please try sending your message again.",
+          quickReplies: ["Try again"],
+        },
+      ]);
     } finally {
       setIsChatting(false);
     }
@@ -966,7 +1003,7 @@ export default function StudioPage() {
 
       if (res.status === 401) {
         const errData = await res.json().catch(() => ({}));
-        if (errData.error === "sign_in_required") {
+        if (errData.code === "sign_in_required" || errData.error === "sign_in_required") {
           setSignInGateReason("sign_in_required");
           setSignInGateOpen(true);
         }
@@ -1054,7 +1091,7 @@ export default function StudioPage() {
 
       if (res.status === 401) {
         const errData = await res.json().catch(() => ({}));
-        if (errData.error === "sign_in_required") {
+        if (errData.code === "sign_in_required" || errData.error === "sign_in_required") {
           setSignInGateReason("sign_in_required");
           setSignInGateOpen(true);
         }
@@ -1188,7 +1225,7 @@ export default function StudioPage() {
       });
       if (res.status === 401) {
         const errData = await res.json().catch(() => ({}));
-        if (errData.error === "sign_in_required") {
+        if (errData.code === "sign_in_required" || errData.error === "sign_in_required") {
           setSignInGateReason("sign_in_required");
           setSignInGateOpen(true);
         }
@@ -1293,7 +1330,7 @@ export default function StudioPage() {
 
       if (res.status === 401) {
         const errData = await res.json().catch(() => ({}));
-        if (errData.error === "sign_in_required") {
+        if (errData.code === "sign_in_required" || errData.error === "sign_in_required") {
           setSignInGateReason("sign_in_required");
           setSignInGateOpen(true);
         }

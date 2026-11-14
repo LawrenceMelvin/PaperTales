@@ -8,7 +8,38 @@ export interface PdfCompileOptions {
 }
 
 /**
- * Helper to safely embed an image from either a Data URL or external HTTP/HTTPS URL
+ * Validates that an external image URL uses HTTPS and does not target
+ * localhost, private networks, or cloud metadata endpoints (SSRF guard).
+ */
+function isSafeExternalHttpsUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "https:") return false;
+    const host = parsed.hostname.toLowerCase();
+    if (
+      host === "localhost" ||
+      host === "0.0.0.0" ||
+      host === "::1" ||
+      host === "[::1]" ||
+      host === "metadata.google.internal" ||
+      host.endsWith(".internal") ||
+      host.endsWith(".local") ||
+      host.startsWith("127.") ||
+      host.startsWith("10.") ||
+      host.startsWith("192.168.") ||
+      host.startsWith("169.254.") ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+    ) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Helper to safely embed an image from either a Data URL or safe external HTTPS URL
  */
 async function tryEmbedImage(pdfDoc: PDFDocument, url?: string): Promise<PDFImage | null> {
   if (!url) return null;
@@ -21,7 +52,7 @@ async function tryEmbedImage(pdfDoc: PDFDocument, url?: string): Promise<PDFImag
       const base64Data = url.replace(/^data:image\/jpe?g;base64,/, "");
       return await pdfDoc.embedJpg(Buffer.from(base64Data, "base64"));
     }
-    if (url.startsWith("http://") || url.startsWith("https://")) {
+    if (isSafeExternalHttpsUrl(url)) {
       const res = await fetch(url, { signal: AbortSignal.timeout(8500) });
       if (res.ok) {
         const arrayBuffer = await res.arrayBuffer();

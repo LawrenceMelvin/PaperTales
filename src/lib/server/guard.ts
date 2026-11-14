@@ -55,36 +55,85 @@ export interface GuardDeps {
   nowMs?: number;
 }
 
+const inMemoryAnonQuota = new Map<string, number>();
+const inMemoryRateCounts = new Map<string, number>();
+
+const inMemoryRateLimitStore: RateLimitStore = {
+  async incrementWindow(key: string, windowMs: number, nowMs: number) {
+    const windowBucket = Math.floor(nowMs / windowMs);
+    const resetAtMs = (windowBucket + 1) * windowMs;
+    const fullKey = `${key}_${windowBucket}`;
+    const next = (inMemoryRateCounts.get(fullKey) ?? 0) + 1;
+    inMemoryRateCounts.set(fullKey, next);
+    return { count: next, resetAtMs };
+  },
+};
+
+const inMemoryAnonQuotaConsumer: AnonQuotaConsumer = async (uid, field, max) => {
+  const key = `${uid}:${field}`;
+  const current = inMemoryAnonQuota.get(key) ?? 0;
+  if (current >= max) {
+    return false;
+  }
+  inMemoryAnonQuota.set(key, current + 1);
+  return true;
+};
+
 const defaultAppCheckVerifier: AppCheckVerifier = async (token: string) => {
   await getAdminAppCheck().verifyToken(token);
 };
 
 const defaultAnonQuotaConsumer: AnonQuotaConsumer = async (uid, field, max) => {
-  const db = getAdminDb();
-  const ref = db.collection("users").doc(uid);
-  return db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    const data = snap.exists ? snap.data() : {};
-    const anon = (data?.anon as { chatTurns?: number; proofs?: number } | undefined) || {};
-    const current = Number(anon[field] ?? 0);
-    if (current >= max) {
-      return false;
-    }
-    tx.set(
-      ref,
-      {
-        uid,
-        anon: {
-          chatTurns: field === "chatTurns" ? current + 1 : Number(anon.chatTurns ?? 0),
-          proofs: field === "proofs" ? current + 1 : Number(anon.proofs ?? 0),
+  try {
+    const db = getAdminDb();
+    const ref = db.collection("users").doc(uid);
+    return await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const data = snap.exists ? snap.data() : {};
+      const anon = (data?.anon as { chatTurns?: number; proofs?: number } | undefined) || {};
+      const current = Number(anon[field] ?? 0);
+      if (current >= max) {
+        return false;
+      }
+      tx.set(
+        ref,
+        {
+          uid,
+          anon: {
+            chatTurns: field === "chatTurns" ? current + 1 : Number(anon.chatTurns ?? 0),
+            proofs: field === "proofs" ? current + 1 : Number(anon.proofs ?? 0),
+          },
+          updatedAt: new Date().toISOString(),
         },
-        updatedAt: new Date().toISOString(),
-      },
-      { merge: true }
-    );
-    return true;
-  });
+        { merge: true }
+      );
+      return true;
+    });
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("Firestore anon quota unavailable in dev; using in-memory fallback:", err);
+      return inMemoryAnonQuotaConsumer(uid, field, max);
+    }
+    throw err;
+  }
 };
+
+function createResilientRateLimitStore(): RateLimitStore {
+  const firestoreStore = createFirestoreRateLimitStore();
+  return {
+    async incrementWindow(key: string, windowMs: number, nowMs: number) {
+      try {
+        return await firestoreStore.incrementWindow(key, windowMs, nowMs);
+      } catch (err) {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("Firestore rate limit unavailable in dev; using in-memory fallback:", err);
+          return inMemoryRateLimitStore.incrementWindow(key, windowMs, nowMs);
+        }
+        throw err;
+      }
+    },
+  };
+}
 
 export function extractClientIp(req: NextRequest | Request): string {
   const fwd = req.headers.get("x-forwarded-for");
@@ -104,7 +153,12 @@ export async function guardAiRequest(
     process.env.REQUIRE_AUTH === "false" && process.env.NODE_ENV !== "production";
 
   // 1. App Check attestation
-  if (!devBypass || deps.verifyAppCheck) {
+  const enforceAppCheck =
+    Boolean(deps.verifyAppCheck) ||
+    (!devBypass &&
+      (process.env.NODE_ENV === "production" ||
+        Boolean(process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY)));
+  if (enforceAppCheck) {
     const appCheckToken =
       req.headers.get("x-firebase-appcheck") || req.headers.get("X-Firebase-AppCheck");
     if (!appCheckToken) {
@@ -130,11 +184,13 @@ export async function guardAiRequest(
     throw err;
   }
 
-  const rateLimitStore = deps.rateLimitStore ?? createFirestoreRateLimitStore();
+  const skipQuotaAndRateLimits =
+    devBypass && !deps.consumeAnonQuota && !deps.rateLimitStore;
+  const rateLimitStore = deps.rateLimitStore ?? createResilientRateLimitStore();
   const nowMs = deps.nowMs ?? Date.now();
 
   // 3. Anonymous quotas + per-IP proof cap
-  if (user.isAnonymous) {
+  if (!skipQuotaAndRateLimits && user.isAnonymous) {
     const consumeQuota = deps.consumeAnonQuota ?? defaultAnonQuotaConsumer;
 
     if (options.kind === "chat") {
@@ -180,7 +236,7 @@ export async function guardAiRequest(
         "Please sign in with Google to continue."
       );
     }
-  } else {
+  } else if (!skipQuotaAndRateLimits) {
     // 4. Signed-in user rate limits
     const isImageKind = options.kind === "image" || options.kind === "refine";
     const scope = isImageKind ? "user_ai_image" : "user_ai_text";

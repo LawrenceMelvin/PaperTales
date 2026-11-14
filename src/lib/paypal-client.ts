@@ -176,7 +176,15 @@ export async function verifyPayPalWebhookSignature(
 export async function capturePayPalOrder(orderId: string) {
   const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
   const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
-  const isMock = !clientId || clientId === "sb-demo-client-id" || clientId === "test_client_id" || clientId === "sb" || orderId.startsWith("SANDBOX-");
+  const allowSandboxMock =
+    process.env.PAYPAL_ENVIRONMENT !== "live" &&
+    process.env.NEXT_PUBLIC_PAYPAL_ENV !== "production";
+  const isMock =
+    !clientId ||
+    clientId === "sb-demo-client-id" ||
+    clientId === "test_client_id" ||
+    clientId === "sb" ||
+    (allowSandboxMock && orderId.startsWith("SANDBOX-"));
 
   if (!isMock && clientSecret) {
     try {

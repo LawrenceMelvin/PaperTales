@@ -54,17 +54,18 @@ export async function requireUser(
 ): Promise<AuthenticatedUser> {
   const { allowAnonymous = false } = options;
 
-  // Dev-only bypass when REQUIRE_AUTH=false
-  if (process.env.REQUIRE_AUTH === "false" && process.env.NODE_ENV !== "production") {
-    const devHeader = req.headers.get("authorization");
-    if (!devHeader) {
-      return {
-        uid: "dev-local-user",
-        isAnonymous: false,
-        email: "dev@papertales.local",
-        name: "Local Developer",
-      };
-    }
+  // Dev-only bypass when REQUIRE_AUTH=false (and no test verifier injected)
+  if (
+    process.env.REQUIRE_AUTH === "false" &&
+    process.env.NODE_ENV !== "production" &&
+    verifier === defaultVerifier
+  ) {
+    return {
+      uid: "dev-local-user",
+      isAnonymous: false,
+      email: "dev@papertales.local",
+      name: "Local Developer",
+    };
   }
 
   const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");

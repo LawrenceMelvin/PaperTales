@@ -13,6 +13,19 @@ export async function GET(
   try {
     const user = await requireUser(req, { allowAnonymous: true });
     const { id } = await context.params;
+    if (process.env.REQUIRE_AUTH === "false" && process.env.NODE_ENV !== "production") {
+      try {
+        const book = await getBookForOwner(id, user.uid);
+        if (!book) {
+          return NextResponse.json({ error: "Book not found" }, { status: 404 });
+        }
+        const hydrated = await hydrateBookSignedUrls(book);
+        return NextResponse.json({ book: hydrated });
+      } catch (err) {
+        console.warn("GET /api/books/[id] Firestore unavailable in dev:", err);
+        return NextResponse.json({ error: "Book not found" }, { status: 404 });
+      }
+    }
     const book = await getBookForOwner(id, user.uid);
     if (!book) {
       return NextResponse.json({ error: "Book not found" }, { status: 404 });
@@ -45,6 +58,19 @@ export async function PATCH(
       ...safePatch
     } = patch;
 
+    if (process.env.REQUIRE_AUTH === "false" && process.env.NODE_ENV !== "production") {
+      try {
+        const updated = await updateBookForOwner(id, user.uid, safePatch, true);
+        if (!updated) {
+          return NextResponse.json({ error: "Book not found" }, { status: 404 });
+        }
+        const hydrated = await hydrateBookSignedUrls(updated);
+        return NextResponse.json({ book: hydrated });
+      } catch (err) {
+        console.warn("PATCH /api/books/[id] Firestore unavailable in dev:", err);
+        return NextResponse.json({ book: { id, ...safePatch } });
+      }
+    }
     const updated = await updateBookForOwner(id, user.uid, safePatch, true);
     if (!updated) {
       return NextResponse.json({ error: "Book not found" }, { status: 404 });
