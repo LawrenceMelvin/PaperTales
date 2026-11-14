@@ -72,12 +72,12 @@
 - [x] 8.7 Update `/dashboard`, `OrdersDataGrid`, and `OrderTrackingGrid` to load `/api/orders`, with an empty state. Verify that a new user sees the empty state and a paid order appears.
 - [x] 8.8 Update `test-core.mjs` expectations affected by the server-side First-5-Free rule, and verify `npm test` passes
 
-## 9. Containerize and deploy to Render
+## 9. Containerize and deploy to Cloud Run
 
-- [x] 9.1 Add a multi-stage `Dockerfile`, `.dockerignore` (exclude `.env*`, `node_modules`, `KDP` paths), `render.yaml`, and `GCP_SERVICE_ACCOUNT_JSON` credential support in `admin.ts` / `storage.ts`.
-- [ ] 9.2 Deploy `papertale-web` to Render using `render.yaml` (`runtime: docker`, `REQUIRE_AUTH=true`, `GCP_SERVICE_ACCOUNT_JSON`, and all API secrets). Verify the Render URL serves `/` and `/studio`.
-- [ ] 9.3 Add the Render domain (`*.onrender.com`) to Firebase Auth authorized domains and the reCAPTCHA key domains, register the PayPal sandbox webhook URL, and verify a sandbox webhook delivery is accepted
-- [x] 9.4 Document the Render deploy and rollback steps in `docs/gcp-setup.md`
+- [x] 9.1 Add a multi-stage `Dockerfile` and `.dockerignore` (exclude `.env*`, `node_modules`, `KDP` paths)
+- [ ] 9.2 Deploy `papertale-web` to Cloud Run (`us-central1`, `min-instances=0`, `max-instances=3`, runtime SA `papertale-runtime`, `--set-secrets` from Secret Manager, `REQUIRE_AUTH=true`). Verify the Cloud Run URL serves `/` and `/studio`.
+- [ ] 9.3 Add the Cloud Run domain (`*.run.app`) to Firebase Auth authorized domains and the reCAPTCHA key domains, register the PayPal sandbox webhook URL, and verify a sandbox webhook delivery is accepted
+- [x] 9.4 Document the Cloud Run deploy and rollback commands in `docs/gcp-setup.md`
 
 ## 10. End-to-end verification (sandbox)
 

@@ -20,7 +20,6 @@
 *.pem
 *.key
 *sa*.json
-render-sa.json
 *service-account*.json
 
 # Debug logs
